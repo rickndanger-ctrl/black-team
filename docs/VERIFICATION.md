@@ -155,15 +155,19 @@ owned GGUF runtime or Ollama/LM Studio with Code, trimming and approvals during
 a long real task, model condensing by a real model, and dictation with a real
 speech tool.
 
-One risk is known and untested: the package's Electron sandbox helper is not
-installed setuid root, so the app relies on unprivileged user namespaces.
-Distributions that restrict them by default, such as Ubuntu 24.04, may refuse to
-start it until the user allows that or the installer handles it.
+The package's Electron sandbox helper is not installed setuid root, so the app
+relies on unprivileged user namespaces, which Ubuntu 24.04 and later deny to
+programs without an AppArmor profile. After alpha.5 the installer and launcher
+detect this, explain it, and offer `--enable-sandbox`, which installs one
+profile through `sudo`. This was tested with simulated kernel settings, and the
+generated profile compiles with the AppArmor 4.0.1 parser from Ubuntu 24.04. It
+has not been run on an Ubuntu machine, so whether the window then starts there
+is still unconfirmed.
 
 ## Still outstanding
 
 - Installation under a separate account, on another machine and on other Linux
-  distributions, including ones that restrict unprivileged user namespaces; a
+  distributions; the `--enable-sandbox` step on a real Ubuntu 24.04 machine; a
   simpler download/install experience.
 - Live Ollama/LM Studio and owned GGUF startup; other models and runtime combinations.
 - Physical iPhone/Android Home Screen cookies, background/reconnect behavior,
