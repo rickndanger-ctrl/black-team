@@ -17,6 +17,7 @@ import Harnesses from './Harnesses.jsx';
 
 const desktop = Boolean(window.blackTeam?.request);
 const byteSize = value => Number.isFinite(value) ? `${(value / 1024 ** 3).toFixed(1)} GB` : 'Unavailable';
+const speed = mhz => mhz ? (mhz >= 1000 ? `${(mhz / 1000).toFixed(1)} GHz` : `${mhz} MHz`) : '';
 const basename = path => path?.split(/[\\/]/).filter(Boolean).at(-1) || 'Not selected';
 const date = value => value ? new Date(value).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '';
 
@@ -50,9 +51,9 @@ function Workspace({status, busy, onAction, onChat, onSettings, onPhone, onSave}
   const running = status.runtime?.ready || status.runtime?.state === 'starting';
   return <>
     <section className="telemetry hardware-grid" aria-label="This computer">
-      <div><Icon name="chip"/><div><span>CPU UTILIZATION</span><strong>{status.performance?.cpu ?? '—'}% <small>· {hardware.cores || '—'} cores · load {status.performance?.load?.toFixed(1) || '0.0'}</small></strong></div></div>
-      <div><Icon name="activity"/><div><span>MEMORY AVAILABLE</span><strong>{byteSize(hardware.memory?.free)} <small>/ {byteSize(hardware.memory?.total)}</small></strong></div></div>
-      <div><Icon name="folder"/><div><span>DISK AVAILABLE</span><strong>{byteSize(hardware.disk?.free)}</strong></div></div>
+      <div><Icon name="chip"/><div><span>CPU IN USE</span><strong>{status.performance?.cpu ?? '—'}% <small>· load {status.performance?.load?.toFixed(1) || '0.0'} of {hardware.cpu?.threads || hardware.cores || '—'}{Number.isFinite(status.performance?.temperature) && <> · {status.performance.temperature}°C</>}</small></strong><em>{hardware.cpu?.name || 'CPU'} · {hardware.cpu?.cores || '—'} physical {hardware.cpu?.cores === 1 ? 'core' : 'cores'} · {hardware.cpu?.threads || '—'} threads{hardware.cpu?.mhz ? ` · ${speed(hardware.cpu.mhz)} now` : ''}</em></div></div>
+      <div><Icon name="activity"/><div><span>MEMORY AVAILABLE</span><strong>{byteSize(status.performance?.memory?.free ?? hardware.memory?.free)} <small>/ {byteSize(hardware.memory?.total)}</small></strong><em>{status.performance?.model ? <>Model holding {byteSize(status.performance.model.resident)}{status.performance.model.swapped > 256 * 1024 ** 2 ? `, ${byteSize(status.performance.model.swapped)} pushed to swap` : ''}</> : status.performance?.memory?.swapUsed > 256 * 1024 ** 2 ? `${byteSize(status.performance.memory.swapUsed)} of swap in use` : 'Free for a model to load'}</em></div></div>
+      <div><Icon name="folder"/><div><span>DISK AVAILABLE</span><strong>{byteSize(hardware.disk?.available ?? hardware.disk?.free)} <small>/ {byteSize(hardware.disk?.total)}</small></strong><em>Where Black Team keeps its data</em></div></div>
     </section>
     {!status.setupComplete ? <SetupForm status={status} busy={busy} onSave={onSave} onAction={onAction}/> : <section className="local-model-panel">
       <div className="model-identity"><AgentAvatar large active={status.runtime?.busy}/><div><span className="eyebrow">YOUR LOCAL MODEL</span><h2>{status.config?.model?.name || 'Local model'}</h2><p>{status.runtime?.ready ? 'Ready on this computer. Open a conversation to begin.' : status.runtime?.state === 'starting' ? (status.config?.model?.source === 'server' ? 'Connecting to your local server. The server manages model loading.' : 'Loading the model into memory. This can take a moment.') : 'Start your model when you need it. Your conversations stay here.'}</p></div></div>
