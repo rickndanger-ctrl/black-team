@@ -55,12 +55,15 @@ export default function Integrations({status,busy,onAction,onChat}) {
   const addApp=async()=>{
     setError('');
     try{
-      const found=installed?.apps?.find(item=>item.executable===appChoice);
+      let found=installed?.apps?.find(item=>item.executable===appChoice);
       const executable=found?.executable || await window.blackTeam.pick('executable');
       if(!executable)return;
+      // A known harness chosen by hand is connected the same way as one found automatically.
+      const known=!found&&installed?.presets?.find(item=>item.command===basename(executable));
+      if(known)found={id:known.id,name:known.name,executable,preset:true};
       if(found && !installed?.terminals?.length){setError('A terminal is needed to open this command-line app. Install a terminal, then choose Find again.');return;}
       const terminal=found?installed.terminals[0]:null;
-      const item={id:crypto.randomUUID(),name:found?.name||basename(executable),executable,args:[],terminal:terminal?[terminal.executable,...terminal.args]:[]};
+      const item={id:crypto.randomUUID(),name:found?.name||basename(executable),executable,args:[],terminal:terminal?[terminal.executable,...terminal.args]:[],...(found?.preset?{preset:found.id}:{})};
       setForm(previous=>({...previous,harnesses:[...previous.harnesses,item]}));
     }catch(cause){setError(cause.message);}
   };

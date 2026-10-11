@@ -70,6 +70,38 @@ A turn has a 48-step / 30-minute budget. Stop cancels the owned agent process gr
 a subsequent instruction can resume the saved session. The host must stay open.
 There is no unattended retry loop or automatic restart of interrupted work.
 
+## Agents found on this computer
+
+The Workspace page lists the agents Black Team finds on your command path.
+**Connect** saves a launcher for one in a single step; **Open** then starts it
+in a terminal, in your workspace folder, already pointed at the model you are
+using. Switch models in Black Team and the next Open uses the new one.
+
+| Agent | How Black Team points it at your model |
+|---|---|
+| Claude Code (`claude`) | Environment only: the server address, model name, long local timeouts and non-essential traffic off. Your server must also speak the Anthropic Messages API; llama.cpp does. |
+| Codex (`codex`) | `-c` overrides that add a "Black Team" provider using the Responses API and select it, with web search off. |
+| Pi (`pi`) | A separate Pi profile folder inside Black Team's data folder, holding one provider and model. |
+| OpenCode (`opencode`) | An inline configuration with one OpenAI-compatible provider. |
+| DeepSeek Harness (`dsh`) | A separate profile folder and a patch that adds your model and switches its hosted providers off. |
+| Aider (`aider`) | `--openai-api-base` and `--model`. |
+| Hermes Terminal (`hermes`) | Opened as it is; it keeps its own profile settings. |
+
+None of this edits an agent's own configuration files. Arguments and
+environment apply to that one launch, and the two profile folders live under
+`harnesses/` in Black Team's data folder, readable only by you.
+
+Each agent decides for itself what else it contacts. Black Team sets the
+switches listed above and nothing more; check an agent's own privacy settings if
+that matters to you. An agent chosen by hand under **Settings → Agents & apps**
+is connected the same way when its file has one of the names above.
+
+What has been checked: with each of Claude Code 2.1, Codex 0.162, Pi, OpenCode
+1.19 and DeepSeek Harness 0.2, a one-shot run using these settings sent its
+request to the given local address with the given model and key. A full working
+session through a real model was not run for each, and Aider was not installed
+to check.
+
 ## External harness launchers
 
 Install your chosen harness and configure its local provider first. In **Settings

@@ -50,6 +50,9 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   utilization, CPU cores, load average, available RAM, and disk space. CPU and
   memory readings also appear in the phone interface. These are system readings,
   not per-model speed benchmarks or GPU telemetry.
+- **Your other agents, one click away.** Claude Code, Codex, Pi, OpenCode and
+  DeepSeek Harness are found automatically. Connect one once and it opens
+  already using your local model. See [Harnesses](docs/HARNESSES.md).
 - **Bring Hermes if you use it.** Connect an installed Hermes Agent for its
   browser or desktop tools and choose it for Code conversations. It is optional.
 - **Dictate.** When a system dictation tool is installed (Voxtype is detected),

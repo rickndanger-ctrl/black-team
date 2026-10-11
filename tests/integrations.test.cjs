@@ -62,3 +62,43 @@ test('first agent use creates only the default workspace and rejects arbitrary m
  `],{env:{...process.env,HOME:dir},encoding:'utf8'});
  assert.equal(output,'passed');
 });
+
+test('a known harness connects in one step and launches pointed at the model in use',async t=>{
+ const {PRESETS}=require('../lib/presets.cjs');const {connectHarness}=require('../lib/integrations.cjs');
+ const {dir,exe,store}=fixture(t);const stateDir=path.join(dir,'state');
+ const found={apps:[{id:'codex',name:'Codex',executable:exe,preset:true},{id:'pi',name:'Pi',executable:exe,preset:true},{id:'hermes',name:'Hermes Terminal',executable:exe,preset:false}],terminals:[{name:'Term',executable:exe,args:['-e']}]};
+ assert.deepEqual(connectHarness({id:'codex',store,found}),{connected:true,name:'Codex'});
+ assert.deepEqual(connectHarness({id:'codex',store,found}),{connected:true,name:'Codex'});
+ connectHarness({id:'pi',store,found});connectHarness({id:'hermes',store,found});
+ assert.deepEqual(store.read().harnesses.map(h=>[h.id,h.preset,h.terminal.length]),[['codex','codex',2],['pi','pi',2],['hermes',undefined,2]]);
+ assert.throws(()=>connectHarness({id:'aider',store,found}),/not found/);
+ assert.throws(()=>connectHarness({id:'codex',store:createIntegrations(path.join(dir,'other')),found:{...found,terminals:[]}}),/terminal/);
+ assert.throws(()=>store.save({harnesses:[{id:'x',name:'X',executable:exe,args:[],terminal:[],preset:'constructor'}]}),/Invalid harness/);
+ const launched=[];const spawn=(file,args,opts)=>{launched.push({file,args,env:opts.env});const child=new EventEmitter();child.unref=()=>{};queueMicrotask(()=>child.emit('spawn'));return child;};
+ const config={workspace:dir,model:{source:'server',id:'user "model"',name:'My Model',context:32768}};
+ const runtime={start:async()=>'http://127.0.0.1:1234/v1',requestHeaders:()=>({Authorization:'Bearer fixture-secret'})};
+ for(const id of ['codex','pi','hermes'])await launchHarness({id,store,config,runtime,stateDir,spawn});
+ const [codex,pi,hermes]=launched;
+ assert.deepEqual(codex.args.slice(0,2),['-e',exe]);
+ assert.ok(codex.args.includes('model_providers.black_team.base_url="http://127.0.0.1:1234/v1"'));
+ assert.ok(codex.args.includes('model="user \\"model\\""'));
+ assert.ok(codex.args.includes('model_context_window=32768'));
+ assert.equal(codex.env.OPENAI_API_KEY,'fixture-secret');
+ assert.deepEqual(pi.args.slice(2),['--provider','black-team','--model','user "model"']);
+ const profile=path.join(stateDir,'harnesses','pi');
+ assert.equal(pi.env.PI_CODING_AGENT_DIR,profile);
+ const models=JSON.parse(fs.readFileSync(path.join(profile,'models.json'),'utf8'));
+ assert.equal(models.providers['black-team'].baseUrl,'http://127.0.0.1:1234/v1');
+ assert.equal(models.providers['black-team'].models[0].contextWindow,32768);
+ assert.equal(fs.statSync(path.join(profile,'models.json')).mode&0o777,0o600);
+ assert.equal(fs.statSync(profile).mode&0o777,0o700);
+ assert.deepEqual(hermes.args,['-e',exe]);
+ // Every preset builds without touching anything outside Black Team's own folder.
+ const {applyPreset}=require('../lib/presets.cjs');
+ for(const id of Object.keys(PRESETS)){const built=applyPreset(id,{endpoint:'http://127.0.0.1:1234/v1',model:'m',key:'k',context:8192,name:'M'},stateDir);assert.ok(Array.isArray(built.args)&&built.env&&typeof built.env==='object',id);}
+ const claude=applyPreset('claude',{endpoint:'http://127.0.0.1:1234/v1',model:'m',key:'k',context:8192,name:'M'},stateDir);
+ assert.equal(claude.env.ANTHROPIC_BASE_URL,'http://127.0.0.1:1234');assert.equal(claude.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC,'1');
+ const patch=JSON.parse(fs.readFileSync(path.join(stateDir,'harnesses','dsh','black-team.patch.json'),'utf8'));
+ assert.deepEqual(patch.filter(entry=>entry.disabled).map(entry=>entry.id),['llm-deepseek','llm-deepseek-account','session-title-llm']);
+ assert.throws(()=>applyPreset('nope',{},stateDir),/does not know/);
+});
