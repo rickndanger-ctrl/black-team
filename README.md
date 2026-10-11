@@ -50,9 +50,13 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
 - **Projects in the sidebar.** Name a project and it gets a folder to work in
   and its own notes and journal. Open it later and pick up where you left off.
 - **See what your computer is doing.** The desktop shows live whole-system CPU
-  utilization, CPU cores, load average, available RAM, and disk space. CPU and
-  memory readings also appear in the phone interface. These are system readings,
-  not per-model speed benchmarks or GPU telemetry.
+  use, the chip's physical cores and threads, its current speed and temperature,
+  load against thread count, the memory the kernel can hand out and how much the
+  model server is holding (including any pushed to swap), and the disk space you
+  can use where Black Team keeps its data. All figures come from the kernel's own
+  files, so they match `lscpu`, `free` and `df`. CPU and memory readings also
+  appear in the phone interface. These are system readings, not per-model speed
+  benchmarks or GPU telemetry.
 - **Your other agents, one click away.** Claude Code, Codex, Pi, OpenCode and
   DeepSeek Harness are found automatically. Connect one once and it opens
   already using your local model. See [Harnesses](docs/HARNESSES.md).

@@ -140,6 +140,8 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .telemetry span { font-size: 10px; color: var(--muted); }
 .telemetry strong { display: block; margin-top: 4px; font: 400 20px var(--font-mono); letter-spacing: -.04em; color: var(--ink); font-variant-numeric: tabular-nums; }
 .telemetry strong small { font: 11px var(--font-body); color: var(--muted); white-space: nowrap; }
+.telemetry em { display: block; margin-top: 5px; font-size: 10.5px; font-style: normal; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
+.telemetry > div > div { min-width: 0; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .panel-heading h2 { margin: 8px 0 0; }
 .section-intro { max-width: 680px; margin: 14px 0 22px; color: var(--muted); font-size: 12.5px; line-height: 1.8; }

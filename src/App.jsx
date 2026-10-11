@@ -18,6 +18,7 @@ import FindModels from './FindModels.jsx';
 
 const desktop = Boolean(window.blackTeam?.request);
 const byteSize = value => Number.isFinite(value) ? `${(value / 1024 ** 3).toFixed(1)} GB` : 'Unavailable';
+const speed = mhz => mhz ? (mhz >= 1000 ? `${(mhz / 1000).toFixed(1)} GHz` : `${mhz} MHz`) : '';
 const basename = path => path?.split(/[\\/]/).filter(Boolean).at(-1) || 'Not selected';
 const date = value => value ? new Date(value).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '';
 
@@ -54,9 +55,9 @@ function Workspace({status, busy, onAction, onChat, onSettings, onPhone, onSave}
   const [manual, setManual] = useState(false);
   return <>
     <section className="telemetry hardware-grid" aria-label="This computer">
-      <div><Icon name="chip"/><div><span>CPU UTILIZATION</span><strong>{status.performance?.cpu ?? '—'}% <small>· {hardware.cores || '—'} cores · load {status.performance?.load?.toFixed(1) || '0.0'}</small></strong></div></div>
-      <div><Icon name="activity"/><div><span>MEMORY AVAILABLE</span><strong>{byteSize(hardware.memory?.free)} <small>/ {byteSize(hardware.memory?.total)}</small></strong></div></div>
-      <div><Icon name="folder"/><div><span>DISK AVAILABLE</span><strong>{byteSize(hardware.disk?.free)}</strong></div></div>
+      <div><Icon name="chip"/><div><span>CPU IN USE</span><strong>{status.performance?.cpu ?? '—'}% <small>· load {status.performance?.load?.toFixed(1) || '0.0'} of {hardware.cpu?.threads || hardware.cores || '—'}{Number.isFinite(status.performance?.temperature) && <> · {status.performance.temperature}°C</>}</small></strong><em>{hardware.cpu?.name || 'CPU'} · {hardware.cpu?.cores || '—'} physical {hardware.cpu?.cores === 1 ? 'core' : 'cores'} · {hardware.cpu?.threads || '—'} threads{hardware.cpu?.mhz ? ` · ${speed(hardware.cpu.mhz)} now` : ''}</em></div></div>
+      <div><Icon name="activity"/><div><span>MEMORY AVAILABLE</span><strong>{byteSize(status.performance?.memory?.free ?? hardware.memory?.free)} <small>/ {byteSize(hardware.memory?.total)}</small></strong><em>{status.performance?.model ? <>Model holding {byteSize(status.performance.model.resident)}{status.performance.model.swapped > 256 * 1024 ** 2 ? `, ${byteSize(status.performance.model.swapped)} pushed to swap` : ''}</> : status.performance?.memory?.swapUsed > 256 * 1024 ** 2 ? `${byteSize(status.performance.memory.swapUsed)} of swap in use` : 'Free for a model to load'}</em></div></div>
+      <div><Icon name="folder"/><div><span>DISK AVAILABLE</span><strong>{byteSize(hardware.disk?.available ?? hardware.disk?.free)} <small>/ {byteSize(hardware.disk?.total)}</small></strong><em>Where Black Team keeps its data</em></div></div>
     </section>
     {welcome === 'agents' && status.setupComplete && <section className="welcome-step"><div><span className="eyebrow">STEP 2 OF 2 · YOUR AGENTS</span><h2>{status.config?.model?.name} is ready.</h2><p>Connect any agents you want from the list just below, then start. You can do this later too.</p></div><div className="button-row"><button className="primary" disabled={busy} onClick={() => {setWelcome(null); onChat('chat');}}>Start chatting</button><button className="secondary" disabled={busy} onClick={() => setWelcome(null)}>Stay here</button></div></section>}
     {welcome === 'agents' && status.setupComplete && <Harnesses status={status} busy={busy} onAction={onAction} onChat={onChat} onSettings={onSettings}/>}
