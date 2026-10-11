@@ -9,7 +9,7 @@ const { EventEmitter } = require('node:events');
 
 const project = path.resolve(__dirname, '..');
 
-async function boot() {
+async function boot({phoneSetup = async () => ({connected: true})} = {}) {
   const captured = { errors: [], starts: 0, writes: [], opened: [] };
   const handlers = new Map();
   const app = new EventEmitter();
@@ -58,7 +58,7 @@ async function boot() {
       showMessageBoxSync: () => 0,
       showOpenDialog: async (_window, options) => { captured.dialogOptions = options; return { canceled: true, filePaths: [] }; },
     },
-    shell: { openPath: async value => { captured.opened.push(value); return ''; } },
+    shell: { openExternal: async value => { captured.opened.push(value); }, openPath: async value => { captured.opened.push(value); return ''; } },
     Menu: { setApplicationMenu: () => {}, buildFromTemplate: template => template },
     session: { defaultSession },
   };
@@ -77,7 +77,7 @@ async function boot() {
       async start() { captured.starts++; }
       async stop() {}
     } };
-    if (name === './lib/phone.cjs') return { PhoneManager: class {}, validatePhone: value => value, COMMAND: 'test command' };
+    if (name === './lib/phone.cjs') return { PhoneManager: class { async setup() { return await phoneSetup(); } }, validatePhone: value => value, COMMAND: 'test command' };
     if (name === './lib/server.cjs') return { createBackend: () => backend };
     return require(name.startsWith('./') ? path.join(project, name) : name);
   };
@@ -172,4 +172,34 @@ test('preload bridge exposes no general IPC and rejects unapproved calls before 
   assert.equal(invocations[0][1], 'status');
   assert.equal(invocations[1][0], 'black-team:pick');
   assert.equal(invocations[1][1], 'runtime');
+});
+
+
+test('setup mutations stay locked until async completion and unlock after failure', async () => {
+  let finish;
+  const waiting = new Promise((_resolve, reject) => { finish = reject; });
+  const { handlers, event, captured } = await boot({phoneSetup: () => waiting});
+  const request = handlers.get('black-team:request');
+  const setup = request(event(), 'phone-setup');
+  const failure = assert.rejects(setup, /setup failed/);
+  await assert.rejects(request(event(), 'runtime-start'), /still running/);
+  assert.equal(captured.starts, 0);
+  finish(new Error('setup failed'));
+  await failure;
+  await request(event(), 'runtime-start');
+  assert.equal(captured.starts, 1);
+});
+
+test('installation help only opens fixed destinations and new choosers retain native boundaries', async () => {
+  const { handlers, event, captured } = await boot();
+  const request = handlers.get('black-team:request');
+  await assert.rejects(request(event(), 'setup-help', {topic: 'https://example.com'}), /Unsupported/);
+  assert.deepEqual(captured.opened, []);
+  await request(event(), 'setup-help', {topic: 'hermes'});
+  assert.deepEqual(captured.opened, ['https://github.com/NousResearch/hermes-agent#installation']);
+  const picker = handlers.get('black-team:pick');
+  await picker(event(), 'hermes-source');
+  assert.equal(captured.dialogOptions.properties[0], 'openDirectory');
+  await picker(event(), 'executable');
+  assert.equal(captured.dialogOptions.properties[0], 'openFile');
 });

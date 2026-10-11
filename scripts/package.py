@@ -113,8 +113,8 @@ def build(project, runtime_zip, out):
         app_package['main'] = 'main.cjs'
         (app / 'package.json').write_text(json.dumps(app_package, indent=2) + '\n')
         copy_tree(project / 'THIRD-PARTY-NOTICES.md', app / 'THIRD-PARTY-NOTICES.md')
-        for dependency in ('react', 'react-dom', 'scheduler'):
-            license_path = project / 'node_modules' / dependency / 'LICENSE'
+        for dependency in ('react', 'react-dom', 'scheduler', 'qrcode', 'dijkstrajs'):
+            license_path = project / 'node_modules' / dependency / ('LICENSE.md' if dependency == 'dijkstrajs' else 'LICENSE')
             if not license_path.is_file():
                 raise ValueError(f'Missing bundled dependency license: {dependency}')
             # License files are copied explicitly; node_modules itself is never followed.

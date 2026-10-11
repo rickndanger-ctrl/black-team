@@ -11,9 +11,13 @@ format and does not convert or download models automatically.
 1. Obtain a model you have permission to use and a compatible Linux llama.cpp
    release from [the upstream project](https://github.com/ggml-org/llama.cpp/releases).
 2. Extract the entire runtime directory; keep `llama-server` with its libraries.
-3. Select the model and executable in Workspace. Set a model display name and an
-   existing writable workspace. Start with GPU layers at 0 for CPU operation.
-4. Save and start. Memory notes are rough estimates, not a guarantee the model fits.
+3. In the first Workspace setup, or **Settings → Models**, choose **Model file**.
+   Black Team looks for an installed llama.cpp runtime. Use **Choose model** for
+   the GGUF and **Choose runtime** if a runtime was not found. Keep its libraries.
+4. Choose **Save and open chat**, then send a message to start the model. The
+   display name comes from the filename. Optional workspace, context, CPU threads
+   and GPU layers are under **Advanced connection and performance**. Start with
+   GPU layers at 0 for CPU operation. Memory notes are estimates, not guarantees.
 
 The app verifies the GGUF header, native executable architecture, runtime model
 identity and authentication. The runtime binds to a dynamically chosen loopback
@@ -29,13 +33,20 @@ separately started server instead.
 ## Existing servers
 
 1. Start your inference server and load/download your model in that application.
-2. Enable its OpenAI-compatible API on this computer. Select Existing local
-   server and enter its HTTP URL ending in `/v1`.
-3. Enter an API key only if that server requires one. Keys are kept in private
-   local configuration and omitted from desktop/phone status responses.
-4. Choose **Test connection & find models**, select an exact model ID, and save.
-5. Connect or send a message. Discovery checks `/v1/models`; generation uses
-   streaming `/v1/chat/completions`. A successful model list is not an inference test.
+2. Enable its OpenAI-compatible API on this computer. In **Settings → Models**
+   (or the first Workspace setup), choose **Ollama** or **LM Studio**. These buttons
+   fill in the usual local address and immediately look for models. For another
+   server, choose **Another server**, enter its HTTP `/v1` address, then **Find models**.
+3. Select a model from the list and choose **Save and open chat**. Send a message
+   to connect automatically. Use **Find models** again if you start the server later.
+4. Only when needed, open **Advanced connection and performance** to change the
+   address, add an API key, set an exact model ID manually, or adjust the context
+   and workspace. Keys stay in private local configuration and are omitted from
+   desktop/phone status responses.
+
+Discovery checks `/v1/models`; generation uses streaming `/v1/chat/completions`.
+A successful model list is not an inference test. The **Get Ollama** and **Get LM
+Studio** links open their download pages; Black Team does not install them itself.
 
 Preset URLs are `http://127.0.0.1:11434/v1` for Ollama and
 `http://127.0.0.1:1234/v1` for LM Studio. Use the actual port selected in your server.
@@ -74,7 +85,9 @@ context too: use a model and context size appropriate for agent work.
 
 ## Switching and sharing
 
-Stop active work before changing connections. Multiple external harnesses can
+Stop active work before changing connections. Choose **Change model** in
+Workspace, then **Change model** in the connected-model card to disconnect and
+unlock the setup form. Save the new selection and send a message to connect it. Multiple external harnesses can
 share your server, but Black Team does not supervise their independent jobs or
 measure their individual resource consumption. Closing Black Team stops its
 owned GGUF runtime, which also affects external harnesses connected to it.

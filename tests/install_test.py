@@ -34,10 +34,10 @@ class InstallerTests(unittest.TestCase):
         (self.project / 'lib/config.cjs').write_text('module.exports = {};\n')
         (self.project / 'dist/index.html').write_text('<title>Fixture</title>')
         (self.project / 'dist/black-team-512.png').write_bytes(b'fixture icon')
-        for dependency in ('react', 'react-dom', 'scheduler'):
+        for dependency in ('react', 'react-dom', 'scheduler', 'qrcode', 'dijkstrajs'):
             folder = self.project / 'node_modules' / dependency
             folder.mkdir()
-            (folder / 'LICENSE').write_text('Fixture dependency notice')
+            (folder / ('LICENSE.md' if dependency == 'dijkstrajs' else 'LICENSE')).write_text('Fixture dependency notice')
         self.runtime = self.root / 'runtime.zip'
         with zipfile.ZipFile(self.runtime, 'w') as archive:
             for name, data in {'electron': '#!/bin/sh\nprintf "fixture runtime\\n"\n', 'LICENSE': 'Fixture MIT',

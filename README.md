@@ -124,21 +124,28 @@ listed for this source version.
 
 ## Connect your model
 
-Open **Workspace** or **Settings** and choose a connection type.
+On first launch, **Workspace** shows the model setup. To change it later, open
+**Settings → Models** or choose **Change model** from Workspace.
 
-| What you already have | Choose | Configure |
+| What you already have | Choose | Next step |
 | --- | --- | --- |
-| A GGUF model | GGUF file | Pick the model and a native `llama-server`; set context, CPU threads, and GPU layers |
-| Ollama | Existing local server | Start Ollama; use `http://127.0.0.1:11434/v1`; find models |
-| LM Studio | Existing local server | Enable its local server; use its address, commonly `http://127.0.0.1:1234/v1`; find models |
-| Another compatible server | Existing local server | Enter its loopback `/v1` URL, optional API key, and exact model ID |
-| Another model file format | Existing local server | Load it in a compatible inference engine first, then connect that engine |
+| Ollama with downloaded models | **Ollama** | Black Team finds models at its usual local address; select one |
+| LM Studio with its local server running | **LM Studio** | Black Team finds models at its usual local address; select one |
+| A compatible GGUF | **Model file** | Choose the model; use the detected llama.cpp runtime or choose its executable |
+| Another compatible local server | **Another server** | Enter its loopback `/v1` address, then choose **Find models** |
+| Another model file format | Its compatible local server | Load it in that engine first, then connect the server |
 
-Choose a workspace, save, then start/connect the model or send a message.
-**Test connection & find models** checks discovery; a real chat is the final
-check that the selected model supports generation. Models used for Agent work
-must also support the tool calling required by Hermes. Embedding-only, image,
-and audio models are not supported by this text interface.
+Choose **Save and open chat**, then send a message. The first message connects or
+starts the configured model automatically. The Ollama and LM Studio buttons fill
+in their usual addresses and run discovery; they do not install those apps or
+download model weights. Use **Find models** again after starting your server.
+
+Most people can leave **Advanced connection and performance** closed. It holds
+optional API keys, a custom server address, a manual model ID, the workspace,
+context size, and GGUF CPU/GPU settings. A successful model list confirms
+discovery; a real reply confirms generation. Agent work additionally requires
+tool calling. This source version supports text chat, not embedding-only,
+image-generation or audio models.
 
 For GGUF mode, Black Team starts and stops its own authenticated llama.cpp
 process. For an existing server, it only connects/disconnects; it does not stop
@@ -148,23 +155,27 @@ explains the differences in context measurement and estimates.
 
 ## Use multiple harnesses
 
-**Black Team Chat** is ready once a model is connected. For **Black Team Agent**,
-open Settings, enter your installed Hermes Python executable and source folder,
-and enable the tools you want. Then start a new conversation and choose
-**Black Team Agent · Hermes tools**. The desktop and phone share this workflow.
+**Black Team Chat** is ready once you connect a model. For **Black Team Agent**,
+open **Settings → Agents & apps**. Black Team looks for an installed Hermes Agent.
+When it finds one, choose **Connect Hermes**, then **Start agent conversation**.
+If more than one installation is found, select the one you want. If yours is
+elsewhere, use **Choose Hermes folder**; if it is not installed, **Install Hermes
+Agent** opens its installation guide. After installing it, choose **Find again**.
 
-Terminal, file, search, and task tools are configurable. Browser and desktop
-control are separate opt-ins and need the corresponding Hermes dependencies.
-Each agent conversation has its own Hermes profile/session. Approval cards permit
-one action or deny it; they do not automatically grant permanent approval.
-The current agent budget is 48 steps / 30 minutes per turn.
+**Tools and advanced setup** contains manual source/Python paths and the optional
+browser and desktop controls. File, terminal, search and planning tools are the
+default; browser and desktop work need their own Hermes dependencies. Each agent
+conversation has its own Hermes profile/session. Approval cards allow an action
+once or deny it; they do not grant permanent approval. The current agent budget
+is 48 steps / 30 minutes per turn.
 
-For other harnesses—such as a configured Hermes terminal, Codex, DSH, Pi, or
-another local-compatible client—add its executable/wrapper in Settings with
-literal arguments and an optional terminal prefix. Black Team supplies the local
-endpoint, model ID, key and workspace in the launch environment. **Each external
-harness must actually support and be configured for your local provider.** It is
-not enough just to install a CLI with a familiar name.
+For another installed harness, use **Other apps → Add an app**, choose a detected
+app or browse for an executable, select **Add app**, then **Save changes**. A
+launch button appears on Workspace. **Launch options** lets you choose a terminal
+or add arguments one field at a time; no JSON editing is required. Black Team
+supplies the local endpoint, model ID, key and workspace in the launch environment.
+Each external app must support and be configured for your local provider; its
+independent session is not mirrored to your phone.
 
 Enabled tools operate as your Linux user. The chosen workspace is a working
 directory, **not a sandbox**. Review [harness setup and tool
@@ -173,8 +184,11 @@ boundaries](docs/HARNESSES.md) before enabling agent tools.
 ## Work from your phone
 
 Install Tailscale on the computer and phone, join your own private network, and
-use **Phone Companion** in the desktop app to detect your computer/account and
-enable access. Open the pairing link on your phone.
+open **Phone Companion** in the desktop app and choose **Enable private phone
+access**. Black Team detects your computer and account, enables the private
+connection, and displays a QR code. Scan it with your phone camera or use
+**Copy pairing link**. The QR code is generated on your computer; keep it and the
+link private. No separate phone app is required.
 
 - **iPhone:** open in Safari; use Share → Add to Home Screen.
 - **Android:** open in Chrome; use its menu → Add to Home screen / Install.
@@ -186,6 +200,10 @@ connection. Keep Black Team open or minimized and the computer awake. A phone
 disconnection does not cancel a running turn. Quitting Black Team stops its owned
 model and agent task; it does not stop an independently running model server.
 Tasks do not automatically resume after an app/computer restart.
+
+To disable access, open **Connection details and troubleshooting** and choose
+**Turn off phone access**. This stops phone requests even if Tailscale route cleanup
+cannot complete.
 
 There is no public model port, required port forwarding, App Store app, or
 Google Play app in this release. See [the complete phone setup](docs/PHONE.md).
@@ -210,6 +228,9 @@ request and does not enable JEV in the application. See [JEV setup and research
 limits](docs/JEV.md) before explicitly running a hosted experiment.
 
 ## Data, development, and limitations
+
+Our product guideline is to detect what is installed, show the shortest useful
+path, and keep advanced controls optional. See [Make the next step easy](docs/PRODUCT-PRINCIPLES.md).
 
 Data defaults to `~/.local/share/black-team-data`, or
 `$XDG_DATA_HOME/black-team-data` when that variable is an absolute path. Settings

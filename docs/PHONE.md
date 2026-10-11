@@ -9,16 +9,17 @@ on the phone and no native App Store or Google Play package in this alpha.
 
 1. Install Tailscale on your Linux computer and phone. Sign both into the same
    private network/account and keep them connected.
-2. Open **Phone Companion** in Black Team on the computer. Detect Tailscale,
-   review the computer hostname and allowed account, check **Allow Companion**,
-   and save.
-3. Choose **Enable private phone access**. Black Team configures its dedicated
-   HTTPS port 8449 to reach the local app on port 18199. It refuses to overwrite
-   another application's route or an enabled public Funnel route.
-4. Open the private pairing link on your phone. The link grants access to your
-   Black Team workspace: keep it private. Tailscale account identity is checked
-   as well. The app exchanges the fragment for a Secure/HttpOnly cookie and
-   removes the fragment from the address bar.
+2. Open **Phone Companion** in Black Team on the computer and choose **Enable
+   private phone access**. Black Team detects the computer hostname and account
+   and configures its dedicated HTTPS port 8449 to reach the local app on port
+   18199. It refuses to overwrite another application's route or a public Funnel
+   route. You do not need to type an address or save a separate enable checkbox.
+3. When **Private access ready** appears, scan the QR code with the phone camera.
+   The QR code is generated locally on your computer, not by an external QR service.
+   You can also choose **Copy pairing link** and open that link on your phone.
+4. Keep the code and link private: they grant access to your Black Team workspace.
+   Tailscale account identity is checked as well. The app exchanges the fragment
+   for a Secure/HttpOnly cookie and removes the fragment from the address bar.
 5. Use the browser, or add the interface to your Home Screen:
    - iPhone/Safari: Share → Add to Home Screen.
    - Android/Chrome: menu → Add to Home screen / Install, depending on browser UI.
@@ -59,8 +60,9 @@ that does not mean it can run inference while the host is offline.
 
 ## Network setup and revocation
 
-If Tailscale setup needs local operator permissions, Black Team shows this command
-for you to run, then verifies the route:
+If enabling access needs Tailscale permissions, open **Connection details and
+troubleshooting → Show connection command**. Run the shown command in a terminal,
+then choose **Enable private phone access** again so Black Team verifies the route:
 
 ```sh
 tailscale serve --bg --https=8449 http://127.0.0.1:18199
@@ -71,8 +73,10 @@ loopback. Remote conversation/file/approval APIs require both the saved Tailscal
 account identity and a paired browser cookie. Black Team also checks the configured
 Host and same-origin writes.
 
-**Disconnect phone access** removes only Black Team's verified route. Unchecking
-**Allow Companion** stops the app accepting phone requests even if a route remains.
+**Turn off phone access**, under **Connection details and troubleshooting**,
+stops the app accepting phone requests first and then removes only Black Team's
+verified route. Access stays disabled even if Tailscale is offline or route cleanup
+fails; inspect Tailscale later if a cleanup warning appears.
 Re-enabling the same account permits prior pairings until their 30-day cookies
 expire. Changing hostname/account invalidates old tokens. To revoke all pairings
 without changing the account, quit Black Team, remove only `phone.key` from its

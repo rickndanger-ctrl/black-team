@@ -19,7 +19,7 @@ function fixture(overrides={}) {
     if(args[0]==='serve'&&args.includes(TARGET)){route=privateRoute();return {stdout:''};}
     throw new Error('Unexpected mocked Tailscale command');
   };
-  return {manager:new PhoneManager({configStore:{read:()=>({phone:{...phone}})},run}),calls,phone};
+  return {manager:new PhoneManager({configStore:{read:()=>({phone:{...phone}}),save:value=>Object.assign(phone,value.phone)},run}),calls,phone};
 }
 test('phone input accepts private Tailscale DNS names only and rejects malformed login data',()=>{
   assert.deepEqual(validatePhone({enabled:true,hostname:'COMPUTER.testnet.ts.net.',owner}),{enabled:true,hostname,owner});
@@ -64,4 +64,32 @@ test('missing Tailscale is a disconnected state and route identity is exact',asy
   assert.equal((await manager.status()).connected,false);
   assert.deepEqual(routeState(privateRoute(),hostname),{owned:true,publicRoute:false,occupied:true});
   assert.equal(routeState(privateRoute(),'different.testnet.ts.net').owned,false);
+});
+
+test('guided phone setup detects, saves and connects without typed account details',async()=>{
+ const {manager,phone}=fixture({phone:{enabled:false,hostname:'',owner:''}});
+ assert.equal((await manager.setup()).connected,true);
+ assert.deepEqual(phone,{enabled:true,hostname,owner});
+});
+test('guided setup never switches an enabled account or overwrites a public route',async()=>{
+ const wrong=fixture({phone:{owner:'someone@example.test'}});
+ await assert.rejects(wrong.manager.setup(),/account or computer has changed/);
+ assert.equal(wrong.phone.owner,'someone@example.test');
+ assert.equal(wrong.calls.some(call=>call.args[0]==='serve'),false);
+ const route=privateRoute();route.AllowFunnel={[`${hostname}:${PHONE_PORT}`]:true};
+ const exposed=fixture({route,phone:{enabled:false,hostname:'',owner:''}});
+ await assert.rejects(exposed.manager.setup(),/will not overwrite/);
+ assert.equal(exposed.calls.some(call=>call.args[0]==='serve'&&call.args[1]!=='status'),false);
+ assert.equal((await exposed.manager.status({fresh:true})).connected,false);
+});
+test('guided setup leaves settings unchanged when Tailscale is unavailable',async()=>{
+ const offline=fixture({phone:{enabled:false,hostname:'',owner:''},failure:Object.assign(new Error('not installed'),{code:'ENOENT'})});
+ await assert.rejects(offline.manager.setup(),/Install Tailscale/);
+ assert.deepEqual(offline.phone,{enabled:false,hostname:'',owner:''});
+});
+
+test('turning phone access off blocks requests even if Tailscale cannot remove its route',async()=>{
+ const {manager,phone}=fixture({failure:Object.assign(new Error('offline'),{code:'ENOENT'})});
+ const result=await manager.disable();assert.equal(result.disabled,true);assert.equal(phone.enabled,false);assert.ok(result.warning);
+ assert.equal((await manager.status()).connected,false);
 });
