@@ -50,6 +50,24 @@ an **Undo** button. Undo puts that one file back as it was. It is refused when
 the file has changed again since, so a later edit is never lost, and it waits
 while a task is running.
 
+## The code map (graphify)
+
+When [graphify](https://pypi.org/project/graphifyy/) is installed (`uv tool
+install graphifyy` or `pip install graphifyy`), Code gets a `map` tool. It asks a
+graph of the workspace's code which files and functions relate to a question,
+and gets back names with paths and line numbers within the usual result budget.
+A local model that asks the map first reads far fewer files.
+
+The map is graphify's code-only extraction: no model is involved, so building it
+takes seconds and needs no key. It is built on first use and kept under
+`graphs/` in Black Team's data folder, never inside the project. It is rebuilt
+after Code edits files in that conversation, after ten minutes, or when the
+model asks with `refresh`. Documents and images in the workspace are not mapped;
+that would need a model run, which Black Team does not do on its own.
+
+Settings → Agents & apps shows whether graphify was found. Black Team never
+installs it for you.
+
 ## Boundaries
 
 - **Writes stay in the workspace.** `edit`, `write` and `publish` only accept
