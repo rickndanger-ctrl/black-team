@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.9**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.10**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -301,6 +301,22 @@ note. One console error appeared on every load: the page's own inline theme
 script is blocked by its Content Security Policy (`script-src 'self'`), so the
 saved theme is applied a moment later by the app instead of before first paint.
 It does not affect function; a fix is to allow that script's hash.
+
+## Live follow-up — October 11, 2026 (alpha.10)
+
+One change after alpha.9: the theme bootstrap that applies a saved theme
+before first paint moved from an inline script in `index.html` to
+`public/theme.js`, loaded with an ordinary script tag and served by the local
+backend from the same origin. The page's Content Security Policy is unchanged
+(`script-src 'self'`); it no longer blocks anything of the page's own, so the
+console error on every load is gone and a Light or Ghost theme is in place
+before the app mounts. A new test keeps the page free of inline scripts and
+inline event handlers and checks the bootstrap's saved, missing, unknown and
+blocked-storage cases. Checked live with the source app over the DevTools
+protocol: no console errors, `theme.js` served as JavaScript, and after saving
+Light the attribute already read `light` while the document was still loading.
+
+Automated suites at the build: 148 Node and 22 Python tests pass.
 
 ## Still outstanding
 
