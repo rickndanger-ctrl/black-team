@@ -10,6 +10,8 @@ respective components; these notices do not define Black Team's product license.
 | React | MIT | `resources/app/third-party/react-LICENSE.txt` |
 | React DOM | MIT | `resources/app/third-party/react-dom-LICENSE.txt` |
 | Scheduler | MIT | `resources/app/third-party/scheduler-LICENSE.txt` |
+| QRCode | MIT | `resources/app/third-party/qrcode-LICENSE.txt` |
+| dijkstrajs | MIT | `resources/app/third-party/dijkstrajs-LICENSE.txt` |
 | Adwaita Sans, derived from Inter | SIL OFL 1.1 | `resources/app/dist/fonts/Adwaita-OFL.txt` |
 | JetBrains Mono | SIL OFL 1.1 | `resources/app/dist/fonts/JetBrainsMono-OFL.txt` |
 

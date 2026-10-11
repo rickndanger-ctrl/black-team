@@ -7,12 +7,19 @@ Agent work plus launchers for other locally installed harnesses.
 ## Black Team Agent / Hermes
 
 Install [Hermes Agent](https://github.com/NousResearch/hermes-agent) and its needed
-dependencies separately. In Settings, enable Black Team Agent, set the absolute
-path to the Python interpreter used by that Hermes installation, and select its
-source directory (containing `hermes_bootstrap.py`). These are your own paths;
-no developer home directory or preinstalled model is assumed. Optional browser
-and computer-use executable fields let you point at the dependencies you have
-installed when Hermes cannot discover them from its isolated profile.
+dependencies separately. Open **Settings → Agents & apps**. Black Team scans for
+ready local installations and offers **Connect Hermes** when one is found. Select
+an installation first if several are found, then choose **Start agent conversation**.
+
+If Hermes is elsewhere, choose **Choose Hermes folder**. Black Team checks that
+folder for its Python environment. If nothing is installed, **Install Hermes Agent**
+opens the upstream guide; finish that setup, then choose **Find again**. Connecting
+Hermes does not install it or download an agent automatically.
+
+For unusual layouts, **Tools and advanced setup** exposes the source directory
+(containing `hermes_bootstrap.py`) and its Python interpreter, with Browse buttons.
+It also holds tool switches and optional browser/desktop executable paths. Save
+manual changes with **Save changes**. No developer-specific paths are required.
 
 The adapter was written against the APIs present in Hermes checkout
 `158fd638da1629c8e62caf9ade1515d162def8ab`. Other versions may change internal
@@ -20,8 +27,8 @@ interfaces. The host uses `HermesCLI`, session ownership, `StreamJsonEmitter`,
 plugin approval transport and terminal/computer approval callbacks. The portable
 host has mocked lifecycle tests; live compatibility still needs verification.
 
-Configure tools on the desktop, then choose **Black Team Agent · Hermes tools**
-in a new conversation on either desktop or phone. A model must support the
+Configure tools on the desktop, then use **Start agent work** on Workspace or
+choose **Agent · work with tools** in a new desktop or phone conversation. A model must support the
 provider's tool-call protocol. Small or non-tool models may chat successfully but
 fail agent tasks; tool capability is not inferred from the model name.
 
@@ -56,24 +63,27 @@ There is no unattended retry loop or automatic restart of interrupted work.
 
 ## External harness launchers
 
-Install your chosen harness and configure its local provider first. Then add a
-launcher in Settings. A launcher contains:
+Install your chosen harness and configure its local provider first. In **Settings
+→ Agents & apps**, scroll to **Other apps**:
 
-```json
-{
-  "id": "my-local-client",
-  "name": "My Local Client",
-  "executable": "/home/you/bin/my-local-client",
-  "args": ["--model", "{model}", "--base-url", "{endpoint}"],
-  "terminal": ["/usr/bin/xterm", "-e"]
-}
-```
+1. Choose a detected installed app from **Add an app**, or leave **Choose an app
+   file…** selected and browse for its executable when you select **Add app**.
+2. Adjust the app name if needed. Detected command-line apps use an available
+   terminal automatically. If none is available, install a terminal and **Find again**.
+3. Choose **Save changes**. Open the app from its new Workspace button.
 
-This is an example schema, not a universal CLI command. Replace arguments with
-those supported by the installed client or your wrapper. A GUI executable can
-use `"terminal": []`. CLI clients generally need a terminal prefix. All executable
-paths must be absolute and executable. Arguments are literal; no shell expansion
-or pasted shell command is evaluated.
+Most launchers need no configuration text. **Launch options** provides **Open in**
+for a terminal or the app's own window and **App argument** fields for any required
+options. Enter one literal argument per field, for example `--model` followed by
+`{model}` when that specific app supports such a flag. No JSON or shell-command
+syntax is required. A manually chosen command-line app may need you to select a
+terminal; a GUI app can use **Its own app window**.
+
+**Custom terminal command** is available for unusual launchers. Its first field
+is the absolute terminal executable; following fields are its launch arguments.
+All executable paths must be absolute and executable. Arguments are literal: no
+shell expansion or pasted shell command is evaluated. Use only options supported
+by the installed client or your wrapper.
 
 Supported substitutions are `{endpoint}`, `{model}` and `{workspace}`. Every
 launch uses the selected workspace as its working directory and receives:

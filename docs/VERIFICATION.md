@@ -6,7 +6,7 @@ Black Team project. It is separate from the older machine-specific installation.
 
 ## Automated checks
 
-The production React/Vite build passes. There are 76 passing JavaScript tests
+The production React/Vite build passes. There are 87 passing JavaScript tests
 and 20 passing Python tests in this review. The suites cover:
 
 - Per-user configuration, header/runtime validation, restricted file permissions,
@@ -52,6 +52,32 @@ Desktop phone setup enabled a separate private Tailscale route. A remote Mac
 client verified pairing, reconnect, and rejection of unpaired, wrong-key,
 cross-origin and direct-network access. Automated checks cover cookie persistence
 and revocation. This is remote-client evidence, not physical phone certification.
+
+## Guided setup review — October 10, 2026
+
+The revised desktop was opened with an isolated fresh application profile. Real
+Electron UI controls were exercised through Clawd Cursor's DOM interface:
+
+- Four model connection choices, local server discovery, model selection, and
+  Save and open chat.
+- Installed Hermes detection and one-button connection, followed by its Connected
+  state and direct Agent conversation action.
+- A detected Codex launcher was added and saved without typing paths or JSON.
+  This checks launcher setup, not Codex's local provider compatibility.
+- One-button phone setup detected the current Tailscale computer/account and
+  prepared the pairing QR/link on the separate portable-app route.
+
+New automated checks cover bounded installation discovery, incomplete installs,
+virtual-environment interpreter identity, phone setup and disabled-access cleanup
+failure, retry after an unsuccessful pairing exchange, native action locking and
+fixed installation-help destinations. The real UI retained an unsent Agent draft and its work mode after visiting
+Settings and returning to Conversations; uncertain sends retain their request identity and
+prevent switching to a different conversation until resolved.
+
+These checks do not certify visual layout or physical phone scanning. The earlier
+packaged archive predates this UI revision; it must be rebuilt and checked before
+shipping the new flows as a binary. The [product principles](PRODUCT-PRINCIPLES.md)
+record the simplicity guideline and the remaining acceptance scenarios.
 
 ## Still outstanding
 

@@ -5,6 +5,7 @@ const os=require('node:os');
 const {createConfigStore,validateModelFiles}=require('./lib/config.cjs');
 const {createIntegrations,launchHarness}=require('./lib/integrations.cjs');
 const {createAgent}=require('./lib/agent.cjs');
+const {discoverInstalled,inspectHermes}=require('./lib/discovery.cjs');
 const {discoverModels}=require('./lib/local-server.cjs');
 const {privateDirectory}=require('./lib/history.cjs');
 const {ModelRuntime}=require('./lib/runtime.cjs');
@@ -47,14 +48,21 @@ else {
         const saved=configStore.read().model;
         return discoverModels({endpoint:input.endpoint,apiKey:input.apiKey ?? (input.endpoint===saved.endpoint?saved.apiKey:'')});
       }
+      if(action==='installed-discover')return discoverInstalled({saved:integrations.read().hermes});
+      if(action==='hermes-inspect')return inspectHermes(input.source,input.python);
       if(action==='phone-detect')return phone.detect();
       if(action==='phone-command')return {command:COMMAND};
+      if(action==='setup-help'){
+        const links=new Map([['hermes','https://github.com/NousResearch/hermes-agent#installation'],['ollama','https://ollama.com/download/linux'],['lmstudio','https://lmstudio.ai/download'],['tailscale','https://tailscale.com/download']]);
+        if(!links.has(input.topic))throw new Error('Unsupported setup help.');
+        await shell.openExternal(links.get(input.topic));return {opened:true};
+      }
       if(action==='open-data'){const error=await shell.openPath(stateDir);if(error)throw new Error('Could not open the application data folder.');return {opened:true};}
-      if(!['integrations-save','harness-launch','setup-save','runtime-start','runtime-stop','phone-save','phone-connect','phone-disconnect'].includes(action))throw new Error('Unsupported desktop action.');
+      if(!['integrations-save','harness-launch','setup-save','runtime-start','runtime-stop','phone-save','phone-setup','phone-off','phone-connect','phone-disconnect'].includes(action))throw new Error('Unsupported desktop action.');
       if(changing)throw new Error('Another setup action is still running.');changing=true;
       try {
         if(action==='integrations-save'){if(backend.isBusy())throw new Error('Wait for the current task before changing integrations.');integrations.save(input);return {saved:true};}
-        if(action==='harness-launch'){if(backend.isBusy())throw new Error('Wait for the current task before launching another harness.');return launchHarness({id:input.id,store:integrations,config:configStore.read(),runtime});}
+        if(action==='harness-launch'){if(backend.isBusy())throw new Error('Wait for the current task before launching another harness.');return await launchHarness({id:input.id,store:integrations,config:configStore.read(),runtime});}
         if(action==='setup-save') {
           if(backend.isBusy()||!['off','error'].includes(runtime.status().state))throw new Error('Stop the model before changing its configuration.');
           // Only the setup form's keys are accepted. Phone pairing is separate.
@@ -77,14 +85,16 @@ else {
           }
           configStore.save({phone:next});return {saved:true};
         }
-        if(action==='phone-connect')return phone.connect();
-        if(action==='phone-disconnect')return phone.disconnect();
+        if(action==='phone-setup')return await phone.setup();
+        if(action==='phone-off')return await phone.disable();
+        if(action==='phone-connect')return await phone.connect();
+        if(action==='phone-disconnect')return await phone.disconnect();
       } finally {changing=false;}
     });
     ipcMain.handle('black-team:pick',async(event,kind)=>{
-      verify(event);if(!['model','runtime','workspace'].includes(kind))throw new Error('Unsupported chooser.');
-      const options=kind==='workspace'?{title:'Choose your workspace',properties:['openDirectory']}:
-        {title:kind==='model'?'Choose a local GGUF model':'Choose llama-server from its extracted release',properties:['openFile'],...(kind==='model'?{filters:[{name:'GGUF models',extensions:['gguf']}]}:{})};
+      verify(event);if(!['model','runtime','workspace','executable','hermes-source'].includes(kind))throw new Error('Unsupported chooser.');
+      const options=['workspace','hermes-source'].includes(kind)?{title:kind==='workspace'?'Choose your workspace':'Choose your Hermes installation',properties:['openDirectory']}:
+        {title:kind==='model'?'Choose a local GGUF model':kind==='runtime'?'Choose llama-server from its extracted release':'Choose the application executable',properties:['openFile'],...(kind==='model'?{filters:[{name:'GGUF models',extensions:['gguf']}]}:{})};
       const result=await dialog.showOpenDialog(window,options);return result.canceled?null:result.filePaths[0]||null;
     });
     window=new BrowserWindow({width:1320,height:900,minWidth:800,minHeight:620,title:'Black Team',backgroundColor:'#08090c',icon:path.join(__dirname,'dist/black-team-512.png'),show:false,

@@ -233,3 +233,27 @@
 .black-team-app pre {white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;}
 .black-team-app .chat-controls {flex-wrap:wrap;}
 @media(max-width:600px){.black-team-app .harness-editor{grid-template-columns:1fr;}}
+
+/* Common setup path: one clear choice, with detail available when needed. */
+.black-team-app .settings-sections{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
+.black-team-app .settings-sections button{background:#111820;border:1px solid #354151;border-radius:7px;padding:12px 18px;color:#bcc8d8;}
+.black-team-app .settings-sections .selected{background:#26384b;border-color:#9ebdde;color:#eef6ff;}
+.black-team-app .provider-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.black-team-app .provider-card{display:grid;gap:8px;text-align:left;padding:18px;background:#111820;border:1px solid #354151;border-radius:7px;white-space:normal;}
+.black-team-app .provider-card.selected{border-color:#a9c9f5;background:#203043;}
+.black-team-app .provider-card span,.black-team-app .connection-card p{font-size:12px;line-height:1.6;color:#a6b0bd;}
+.black-team-app .connection-card{display:flex;align-items:center;justify-content:space-between;gap:24px;border:1px solid #394657;border-radius:8px;padding:20px;margin:0 0 20px;}
+.black-team-app .connection-card h3{margin:0 0 8px;}
+.black-team-app .connection-card button{flex-shrink:0;}
+.black-team-app .argument-list{display:grid;gap:10px;margin:14px 0;}
+.black-team-app .argument-list input{min-width:0;flex:1;background:#0b0e13;border:1px solid #39424f;color:#e4eaf1;padding:11px;border-radius:5px;}
+.black-team-app .argument-list>button{justify-self:start;}
+.black-team-app .button-row>input{flex:1;min-width:0;}
+.black-team-app .phone-pairing{display:flex;gap:28px;align-items:center;margin:24px 0;}
+.black-team-app .pairing-qr{flex-shrink:0;min-width:224px;min-height:224px;}
+.black-team-app .pairing-qr img{display:block;border-radius:10px;max-width:100%;height:auto;}
+.black-team-app .phone-pairing p,.black-team-app .phone-home-screen p{line-height:1.8;font-size:13px;margin:12px 0;color:#aeb9c8;}
+.black-team-app .phone-home-screen{padding:16px 0;border-top:1px solid #303b49;}
+.black-team-app select:focus-visible,.black-team-app summary:focus-visible{outline:2px solid #9bbcff;outline-offset:3px;}
+@media(max-width:760px){.black-team-app .connection-card,.black-team-app .phone-pairing{flex-direction:column;align-items:stretch;}.black-team-app .pairing-qr{align-self:center;}.black-team-app .settings-sections button{flex:1;padding:12px 10px;}}
+@media(max-width:420px){.black-team-app .provider-grid{grid-template-columns:1fr;}}
