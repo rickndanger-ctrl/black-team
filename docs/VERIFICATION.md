@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.7**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.8**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -210,6 +210,38 @@ seconds with the reply labelled by model and shown formatted; the Memory graph
 showed three notes; Chat recalled the fact in 15 seconds; Settings listed the
 model as in use and the finder marked it as already saved; the Workspace cards
 showed the model server holding 26.3 GB. No page errors.
+
+## Live follow-up — October 11, 2026 (alpha.8)
+
+Four changes merged after alpha.7, each checked from source:
+
+- **Vault ready on first start.** A new vault gets its folders and a Core note
+  holding only guidance, which the model never sees; the Memory page explains
+  the flow until Core is written. Rendered against the real backend with a fresh
+  data folder, including writing Core through the page.
+- **Code map (graphify).** With graphify 0.9.85 installed, Code asked the map
+  where risky commands are approved and answered correctly (`lib/tools.cjs`, the
+  `run` tool, line 157) in 152 seconds on the llama.cpp server; the map was
+  written under the data folder, not the project.
+- **Thinking level.** The mode selector now carries the thinking controls. On
+  the llama.cpp server, Off answered 17×23 in 4 tokens with no reasoning;
+  Standard produced reasoning first (73 tokens in all).
+- **Found models offered on the home page.** With Ornith saved by hand, the
+  home page offered the two Qwen files on the laptop; Not now hid one and Add
+  listed the other without changing the model in use.
+
+Automated suites at the build: 140 Node and 22 Python tests pass.
+
+The alpha.8 package was then installed into an empty home folder with a
+stripped environment and driven through its real window on the same laptop:
+checksums verified; the first screen found the running llama.cpp server; Add
+took it to step two and the vault already held `Core.md`, `Notes/`, `Projects/`
+and `Archive/`; the Memory page showed the introduction; the Chat / Code page
+showed the Thinking selector at Standard. In a new project, Code (thinking on)
+wrote and ran a file and saved a fact in 84 seconds with the reply labelled and
+formatted; the Memory graph showed four notes; Chat recalled the fact in 31
+seconds; Settings showed the Code map card reporting graphify not installed,
+as a bare path has none. No page errors.
 
 ## Still outstanding
 
