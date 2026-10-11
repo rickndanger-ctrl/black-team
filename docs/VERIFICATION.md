@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.4**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.5**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -141,9 +141,14 @@ own setup was visible to the installer or the app.
 That run showed replies displaying Markdown as raw text (`**bold**`, code
 fences). Replies are now formatted, by a small renderer that builds interface
 elements from text and never inserts HTML; links are shown with their address
-and are not clickable. This fix is in the source after alpha.4 and is covered by
-parser tests and a rendered check at desktop and phone widths; it is not in the
-alpha.4 package.
+and are not clickable. This fix is in alpha.5 and is covered by parser tests and a
+rendered check at desktop and phone widths; the alpha.4 package does not have it.
+
+The alpha.5 package was built and put through the same clean-home test on the
+same day: checksums verified, the installer ran, first-run setup connected to
+the local server, Code wrote and ran a file and saved a fact in 50 seconds with
+its reply shown formatted, and Chat recalled the fact in 9 seconds. No page
+errors.
 
 Not covered by these runs: a separate Linux account or another machine, an
 owned GGUF runtime or Ollama/LM Studio with Code, trimming and approvals during
