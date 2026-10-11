@@ -79,3 +79,21 @@ test('the model in use cannot be removed; others can', t => {
   assert.deepEqual(saved.list().map(model => model.name), ['ornith']);
   assert.throws(() => forgetModel({ key: qwen, saved, configStore }), /not in your list/);
 });
+
+test('a found model passed over stays out of the offer until it is added', t => {
+  const dir = fresh(t);
+  const saved = createSavedModels(dir);
+  assert.deepEqual(saved.ignored(), []);
+  const key = 'abcdef0123456789';
+  assert.deepEqual(saved.ignore(key), { ignored: true });
+  saved.ignore(key);
+  assert.deepEqual(saved.ignored(), [key]);
+  assert.throws(() => saved.ignore('nope'), /found model/);
+  // Saving and removing models keeps the passed-over keys; adding the passed-over model clears its key.
+  const ornith = saved.remember(server('ornith'));
+  saved.forget(ornith);
+  assert.deepEqual(saved.ignored(), [key]);
+  saved.ignore(ornith);
+  saved.remember(server('ornith'));
+  assert.deepEqual(saved.ignored(), [key]);
+});

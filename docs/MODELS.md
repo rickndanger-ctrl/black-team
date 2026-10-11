@@ -88,7 +88,10 @@ context too: use a model and context size appropriate for agent work.
 On a new install, Black Team's first screen lists the models it finds on your
 computer, already ticked. Choose **Add** and the first one is ready to use; the
 second step lists the agents found on your computer to connect. **Settings →
-Models → Find my models** runs the same search later.
+Models → Find my models** runs the same search later. The
+Workspace page also looks whenever it opens and offers anything new under **Also
+on this computer**, with **Add** or **Not now**; a model passed over there stays
+out of the offer but can still be added in Settings.
 
 What it looks at:
 

@@ -14,7 +14,7 @@ import {Changes, SpeedMeter, WorkLog} from './Panels.jsx';
 import Markdown from './Markdown.jsx';
 import {ModelList, ModelSwitch} from './Models.jsx';
 import Harnesses from './Harnesses.jsx';
-import FindModels from './FindModels.jsx';
+import FindModels, {FoundPrompt} from './FindModels.jsx';
 
 const desktop = Boolean(window.blackTeam?.request);
 const byteSize = value => Number.isFinite(value) ? `${(value / 1024 ** 3).toFixed(1)} GB` : 'Unavailable';
@@ -69,6 +69,7 @@ function Workspace({status, busy, onAction, onChat, onSettings, onPhone, onSave}
     </section>}
     {hardware.warnings?.length > 0 && <section className="inline-note"><strong>Hardware notes</strong><ul>{hardware.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></section>}
     {status.runtime?.error && <div className="notice error" role="alert"><div><strong>{status.config?.model?.source === 'server' ? 'The local server could not connect.' : 'The model could not start.'}</strong><p>{typeof status.runtime.error === 'string' ? status.runtime.error : 'Check that the model and runtime match this computer, then review your memory and performance settings.'}</p></div></div>}
+    {status.setupComplete && welcome === null && <FoundPrompt busy={busy} onAction={onAction}/>}
     {welcome !== 'agents' && <Harnesses status={status} busy={busy} onAction={onAction} onChat={onChat} onSettings={onSettings}/>}
     <div className="principle-grid"><section><span className="step-number">01 / YOUR COMPUTER</span><h3>Local by default</h3><p>Conversation history lives on your machine. No Black Team account needed. Use a local model in your server to keep inference here.</p></section><section><span className="step-number">02 / YOUR CHOICE</span><h3>Bring your model</h3><p>Load a GGUF model or connect your existing local model server.</p></section><section><span className="step-number">03 / OPTIONAL COMPANION</span><h3>Continue from your phone</h3><p>Connect privately and keep working with the same model.</p><button className="text-button" onClick={onPhone}>Connect your phone →</button></section></div>
   </>;

@@ -58,7 +58,7 @@ else {
         const saved=configStore.read().model;
         return discoverModels({endpoint:input.endpoint,apiKey:input.apiKey ?? (input.endpoint===saved.endpoint?saved.apiKey:'')});
       }
-      if(action==='models-find'){const found=await findModels({runtime:discoverInstalled().runtime});const have=new Set(savedModels.list().map(model=>model.key));const mark=item=>({...item,saved:have.has(keyOf(item))});return {...found,servers:found.servers.map(mark),files:found.files.map(mark)};}
+      if(action==='models-find'){const found=await findModels({runtime:discoverInstalled().runtime});const have=new Set(savedModels.list().map(model=>model.key)),passed=new Set(savedModels.ignored());const mark=item=>({...item,key:keyOf(item),saved:have.has(keyOf(item)),ignored:passed.has(keyOf(item))});return {...found,servers:found.servers.map(mark),files:found.files.map(mark)};}
       if(action==='installed-discover')return discoverInstalled({saved:integrations.read().hermes});
       if(action==='hermes-inspect')return inspectHermes(input.source,input.python);
       if(action==='phone-detect')return phone.detect();
@@ -69,7 +69,7 @@ else {
         await shell.openExternal(links.get(input.topic));return {opened:true};
       }
       if(action==='open-data'){const error=await shell.openPath(stateDir);if(error)throw new Error('Could not open the application data folder.');return {opened:true};}
-      if(!['integrations-save','harness-connect','harness-launch','setup-save','models-add','model-switch','model-forget','runtime-start','runtime-stop','phone-save','phone-setup','phone-off','phone-connect','phone-disconnect'].includes(action))throw new Error('Unsupported desktop action.');
+      if(!['integrations-save','harness-connect','harness-launch','setup-save','models-add','models-ignore','model-switch','model-forget','runtime-start','runtime-stop','phone-save','phone-setup','phone-off','phone-connect','phone-disconnect'].includes(action))throw new Error('Unsupported desktop action.');
       if(changing)throw new Error('Another setup action is still running.');changing=true;
       try {
         if(action==='integrations-save'){if(backend.isBusy())throw new Error('Wait for the current task before changing integrations.');integrations.save(input);return {saved:true};}
@@ -88,6 +88,7 @@ else {
           return {saved:true,...(warning?{warning}:{})};
         }
         if(action==='models-add'){if(Object.keys(input).some(k=>k!=='items'))throw new Error('Unsupported setup setting.');return addModels({items:input.items,saved:savedModels,configStore});}
+        if(action==='models-ignore')return savedModels.ignore(input.key);
         if(action==='model-switch')return await switchModel({key:input.key,saved:savedModels,configStore,runtime,busy:()=>backend.isBusy()});
         if(action==='model-forget')return forgetModel({key:input.key,saved:savedModels,configStore});
         if(action==='runtime-start'){runtime.start().catch(()=>{});return runtime.status();}
