@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.8**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.9**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -243,12 +243,71 @@ formatted; the Memory graph showed four notes; Chat recalled the fact in 31
 seconds; Settings showed the Code map card reporting graphify not installed,
 as a bare path has none. No page errors.
 
+## Live follow-up — October 11, 2026 (alpha.9)
+
+One change merged after alpha.8: the launch plan for model files. The
+llama-server build's help is read once and each setting is added only when that
+build understands it: physical-core threads, smaller CPU batches, a 1 GiB prompt
+cache, an eight-bit KV cache with flash attention, the vision projector and a
+draft model found beside the file. Files are named from their own GGUF metadata
+and offered a context that fits beside their weights. Checked with unit tests
+(launch plan, GGUF reader, finder, desktop wiring) and a dry plan for the
+laptop's Qwen 3.8 27B file with the mainline llama.cpp build, which matched the
+user's hand-tuned launch in substance.
+
+The plan was then run for real on the laptop, with the usual model server
+stopped so the file fit in memory. Through the same `ModelRuntime` code path
+the app uses, the finder's description of the Qwen 3.8 27B Q4_K_XL file
+(32,768 context, 6 threads, projector and MTP draft found beside it) started
+the mainline llama.cpp build 11390 with all four planned features; the server
+was ready in 17 seconds the first time and 5 seconds warm, reported the same
+model file and 32,768 context, enforced the private key, and the process used
+23.8 GiB. Two chat completions answered correctly and the runtime stopped
+cleanly. On a 1,063-token prompt it processed 5.1 tokens/s and generated 1.36
+tokens/s; without the draft file, 5.1 and 1.27. The user's own hand-tuned
+launch of the same file on a different (forked) llama.cpp build measured 6.1
+and 2.34 on the same prompt, so the plan runs the model well for a mainline
+build but a specialised build is still faster at generation. That forked build
+also rejects `--no-webui`, which the plan always passes, so it cannot be used
+as Black Team's runtime; the finder only proposes a running server's executable
+when no `llama-server` is on PATH.
+
+That was fixed before the package was rebuilt: `--no-webui`, `--alias` and
+`--n-gpu-layers` are now added only when the build's help lists them (with
+`--webui none` for builds that take a value, and `-ngl` for that spelling), a
+help text without `--port` keeps the basics because the build could not be
+asked, and a build whose help shows `--spec-type mtp:...` gets the model's own
+MTP heads enabled instead of a draft file it cannot load. Run live through the
+same `ModelRuntime` path, the forked build then started the Qwen file with
+"6 threads, q8 cache, vision, MTP", was ready in 2.6 seconds warm, enforced the
+private key, and answered the same prompts at 6.5 tokens/s prompt and 2.0
+tokens/s generation, matching the user's hand-tuned launch. The mainline build's
+plan is unchanged.
+
+Automated suites at the build: 145 Node and 22 Python tests pass.
+
+The alpha.9 package was rebuilt with that fix and installed into an empty
+home folder with a stripped environment, then driven through its real window
+on the same laptop: checksums verified; the payload holds the corrected launch
+plan; the first screen found the running llama.cpp server, already ticked, and
+one click added it; step two named it ready; in a new project, Code (thinking
+at Standard) created `greeting.txt` with the exact requested line and saved the
+requested fact to the vault in 80 seconds without asking for an approval; a
+fresh Chat recalled the fact in 7 seconds, citing the memory note it used; the
+Memory page listed the project's conversations; Settings showed the Code map
+card and the saved model; the Workspace cards showed the model server's 24.5
+GB. The vault held `Core.md`, the project's Overview and Journal and the saved
+note. One console error appeared on every load: the page's own inline theme
+script is blocked by its Content Security Policy (`script-src 'self'`), so the
+saved theme is applied a moment later by the app instead of before first paint.
+It does not affect function; a fix is to allow that script's hash.
+
 ## Still outstanding
 
 - Installation under a separate account, on another machine and on other Linux
   distributions; the `--enable-sandbox` step on a real Ubuntu 24.04 machine; a
   simpler download/install experience.
-- Live Ollama/LM Studio and owned GGUF startup; other models and runtime combinations.
+- Live Ollama/LM Studio startup; owned GGUF startup on a GPU, with other models and other llama.cpp builds.
 - Physical iPhone/Android Home Screen cookies, background/reconnect behavior,
   phone-triggered agent approvals and file downloads in this portable build.
 - Real UI approval/denial of a model-requested risky tool, browser/desktop opt-ins,

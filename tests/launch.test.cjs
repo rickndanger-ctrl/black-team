@@ -38,6 +38,27 @@ test('a GPU launch keeps the default batches, and a plain draft or an MTP file p
   assert.equal(supportOf(MAINLINE).mtp, true); assert.equal(supportOf('').cacheTypes, false);
 });
 
+// A forked build seen on the author's laptop: no web UI switch (only --webui NAME), no alias,
+// no GPU flag, and speculative decoding as --spec-type mtp:... read from heads inside the model.
+const FORK = `--host HOST\n--port PORT\n-t, --threads N\n-tb, --threads-batch N\n-b, --batch-size N\n-ub, --ubatch-size N\n-np, --parallel N\n--cache-ram N\n-fa, --flash-attn [on|off|auto]\n-ctk, --cache-type-k TYPE\n-ctv, --cache-type-v TYPE\n--mmproj FILE\n--no-mmproj-offload\n--jinja\n--api-key-file FNAME\n--webui NAME controls which webui to server: none, auto\n-md, --model-draft FNAME\n--spec-type SPEC[:k=v,...] canonical speculative stage entry.\n  examples: --spec-type mtp:n_max=1,p_min=0.0\n`;
+
+test('a fork without the basic flags is given only what it knows, and its own MTP heads', () => {
+  const plan = planLaunch({ model, port: 7, keyFile: '/k', cores: 6, help: FORK });
+  const after = flag => plan.args[plan.args.indexOf(flag) + 1];
+  for (const flag of ['--no-webui', '--alias', '--n-gpu-layers', '--spec-draft-model']) assert.equal(plan.args.includes(flag), false, flag);
+  assert.equal(after('--webui'), 'none'); assert.equal(after('--spec-type'), 'mtp:n_max=2,p_min=0.0');
+  assert.equal(after('--api-key-file'), '/k'); assert.equal(after('--cache-type-k'), 'q8_0'); assert.equal(after('--mmproj'), '/m/mmproj-F16.gguf');
+  assert.deepEqual(plan.features, ['6 threads', 'q8 cache', 'vision', 'MTP']);
+  // A plain draft file means nothing to a build that cannot load one; a GPU count goes through -ngl when that is the spelling.
+  const plain = planLaunch({ model: { ...model, draft: '/m/small-draft.gguf' }, port: 7, keyFile: '/k', cores: 6, help: FORK });
+  assert.equal(plain.args.includes('--spec-type'), false);
+  const ngl = planLaunch({ model: { ...model, gpuLayers: 20 }, port: 7, keyFile: '/k', cores: 6, help: `${FORK}-ngl, --gpu-layers N\n` });
+  assert.equal(ngl.args[ngl.args.indexOf('-ngl') + 1], '20'); assert.equal(ngl.args.includes('--n-gpu-layers'), false);
+  // A build with no web UI at all gets no web UI flag.
+  const bare = planLaunch({ model, port: 7, keyFile: '/k', cores: 6, help: FORK.replace(/--webui NAME.*\n/, '') });
+  assert.equal(bare.args.includes('--webui'), false); assert.equal(bare.args.includes('--no-webui'), false);
+});
+
 test('the suggested context follows the training length and the memory left beside the weights', () => {
   assert.equal(suggestContext({ trainingContext: 262144, bytes: 17 * GiB, totalMemory: 46 * GiB }), 32768);
   assert.equal(suggestContext({ trainingContext: 262144, bytes: 17 * GiB, totalMemory: 28 * GiB }), 16384);
