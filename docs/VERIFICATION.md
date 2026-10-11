@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.8**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.9**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -242,6 +242,33 @@ wrote and ran a file and saved a fact in 84 seconds with the reply labelled and
 formatted; the Memory graph showed four notes; Chat recalled the fact in 31
 seconds; Settings showed the Code map card reporting graphify not installed,
 as a bare path has none. No page errors.
+
+## Live follow-up — October 11, 2026 (alpha.9)
+
+One change merged after alpha.8: the launch plan for model files. The
+llama-server build's help is read once and each setting is added only when that
+build understands it: physical-core threads, smaller CPU batches, a 1 GiB prompt
+cache, an eight-bit KV cache with flash attention, the vision projector and a
+draft model found beside the file. Files are named from their own GGUF metadata
+and offered a context that fits beside their weights. Checked with unit tests
+(launch plan, GGUF reader, finder, desktop wiring) and a dry plan for the
+laptop's Qwen 3.8 27B file with the mainline llama.cpp build, which matched the
+user's hand-tuned launch in substance. A live start with this plan was not run:
+on the laptop the file does not fit beside the model server kept running.
+
+Automated suites at the build: 145 Node and 22 Python tests pass.
+
+The alpha.9 package was then installed into an empty home folder with a
+stripped environment and driven through its real window on the same laptop:
+checksums verified; the payload holds the launch plan and GGUF reader; the
+first screen found the running llama.cpp server; the vault started with its
+files and the Memory introduction; the Thinking selector showed Standard; in a
+new project, Code (thinking on) wrote and ran a file and saved a fact in 128
+seconds, labelled and formatted; the Memory graph showed four notes; Chat
+recalled the fact in 39 seconds; Settings showed the Code map card and the
+saved list; the Workspace cards showed the model server's memory. No page
+errors. The launch plan itself could not run there: a bare path has no model
+files.
 
 ## Still outstanding
 

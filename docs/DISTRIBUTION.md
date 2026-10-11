@@ -2,7 +2,7 @@
 
 This is an unsigned Linux x86-64 alpha. It includes an upstream Electron runtime
 and the Black Team application. The `BUILD.json` inside the installed release
-records both versions. The alpha.8 package was tested with Electron 44.7.0.
+records both versions. The alpha.9 package was tested with Electron 44.7.0.
 Older archives may contain an older runtime and older application features;
 check their `BUILD.json` rather than assuming all alpha archives are equivalent.
 This preview is not a claim of support across all Linux distributions.
@@ -14,12 +14,12 @@ repository has no release assets yet, use the README’s **Run from source** ste
 The instructions below apply only to a packaged `linux-x64.tar.gz` release.
 
 Download both the archive and its matching `.sha256` file into the same folder,
-then verify and extract them. For alpha.8:
+then verify and extract them. For alpha.9:
 
 ```sh
-sha256sum -c black-team-0.1.0-alpha.8-linux-x64.tar.gz.sha256
-tar -xzf black-team-0.1.0-alpha.8-linux-x64.tar.gz
-cd black-team-0.1.0-alpha.8-linux-x64
+sha256sum -c black-team-0.1.0-alpha.9-linux-x64.tar.gz.sha256
+tar -xzf black-team-0.1.0-alpha.9-linux-x64.tar.gz
+cd black-team-0.1.0-alpha.9-linux-x64
 ```
 
 Extract the complete `black-team-<version>-linux-x64.tar.gz` archive. From the
