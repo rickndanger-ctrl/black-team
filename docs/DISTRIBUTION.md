@@ -73,6 +73,37 @@ standard shell/core utilities plus `tar`, `gzip` and `sha256sum`. A successful
 installation is not a guarantee that a particular distribution can launch it.
 Do not work around launch errors by adding `--no-sandbox`.
 
+## Sandbox on Ubuntu 24.04 and later
+
+Black Team's window runs inside Chromium's sandbox, which needs unprivileged
+user namespaces. Ubuntu 24.04 and later deny those to any program that has no
+AppArmor profile, so on those systems the window cannot start after a plain
+install. The installer and the launcher detect this and say so. To allow the
+sandbox for this Black Team install only:
+
+```sh
+~/.local/bin/black-team-desktop --enable-sandbox
+```
+
+This shows the profile, asks for your password through `sudo`, installs it as
+`/etc/apparmor.d/black-team-<id>` and loads it. It is the same kind of profile
+Ubuntu ships for other Chromium-based applications: it confines nothing and
+grants only the right to create the sandbox. It names this install's folder, so
+it carries over to updates under the same prefix, and each prefix needs its own.
+It is the only step that uses root; nothing else in Black Team does.
+
+To see the profile without installing it, run `./install.sh --sandbox-profile`
+(add `--prefix` if you used one). The profile's first lines give the two
+commands that remove it. An install folder with spaces or unusual characters
+cannot be named safely in a profile and is refused; use a simpler prefix.
+
+If user namespaces are switched off entirely (`kernel.unprivileged_userns_clone`
+or `user.max_user_namespaces` is 0), a profile does not help; an administrator
+has to turn them on.
+
+This was checked with simulated kernel settings, and the profile compiles with
+Ubuntu 24.04's AppArmor parser. It has not been run on an Ubuntu machine.
+
 Models and the inference engine are supplied separately. Either connect an
 already-running local OpenAI-compatible server, or select a GGUF model and an
 intact compatible llama-server runtime directory, including its libraries.

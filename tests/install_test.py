@@ -52,7 +52,11 @@ class InstallerTests(unittest.TestCase):
         self.prefix = self.root / "owner's prefix with spaces"
         self.home = self.root / 'home'
         self.home.mkdir()
-        self.environment = {**os.environ, 'HOME': str(self.home)}
+        self.sysctl = self.root / 'sysctl'
+        self.profiles = self.root / 'apparmor.d'
+        self.profiles.mkdir()
+        self.environment = {**os.environ, 'HOME': str(self.home), 'BLACK_TEAM_SYSCTL_ROOT': str(self.sysctl),
+                            'BLACK_TEAM_APPARMOR_DIR': str(self.profiles)}
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -123,6 +127,59 @@ class InstallerTests(unittest.TestCase):
         launcher.unlink()
         self.install(first)
         self.assertIn('already installed', self.install(first, ok=False).stderr)
+
+    def kernel(self, **settings):
+        for name, value in settings.items():
+            target = self.sysctl / {'restrict': 'kernel/apparmor_restrict_unprivileged_userns',
+                                    'clone': 'kernel/unprivileged_userns_clone', 'limit': 'user/max_user_namespaces'}[name]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(f'{value}\n')
+
+    def launch(self, *arguments):
+        return subprocess.run([str(self.prefix / 'bin/black-team-desktop'), *arguments],
+                              env=self.environment, capture_output=True, text=True)
+
+    def test_sandbox_restriction_is_detected_and_explained(self):
+        self.prefix = self.root / 'plain-prefix'
+        first = self.distribution('0.1.0-alpha.1')
+        self.assertNotIn('cannot open its window', self.install(first).stdout)
+        self.assertEqual(self.install(first, '--sandbox-status').stdout, 'ok\n')
+        self.assertEqual(self.launch().stdout, 'fixture runtime\n')
+        self.kernel(restrict=1)
+        blocked = self.install(first, '--sandbox-status', ok=False)
+        self.assertEqual(blocked.stdout, 'apparmor\n')
+        # A window that starts anyway is left alone; one that fails at once gets the explanation.
+        self.assertEqual(self.launch().stderr, '')
+        runtime = self.prefix / 'share/black-team/current/electron'
+        runtime.write_text('#!/bin/sh\nexit 133\n')
+        failed = self.launch()
+        self.assertEqual(failed.returncode, 133)
+        self.assertIn('--enable-sandbox', failed.stderr)
+        self.assertIn('Do not use --no-sandbox', failed.stderr)
+        profile = self.install(first, '--sandbox-profile').stdout
+        root = self.prefix / 'share/black-team'
+        name = next(line for line in profile.splitlines() if line.startswith('profile ')).split()[1]
+        self.assertRegex(name, r'^black-team-[a-f0-9]{12}$')
+        self.assertIn(f'profile {name} {root}/releases/*/electron flags=(unconfined) {{\n  userns,\n', profile)
+        # Once the profile exists the launcher goes straight to the window again.
+        (self.profiles / name).write_text(profile)
+        self.assertEqual(self.install(first, '--sandbox-status').stdout, 'ok\n')
+        self.assertIn('already works', self.install(first, '--enable-sandbox').stdout)
+        self.assertEqual(self.launch().stderr, '')
+
+    def test_sandbox_notice_after_install_and_for_disabled_namespaces(self):
+        self.kernel(restrict=1)
+        first = self.distribution('0.1.0-alpha.1')
+        installed = self.install(first)
+        self.assertIn('--enable-sandbox', installed.stdout)
+        # A folder name AppArmor cannot name safely is refused rather than written into a profile.
+        refused = self.install(first, '--sandbox-profile', ok=False)
+        self.assertEqual(refused.stdout, '')
+        self.assertIn('simpler --prefix', refused.stderr)
+        self.kernel(restrict=0, limit=0)
+        self.assertEqual(self.install(first, '--sandbox-status', ok=False).stdout, 'disabled\n')
+        unavailable = self.install(first, '--enable-sandbox', ok=False)
+        self.assertIn('turned off', unavailable.stderr)
 
     def test_payload_allowlist_and_runtime_manifest(self):
         (self.project / 'personal-config.json').write_text('not for distribution')
