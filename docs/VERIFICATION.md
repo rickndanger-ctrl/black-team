@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.9**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.10**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -301,6 +301,39 @@ note. One console error appeared on every load: the page's own inline theme
 script is blocked by its Content Security Policy (`script-src 'self'`), so the
 saved theme is applied a moment later by the app instead of before first paint.
 It does not affect function; a fix is to allow that script's hash.
+
+## Live follow-up — October 11, 2026 (alpha.10)
+
+One change after alpha.9: the theme bootstrap that applies a saved theme
+before first paint moved from an inline script in `index.html` to
+`public/theme.js`, loaded with an ordinary script tag and served by the local
+backend from the same origin. The page's Content Security Policy is unchanged
+(`script-src 'self'`); it no longer blocks anything of the page's own, so the
+console error on every load is gone and a Light or Ghost theme is in place
+before the app mounts. A new test keeps the page free of inline scripts and
+inline event handlers and checks the bootstrap's saved, missing, unknown and
+blocked-storage cases. Checked live with the source app over the DevTools
+protocol: no console errors, `theme.js` served as JavaScript, and after saving
+Light the attribute already read `light` while the document was still loading.
+
+Automated suites at the build: 148 Node and 22 Python tests pass.
+
+The alpha.10 package was then checked as an update: in an empty home folder
+with a stripped environment, the alpha.9 package was installed first and the
+alpha.10 installer run over it under the same prefix. It verified the payload,
+staged the release, switched `current` to alpha.10 and left `previous` on
+alpha.9. The installed app was driven through its real window on the same
+laptop: no console errors on load (the page has no inline script and loads
+`theme.js`); the first screen found the running llama.cpp server, already
+ticked, and one click added it; in a new project, Code (thinking at Standard)
+created `greeting.txt` with the exact requested line and saved the requested
+fact in 61 seconds without an approval prompt; a fresh Chat recalled the fact
+in 7 seconds, citing the memory note, and the stored reply read exactly "The
+project codename is Heron."; the Memory page listed the project's two
+conversations; Settings showed the Code map card; the Workspace cards showed
+the model server's memory; choosing Light and reloading showed the attribute
+already set to `light` while the document was still loading. The vault held
+`Core.md` and the project's Overview, Journal and saved note.
 
 ## Still outstanding
 
