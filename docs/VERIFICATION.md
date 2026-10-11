@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.6**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.7**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -170,6 +170,46 @@ on this unrestricted laptop, Code wrote and ran a file and saved a fact in 67
 seconds, and Chat recalled it in 12 seconds, with no page errors. With the
 Ubuntu restriction simulated against the installed package, it reported the
 blocked sandbox and printed the `--enable-sandbox` instruction.
+
+## Live follow-up — October 11, 2026 (alpha.7)
+
+Four changes merged after alpha.6, each checked from source before the package
+was built:
+
+- **Saved models and switching.** Each model set up joins a list; with two or
+  more, the chat header is a menu and Settings lists them with Use and Remove.
+  Driven in headless Chromium against the real backend and config store with a
+  scripted model server: switch from the header, replies labelled by model,
+  switch back, remove.
+- **Agents found on the computer.** The Workspace page lists the agents on the
+  command path with one-step Connect and Open. For Claude Code 2.1, Codex 0.162,
+  Pi, OpenCode 1.19 and DeepSeek Harness 0.2, the settings Black Team builds were
+  run through each real program against a logging stand-in server, and each sent
+  its request to the given local address with the given model and key. A full
+  session through a real model was not run for each; Aider was not installed.
+- **Model finder and first-run flow.** On this laptop it found the running
+  llama.cpp server on a non-standard port with its 65,536 context and two GGUF
+  files, skipping three helper files. The two-step first run was driven against
+  the real backend and the real finder. Ollama, LM Studio, Jan and KoboldCpp were
+  not running; their handling is covered by scripted tests. Starting a found
+  GGUF file through Black Team's own runtime was not run.
+- **Computer readout.** Physical cores and threads, clock, temperature, memory
+  the kernel can hand out, swap, the model server's own memory and usable disk
+  space, checked against `lscpu`, `/proc/meminfo`, `df` and the model process's
+  status on this laptop.
+
+Automated suites at the build: 136 Node and 22 Python tests pass.
+
+The alpha.7 package was then installed into an empty home folder with a
+stripped environment and driven through its real window on the same laptop:
+checksums verified; the first screen listed the running llama.cpp server with
+its 65,536 context, already ticked; Add took it to step two, which listed Black
+Team Code (no other agents are on a bare path); Start chatting opened the
+conversation. In a new project, Code wrote and ran a file and saved a fact in 62
+seconds with the reply labelled by model and shown formatted; the Memory graph
+showed three notes; Chat recalled the fact in 15 seconds; Settings listed the
+model as in use and the finder marked it as already saved; the Workspace cards
+showed the model server holding 26.3 GB. No page errors.
 
 ## Still outstanding
 
