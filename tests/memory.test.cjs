@@ -116,3 +116,21 @@ test('archiving notes that share a title in the same moment loses none of them',
   memory.sweep();
   assert.equal(memory.notes().filter(note=>note.kind==='archive'&&note.title.startsWith('Overview')).length,3);
 });
+
+test('a new vault is ready on first start: folders and a Core note, with its guidance kept from the model', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'black-team-vault-'));
+  const memory = createMemory({vault: dir});
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['Archive', 'Core.md', 'Notes', 'Projects']);
+  assert.equal(fs.statSync(path.join(dir, 'Core.md')).mode & 0o777, 0o600);
+  assert.equal(memory.core(), '', 'the template is guidance only until the user writes something');
+  assert.deepEqual(memory.notes().map(n => [n.id, n.kind]), [['Core', 'core']]);
+  assert.equal(memory.graph().nodes.length, 1);
+  fs.writeFileSync(path.join(dir, 'Core.md'), '# Core\n\nShort answers. <!-- a note to self -->\nWorking on tides.\n');
+  assert.equal(memory.core(), 'Short answers. \nWorking on tides.');
+  // Opening the vault again changes nothing, and a vault that already has notes is left alone.
+  createMemory({vault: dir});
+  assert.equal(fs.readFileSync(path.join(dir, 'Core.md'), 'utf8').startsWith('# Core\n\nShort answers.'), true);
+  const {dir: existing} = vault();
+  assert.equal(fs.existsSync(path.join(existing, 'Core.md')), false);
+  assert.equal(fs.existsSync(path.join(existing, 'Notes')), false);
+});

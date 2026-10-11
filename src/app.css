@@ -458,6 +458,10 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .memory { display: grid; gap: 14px; }
 .memory-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .memory-search { flex: 1; min-width: 160px; height: var(--control); padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--field); font-size: 12.5px; }
+.memory-intro { margin: 0 0 16px; padding: 18px 22px; border: 1px solid var(--line-2); border-radius: var(--radius-lg); background: var(--surface-2); }
+.memory-intro p { margin: 0 0 10px; font-size: 12.5px; line-height: 1.7; color: var(--ink-2); }
+.memory-intro em { font-style: normal; color: var(--ink); }
+.memory-intro .button-row { margin: 4px 0 0; }
 .memory-usage { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 16px; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .memory-usage span { display: block; font: 9px var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
 .memory-usage strong { font-size: 12.5px; font-weight: 600; }
