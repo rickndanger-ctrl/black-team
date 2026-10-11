@@ -113,6 +113,7 @@ def build(project, runtime_zip, out):
         app_package['main'] = 'main.cjs'
         (app / 'package.json').write_text(json.dumps(app_package, indent=2) + '\n')
         copy_tree(project / 'THIRD-PARTY-NOTICES.md', app / 'THIRD-PARTY-NOTICES.md')
+        copy_tree(project / 'LICENSE', app / 'LICENSE')
         for dependency in ('react', 'react-dom', 'scheduler', 'qrcode', 'dijkstrajs'):
             license_path = project / 'node_modules' / dependency / ('LICENSE.md' if dependency == 'dijkstrajs' else 'LICENSE')
             if not license_path.is_file():
@@ -138,7 +139,7 @@ def build(project, runtime_zip, out):
         copy_tree(project / 'scripts/install.sh', distribution / 'install.sh')
         (distribution / 'install.sh').chmod(0o755)
         copy_tree(project / 'docs/DISTRIBUTION.md', distribution / 'DISTRIBUTION.md')
-        for name in ('README.md', 'docs/DISTRIBUTION.md', 'docs/PHONE.md', 'docs/PRIVACY.md',
+        for name in ('README.md', 'LICENSE', 'docs/DISTRIBUTION.md', 'docs/PHONE.md', 'docs/PRIVACY.md',
                      'docs/VERIFICATION.md', 'docs/CONTEXT-RESEARCH.md', 'docs/HARNESSES.md', 'docs/MODELS.md', 'docs/JEV.md',
                      'docs/CODE.md', 'docs/MEMORY.md'):
             if (project / name).is_file():

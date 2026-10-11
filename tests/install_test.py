@@ -27,7 +27,7 @@ class InstallerTests(unittest.TestCase):
         self.project.mkdir()
         for folder in ('scripts', 'docs', 'lib', 'dist', 'node_modules'):
             (self.project / folder).mkdir()
-        for source in ('scripts/install.sh', 'docs/DISTRIBUTION.md', 'THIRD-PARTY-NOTICES.md'):
+        for source in ('scripts/install.sh', 'docs/DISTRIBUTION.md', 'THIRD-PARTY-NOTICES.md', 'LICENSE'):
             shutil.copyfile(PROJECT / source, self.project / source)
         (self.project / 'main.cjs').write_text('// Fixture only.\n')
         (self.project / 'preload.cjs').write_text('// Fixture only.\n')

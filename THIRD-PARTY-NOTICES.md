@@ -1,7 +1,8 @@
 # Black Team third-party notices
 
 This preview includes the following software. Their licenses apply to their
-respective components; these notices do not define Black Team's product license.
+respective components. Black Team itself is licensed under the GNU Affero General
+Public License, version 3; see `LICENSE`.
 
 | Component | License | Included license text |
 | --- | --- | --- |

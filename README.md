@@ -278,6 +278,9 @@ flows need the live checks listed in [VERIFICATION.md](docs/VERIFICATION.md).
 Windows/macOS desktop packaging, GPU monitoring, automatic harness installation,
 and automatic task recovery across restarts are not included.
 
-Project license terms have not yet been selected. Third-party components retain
-their own licenses; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Model and
+Black Team is free software under the [GNU Affero General Public License,
+version 3](LICENSE). You may use, study, change and share it; if you distribute a
+changed version or offer it as a service, you must publish your changes under
+the same license. Copyright © 2026 the Black Team authors. Third-party components
+retain their own licenses; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Model and
 harness licensing also remains with their respective publishers.
