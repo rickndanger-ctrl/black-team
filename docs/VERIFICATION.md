@@ -253,8 +253,24 @@ draft model found beside the file. Files are named from their own GGUF metadata
 and offered a context that fits beside their weights. Checked with unit tests
 (launch plan, GGUF reader, finder, desktop wiring) and a dry plan for the
 laptop's Qwen 3.8 27B file with the mainline llama.cpp build, which matched the
-user's hand-tuned launch in substance. A live start with this plan was not run:
-on the laptop the file does not fit beside the model server kept running.
+user's hand-tuned launch in substance.
+
+The plan was then run for real on the laptop, with the usual model server
+stopped so the file fit in memory. Through the same `ModelRuntime` code path
+the app uses, the finder's description of the Qwen 3.8 27B Q4_K_XL file
+(32,768 context, 6 threads, projector and MTP draft found beside it) started
+the mainline llama.cpp build 11390 with all four planned features; the server
+was ready in 17 seconds the first time and 5 seconds warm, reported the same
+model file and 32,768 context, enforced the private key, and the process used
+23.8 GiB. Two chat completions answered correctly and the runtime stopped
+cleanly. On a 1,063-token prompt it processed 5.1 tokens/s and generated 1.36
+tokens/s; without the draft file, 5.1 and 1.27. The user's own hand-tuned
+launch of the same file on a different (forked) llama.cpp build measured 6.1
+and 2.34 on the same prompt, so the plan runs the model well for a mainline
+build but a specialised build is still faster at generation. That forked build
+also rejects `--no-webui`, which the plan always passes, so it cannot be used
+as Black Team's runtime; the finder only proposes a running server's executable
+when no `llama-server` is on PATH.
 
 Automated suites at the build: 145 Node and 22 Python tests pass.
 
@@ -275,7 +291,7 @@ files.
 - Installation under a separate account, on another machine and on other Linux
   distributions; the `--enable-sandbox` step on a real Ubuntu 24.04 machine; a
   simpler download/install experience.
-- Live Ollama/LM Studio and owned GGUF startup; other models and runtime combinations.
+- Live Ollama/LM Studio startup; owned GGUF startup on a GPU, with other models and other llama.cpp builds.
 - Physical iPhone/Android Home Screen cookies, background/reconnect behavior,
   phone-triggered agent approvals and file downloads in this portable build.
 - Real UI approval/denial of a model-requested risky tool, browser/desktop opt-ins,
