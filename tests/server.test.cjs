@@ -139,6 +139,10 @@ test('one chat streams split UTF-8 safely, deduplicates retries and stays dedupl
   assert.equal(calls.contexts[0].mode,'deep');assert.equal(calls.contexts[0].messages.at(-1).content,'A private question');
   assert.equal(calls.fetch[0][1].redirect,'error');assert.equal(calls.fetch[0][1].headers.Authorization,'Bearer local-test-key');
   assert.equal(JSON.parse(calls.fetch[0][1].body).max_tokens,512);
+  // The thinking level travels with every request, as one consistent set of fields.
+  const requestBody=JSON.parse(calls.fetch[0][1].body);
+  assert.equal(typeof requestBody.chat_template_kwargs.enable_thinking,'boolean');
+  assert.equal(requestBody.reasoning_effort==='none',requestBody.chat_template_kwargs.enable_thinking===false);
   assert.deepEqual(calls.busy,[true,false]);
   await backend.close();const restarted=make();
   assert.equal(restarted.submit(payload).state,'done');assert.equal(calls.starts,1);
