@@ -25,6 +25,9 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   connect to an existing local OpenAI-compatible server such as Ollama or LM Studio.
   Discover its model IDs and select the one you want. You are not limited to a
   model name chosen by the developer.
+- **It finds what you have.** On first start Black Team lists the local model
+  servers and model files already on your computer, then the agents. Tick, add,
+  start. See [Models](docs/MODELS.md).
 - **Several models, one menu.** Every model you set up is kept in a list. Switch
   between them from the top of the conversation; each reply says which model
   wrote it.

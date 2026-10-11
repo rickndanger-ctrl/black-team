@@ -79,11 +79,14 @@ async function boot({phoneSetup = async () => ({connected: true})} = {}) {
     } };
     if (name === './lib/phone.cjs') return { PhoneManager: class { async setup() { return await phoneSetup(); } }, validatePhone: value => value, COMMAND: 'test command' };
     if (name === './lib/server.cjs') return { createBackend: () => backend };
+    if (name === './lib/find-models.cjs') return { findModels: async () => ({ servers: [{ source: 'server', id: 'found' }], files: [], runtime: '', looked: { ports: [], folders: [] } }) };
     // The saved-model list is replaced so a test never reads the real data folder.
     if (name === './lib/models.cjs') return {
-      createSavedModels: () => ({ read: () => [], remember: model => { captured.remembered = model; } }),
+      createSavedModels: () => ({ read: () => [], list: () => [], remember: model => { captured.remembered = model; } }),
       switchModel: async input => { captured.switched = input.key; return { switched: true, name: 'Other', busy: input.busy() }; },
       forgetModel: input => { captured.forgotten = input.key; return { removed: true }; },
+      addModels: input => { captured.addedItems = input.items; return { added: ['One'], skipped: [], inUse: 'One' }; },
+      keyOf: item => item.id || item.file,
     };
     return require(name.startsWith('./') ? path.join(project, name) : name);
   };
@@ -191,8 +194,14 @@ test('saving a model adds it to the list, and switching and removing reach the l
   assert.equal(captured.switched, 'abc');
   assert.equal((await request(event(), 'model-forget', { key: 'abc' })).removed, true);
   assert.equal(captured.forgotten, 'abc');
+  const found = await request(event(), 'models-find');
+  assert.equal(found.servers[0].id, 'found');
+  assert.equal(found.servers[0].saved, false);
+  assert.equal((await request(event(), 'models-add', { items: [{ id: 'found' }] })).inUse, 'One');
+  assert.equal(captured.addedItems[0].id, 'found');
+  await assert.rejects(request(event(), 'models-add', { items: [], model: {} }), /Unsupported setup setting/);
   const preload = fs.readFileSync(path.join(project, 'preload.cjs'), 'utf8');
-  assert.match(preload, /'model-switch','model-forget'/);
+  assert.match(preload, /'models-find','models-add','model-switch','model-forget'/);
 });
 
 test('setup mutations stay locked until async completion and unlock after failure', async () => {
