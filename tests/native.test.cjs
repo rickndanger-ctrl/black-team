@@ -1,0 +1,175 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { EventEmitter } = require('node:events');
+
+const project = path.resolve(__dirname, '..');
+
+async function boot() {
+  const captured = { errors: [], starts: 0, writes: [], opened: [] };
+  const handlers = new Map();
+  const app = new EventEmitter();
+  Object.assign(app, {
+    setName: name => { captured.name = name; },
+    setPath: (name, value) => { captured[name] = value; },
+    requestSingleInstanceLock: () => true,
+    whenReady: async () => {},
+    getVersion: () => '0.1.0-test',
+    quit: () => { captured.quit = true; },
+    isPackaged: true,
+  });
+  class BrowserWindow extends EventEmitter {
+    constructor(options) {
+      super();
+      captured.options = options;
+      captured.window = this;
+      this.webContents = new EventEmitter();
+      this.webContents.mainFrame = { url: 'http://127.0.0.1:18199/' };
+      this.webContents.setWindowOpenHandler = callback => { captured.popup = callback; };
+    }
+    async loadURL(url) { captured.loaded = url; }
+    show() {}
+    focus() {}
+    isMinimized() { return false; }
+    isDestroyed() { return false; }
+  }
+  const defaultSession = {
+    setPermissionRequestHandler: callback => { captured.permissionRequest = callback; },
+    setPermissionCheckHandler: callback => { captured.permissionCheck = callback; },
+    webRequest: { onBeforeRequest: callback => { captured.network = callback; } },
+  };
+  const backend = {
+    origin: 'http://127.0.0.1:18199',
+    bootstrapURL: 'http://127.0.0.1:18199/bootstrap?key=desktop-secret',
+    listen: async () => {},
+    status: async access => ({ access, checked: true }),
+    close: async () => { captured.closed = true; },
+    isBusy: () => false,
+  };
+  const electron = {
+    app, BrowserWindow,
+    ipcMain: { handle: (name, callback) => { handlers.set(name, callback); } },
+    dialog: {
+      showErrorBox: (...args) => captured.errors.push(args),
+      showMessageBoxSync: () => 0,
+      showOpenDialog: async (_window, options) => { captured.dialogOptions = options; return { canceled: true, filePaths: [] }; },
+    },
+    shell: { openPath: async value => { captured.opened.push(value); return ''; } },
+    Menu: { setApplicationMenu: () => {}, buildFromTemplate: template => template },
+    session: { defaultSession },
+  };
+  const config = {
+    read: () => ({ phone: { enabled: false, hostname: '', owner: '' } }),
+    save: value => { captured.writes.push(value); },
+  };
+  const mockedRequire = name => {
+    if (name === './lib/integrations.cjs') return {createIntegrations:()=>({read:()=>({hermes:{enabled:false},harnesses:[]})})};
+    if (name === './lib/agent.cjs') return {createAgent:()=>({})};
+    if (name === 'electron') return electron;
+    if (name === './lib/config.cjs') return { createConfigStore: () => config, validateModelFiles: () => {} };
+    if (name === './lib/history.cjs') return { privateDirectory: () => {} };
+    if (name === './lib/runtime.cjs') return { ModelRuntime: class {
+      status() { return { state: 'off', ready: false }; }
+      async start() { captured.starts++; }
+      async stop() {}
+    } };
+    if (name === './lib/phone.cjs') return { PhoneManager: class {}, validatePhone: value => value, COMMAND: 'test command' };
+    if (name === './lib/server.cjs') return { createBackend: () => backend };
+    return require(name.startsWith('./') ? path.join(project, name) : name);
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(project, 'main.cjs'), 'utf8'), {
+    require: mockedRequire, __dirname: project, process, URL, Buffer, console,
+  }, { filename: 'main.cjs' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(captured.errors, []);
+  assert.ok(captured.window, 'main process completed setup');
+  const event = () => ({ sender: captured.window.webContents, senderFrame: captured.window.webContents.mainFrame });
+  return { captured, handlers, event, app };
+}
+
+test('native boot keeps the renderer sandboxed and does not auto-launch a model', async () => {
+  const { captured } = await boot();
+  assert.equal(captured.name, 'Black Team');
+  assert.equal(captured.options.webPreferences.sandbox, true);
+  assert.equal(captured.options.webPreferences.contextIsolation, true);
+  assert.equal(captured.options.webPreferences.nodeIntegration, false);
+  assert.equal(captured.options.webPreferences.webSecurity, true);
+  assert.equal(captured.options.webPreferences.devTools, false);
+  assert.equal(captured.starts, 0);
+  assert.equal(captured.loaded, 'http://127.0.0.1:18199/bootstrap?key=desktop-secret');
+});
+
+test('native renderer blocks remote network, navigation, popup, webview and permission requests', async () => {
+  const { captured } = await boot();
+  for (const url of ['https://example.com/', 'http://127.0.0.1:18198/', 'file:///etc/passwd', 'http://localhost:18199/']) {
+    let denied;
+    captured.network({ url }, result => { denied = result.cancel; });
+    assert.equal(denied, true, url);
+  }
+  let cancelled;
+  captured.network({ url: 'http://127.0.0.1:18199/api/status' }, result => { cancelled = result.cancel; });
+  assert.equal(cancelled, false);
+  let permission;
+  captured.permissionRequest(null, 'media', value => { permission = value; });
+  assert.equal(permission, false);
+  assert.equal(captured.permissionCheck(null, 'clipboard-read'), false);
+  assert.equal(captured.popup({ url: 'https://example.com' }).action, 'deny');
+  for (const url of ['https://example.com', 'file:///etc/passwd', 'http://127.0.0.1:18199/other']) {
+    let blocked = false;
+    captured.window.webContents.emit('will-navigate', { preventDefault: () => { blocked = true; } }, url);
+    assert.equal(blocked, true, url);
+  }
+  let blocked = false;
+  captured.window.webContents.emit('will-navigate', { preventDefault: () => { blocked = true; } }, 'http://127.0.0.1:18199/');
+  assert.equal(blocked, false);
+  captured.window.webContents.emit('will-attach-webview', { preventDefault: () => { blocked = true; } });
+  assert.equal(blocked, true);
+});
+
+test('desktop IPC requires the exact owned main frame and only approved actions and chooser types', async () => {
+  const { handlers, event, captured } = await boot();
+  const request = handlers.get('black-team:request');
+  const picker = handlers.get('black-team:pick');
+  assert.equal((await request(event(), 'status')).access, 'desktop');
+  await assert.rejects(request({ ...event(), sender: new EventEmitter() }, 'status'), /unavailable/);
+  await assert.rejects(request({ ...event(), senderFrame: { url: 'http://127.0.0.1:18199/' } }, 'status'), /unavailable/);
+  const mainFrame = captured.window.webContents.mainFrame;
+  mainFrame.url = 'https://example.com/';
+  await assert.rejects(request(event(), 'runtime-start'), /unavailable/);
+  mainFrame.url = 'http://127.0.0.1:18199/';
+  await assert.rejects(request(event(), 'exec-shell', { command: 'anything' }), /Unsupported/);
+  await assert.rejects(request(event(), 'status', []), /Invalid desktop request/);
+  await assert.rejects(picker(event(), 'arbitrary-file'), /Unsupported chooser/);
+  assert.equal(await picker(event(), 'model'), null);
+  assert.equal(captured.dialogOptions.filters[0].extensions[0], 'gguf');
+  assert.equal(captured.starts, 0);
+});
+
+test('preload bridge exposes no general IPC and rejects unapproved calls before IPC', async () => {
+  let bridge;
+  const invocations = [];
+  vm.runInNewContext(fs.readFileSync(path.join(project, 'preload.cjs'), 'utf8'), {
+    require: name => {
+      assert.equal(name, 'electron');
+      return {
+        contextBridge: { exposeInMainWorld: (name, value) => { assert.equal(name, 'blackTeam'); bridge = value; } },
+        ipcRenderer: { invoke: async (...args) => { invocations.push(args); return { ok: true }; } },
+      };
+    },
+  }, { filename: 'preload.cjs' });
+  assert.deepEqual(Object.keys(bridge).sort(), ['pick', 'request']);
+  assert.equal(Object.isFrozen(bridge), true);
+  await assert.rejects(bridge.request('exec', { command: 'anything' }), /Unsupported desktop action/);
+  await assert.rejects(bridge.pick('directory-outside-contract'), /Unsupported chooser/);
+  assert.equal(invocations.length, 0);
+  await bridge.request('status');
+  await bridge.pick('runtime');
+  assert.equal(invocations[0][0], 'black-team:request');
+  assert.equal(invocations[0][1], 'status');
+  assert.equal(invocations[1][0], 'black-team:pick');
+  assert.equal(invocations[1][1], 'runtime');
+});

@@ -1,0 +1,885 @@
+{
+  "schema_version": 1,
+  "provider": "jev",
+  "synthetic_only": true,
+  "training_approved": false,
+  "scope": "Explicit context-policy selection; not end-to-end answer quality or learned relevance detection.",
+  "summary": {
+    "planned": 48,
+    "completed": 0,
+    "correct": 0,
+    "accepted": 0,
+    "accepted_wrong": 0,
+    "order_disagreements": 0,
+    "comparable_pairs": 0,
+    "median_seconds": null
+  },
+  "rows": [
+    {
+      "id": "1024-room",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 320,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "failed",
+      "error_type": "JevError",
+      "seconds": 0.002167
+    },
+    {
+      "id": "1024-room",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 320,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-boundary",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 640,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-boundary",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 640,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-pressure",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 641,
+        "older_reference": "none"
+      },
+      "expected": "compact",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-pressure",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 641,
+        "older_reference": "none"
+      },
+      "expected": "compact",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-older_fact",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 320,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-older_fact",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 320,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-older_fact_pressure",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 840,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-older_fact_pressure",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 840,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-missing_reference",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 320,
+        "older_reference": "unresolved"
+      },
+      "expected": "review",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-missing_reference",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 80,
+        "candidate_tokens": 320,
+        "older_reference": "unresolved"
+      },
+      "expected": "review",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-oversized_required",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 641,
+        "candidate_tokens": 840,
+        "older_reference": "none"
+      },
+      "expected": "review",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-oversized_required",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 641,
+        "candidate_tokens": 840,
+        "older_reference": "none"
+      },
+      "expected": "review",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-oversized_with_reference",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 641,
+        "candidate_tokens": 940,
+        "older_reference": "known"
+      },
+      "expected": "review",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "1024-oversized_with_reference",
+      "state": {
+        "input_budget": 640,
+        "required_tokens": 641,
+        "candidate_tokens": 940,
+        "older_reference": "known"
+      },
+      "expected": "review",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-room",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 1472,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-room",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 1472,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-boundary",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 2944,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-boundary",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 2944,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-pressure",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 2945,
+        "older_reference": "none"
+      },
+      "expected": "compact",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-pressure",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 2945,
+        "older_reference": "none"
+      },
+      "expected": "compact",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-older_fact",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 1472,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-older_fact",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 1472,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-older_fact_pressure",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 3144,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-older_fact_pressure",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 3144,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-missing_reference",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 1472,
+        "older_reference": "unresolved"
+      },
+      "expected": "review",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-missing_reference",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 80,
+        "candidate_tokens": 1472,
+        "older_reference": "unresolved"
+      },
+      "expected": "review",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-oversized_required",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 2945,
+        "candidate_tokens": 3144,
+        "older_reference": "none"
+      },
+      "expected": "review",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-oversized_required",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 2945,
+        "candidate_tokens": 3144,
+        "older_reference": "none"
+      },
+      "expected": "review",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-oversized_with_reference",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 2945,
+        "candidate_tokens": 3244,
+        "older_reference": "known"
+      },
+      "expected": "review",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "4096-oversized_with_reference",
+      "state": {
+        "input_budget": 2944,
+        "required_tokens": 2945,
+        "candidate_tokens": 3244,
+        "older_reference": "known"
+      },
+      "expected": "review",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-room",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 6080,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-room",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 6080,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-boundary",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 12160,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-boundary",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 12160,
+        "older_reference": "none"
+      },
+      "expected": "keep",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-pressure",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 12161,
+        "older_reference": "none"
+      },
+      "expected": "compact",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-pressure",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 12161,
+        "older_reference": "none"
+      },
+      "expected": "compact",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-older_fact",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 6080,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-older_fact",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 6080,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-older_fact_pressure",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 12360,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-older_fact_pressure",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 12360,
+        "older_reference": "known"
+      },
+      "expected": "retrieve",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-missing_reference",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 6080,
+        "older_reference": "unresolved"
+      },
+      "expected": "review",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-missing_reference",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 80,
+        "candidate_tokens": 6080,
+        "older_reference": "unresolved"
+      },
+      "expected": "review",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-oversized_required",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 12161,
+        "candidate_tokens": 12360,
+        "older_reference": "none"
+      },
+      "expected": "review",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-oversized_required",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 12161,
+        "candidate_tokens": 12360,
+        "older_reference": "none"
+      },
+      "expected": "review",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-oversized_with_reference",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 12161,
+        "candidate_tokens": 12460,
+        "older_reference": "known"
+      },
+      "expected": "review",
+      "option_order": [
+        "keep",
+        "retrieve",
+        "compact",
+        "review"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    },
+    {
+      "id": "16384-oversized_with_reference",
+      "state": {
+        "input_budget": 12160,
+        "required_tokens": 12161,
+        "candidate_tokens": 12460,
+        "older_reference": "known"
+      },
+      "expected": "review",
+      "option_order": [
+        "review",
+        "compact",
+        "retrieve",
+        "keep"
+      ],
+      "provider": "jev",
+      "status": "skipped_provider_unavailable"
+    }
+  ]
+}

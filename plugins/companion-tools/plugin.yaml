@@ -1,0 +1,5 @@
+name: companion-tools
+version: 1.0.0
+description: Private Companion file delivery and in-app approval transport
+provides_tools:
+  - companion_files

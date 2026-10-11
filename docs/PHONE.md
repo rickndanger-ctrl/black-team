@@ -1,0 +1,88 @@
+# Private phone access: iPhone and Android
+
+Phone Companion is the browser interface to your Black Team workspace. Your
+computer runs the model and Hermes agent; the phone sends instructions and
+receives results over your private network. There is no separate model download
+on the phone and no native App Store or Google Play package in this alpha.
+
+## Pair a phone
+
+1. Install Tailscale on your Linux computer and phone. Sign both into the same
+   private network/account and keep them connected.
+2. Open **Phone Companion** in Black Team on the computer. Detect Tailscale,
+   review the computer hostname and allowed account, check **Allow Companion**,
+   and save.
+3. Choose **Enable private phone access**. Black Team configures its dedicated
+   HTTPS port 8449 to reach the local app on port 18199. It refuses to overwrite
+   another application's route or an enabled public Funnel route.
+4. Open the private pairing link on your phone. The link grants access to your
+   Black Team workspace: keep it private. Tailscale account identity is checked
+   as well. The app exchanges the fragment for a Secure/HttpOnly cookie and
+   removes the fragment from the address bar.
+5. Use the browser, or add the interface to your Home Screen:
+   - iPhone/Safari: Share → Add to Home Screen.
+   - Android/Chrome: menu → Add to Home screen / Install, depending on browser UI.
+   - If the installed web app has a separate cookie store, pair that browser
+     context again with the desktop link.
+
+Browser installation and cookie behavior vary. Physical iPhone and Android
+verification is still outstanding for this portable release.
+
+## What you can do
+
+Send messages to the selected local model, start a Black Team Agent conversation,
+see tool activity and CPU/RAM readings, approve or deny requested actions, stop a
+task, continue saved sessions, and download attached workspace files. Sending a
+message starts/connects the configured model if needed.
+
+Agent mode must first be enabled on the desktop. Once enabled, an authorized
+phone can instruct the agent to use those tools on your computer. Pair only your
+own trusted devices. Approval controls are per action; pairing is not an OS
+sandbox and tool switches are not filesystem isolation.
+
+The phone does not expose model keys, model file paths, or desktop configuration
+APIs. It does not display every independent third-party terminal harness. Use
+Black Team Agent for the integrated remote workflow.
+
+## Host lifetime and reconnecting
+
+Keep Black Team open or minimized and the computer awake. The existing model
+server must also be available when that connection mode is selected. Closing a
+phone/browser or losing connectivity does not cancel a turn already accepted by
+the computer. Request IDs avoid repeating a submitted turn after a network retry.
+Reopen its saved conversation to see the result.
+
+Quitting Black Team stops its owned model process and Agent task. An independently
+running model server stays running. A host restart preserves saved partial output
+but does not automatically restart a task. A Home Screen app can cache its shell;
+that does not mean it can run inference while the host is offline.
+
+## Network setup and revocation
+
+If Tailscale setup needs local operator permissions, Black Team shows this command
+for you to run, then verifies the route:
+
+```sh
+tailscale serve --bg --https=8449 http://127.0.0.1:18199
+```
+
+Use Tailscale Serve, not a public proxy or Funnel. Port 18199 stays bound to
+loopback. Remote conversation/file/approval APIs require both the saved Tailscale
+account identity and a paired browser cookie. Black Team also checks the configured
+Host and same-origin writes.
+
+**Disconnect phone access** removes only Black Team's verified route. Unchecking
+**Allow Companion** stops the app accepting phone requests even if a route remains.
+Re-enabling the same account permits prior pairings until their 30-day cookies
+expire. Changing hostname/account invalidates old tokens. To revoke all pairings
+without changing the account, quit Black Team, remove only `phone.key` from its
+private data directory, reopen, and pair devices again.
+
+Tailscale uses its own account and coordination/network infrastructure. Desktop
+local chat does not require Tailscale. Phone content is visible to the person
+using that authorized device; browser/OS screenshots, downloads and backups have
+their own storage behavior.
+
+References: [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve),
+[iPhone Home Screen](https://support.apple.com/guide/iphone/turn-a-website-into-an-app-iph42ab2f3a7/ios),
+[Android Chrome web apps](https://support.google.com/chrome/answer/9658361?hl=en&co=GENIE.Platform%3DAndroid).
