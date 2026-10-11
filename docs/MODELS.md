@@ -83,6 +83,31 @@ Agent mode delegates context to Hermes, with the selected local endpoint used
 for compaction and no configured cloud fallback. Tools/system prompts consume
 context too: use a model and context size appropriate for agent work.
 
+## Finding your models
+
+On a new install, Black Team's first screen lists the models it finds on your
+computer, already ticked. Choose **Add** and the first one is ready to use; the
+second step lists the agents found on your computer to connect. **Settings →
+Models → Find my models** runs the same search later.
+
+What it looks at:
+
+- **Local servers that are running.** It asks for the model list on the usual
+  local ports (Ollama 11434, LM Studio 1234, llama.cpp 8080, Jan 1337, KoboldCpp
+  5001, 8000) and on the port of any llama.cpp-style server you are running
+  yourself. A llama.cpp server also reports the context it loaded, which is
+  filled in for you. Other servers do not, so the context starts at 4,096; raise
+  it in Settings to match your server.
+- **Model files.** GGUF files of 200 MB or more in `~/models`, the LM Studio,
+  llama.cpp, GPT4All and Hugging Face cache folders, and `~/Downloads`. Vision
+  projectors, draft models and later parts of split files are left out. A file
+  needs llama.cpp (`llama-server`) on your path or already running; Black Team
+  then starts and stops that model itself. Its context starts at 8,192.
+
+The search contacts only this computer's own loopback address, reads file names,
+sizes and the first 24 bytes of each GGUF file, and runs nothing. A model file
+that a running server already has loaded is listed once, as the running server.
+
 ## Switching and sharing
 
 Every model you set up is kept in a list, so you set each one up once. With two

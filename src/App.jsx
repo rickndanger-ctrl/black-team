@@ -14,6 +14,7 @@ import {Changes, SpeedMeter, WorkLog} from './Panels.jsx';
 import Markdown from './Markdown.jsx';
 import {ModelList, ModelSwitch} from './Models.jsx';
 import Harnesses from './Harnesses.jsx';
+import FindModels from './FindModels.jsx';
 
 const desktop = Boolean(window.blackTeam?.request);
 const byteSize = value => Number.isFinite(value) ? `${(value / 1024 ** 3).toFixed(1)} GB` : 'Unavailable';
@@ -48,13 +49,18 @@ function StatusPill({status, connection}) {
 function Workspace({status, busy, onAction, onChat, onSettings, onPhone, onSave}) {
   const hardware = status.hardware || {};
   const running = status.runtime?.ready || status.runtime?.state === 'starting';
+  // A new install is walked through two steps: the models found here, then the agents found here.
+  const [welcome, setWelcome] = useState(() => status.setupComplete ? null : 'models');
+  const [manual, setManual] = useState(false);
   return <>
     <section className="telemetry hardware-grid" aria-label="This computer">
       <div><Icon name="chip"/><div><span>CPU UTILIZATION</span><strong>{status.performance?.cpu ?? '—'}% <small>· {hardware.cores || '—'} cores · load {status.performance?.load?.toFixed(1) || '0.0'}</small></strong></div></div>
       <div><Icon name="activity"/><div><span>MEMORY AVAILABLE</span><strong>{byteSize(hardware.memory?.free)} <small>/ {byteSize(hardware.memory?.total)}</small></strong></div></div>
       <div><Icon name="folder"/><div><span>DISK AVAILABLE</span><strong>{byteSize(hardware.disk?.free)}</strong></div></div>
     </section>
-    {!status.setupComplete ? <SetupForm status={status} busy={busy} onSave={onSave} onAction={onAction}/> : <section className="local-model-panel">
+    {welcome === 'agents' && status.setupComplete && <section className="welcome-step"><div><span className="eyebrow">STEP 2 OF 2 · YOUR AGENTS</span><h2>{status.config?.model?.name} is ready.</h2><p>Connect any agents you want from the list just below, then start. You can do this later too.</p></div><div className="button-row"><button className="primary" disabled={busy} onClick={() => {setWelcome(null); onChat('chat');}}>Start chatting</button><button className="secondary" disabled={busy} onClick={() => setWelcome(null)}>Stay here</button></div></section>}
+    {welcome === 'agents' && status.setupComplete && <Harnesses status={status} busy={busy} onAction={onAction} onChat={onChat} onSettings={onSettings}/>}
+    {!status.setupComplete ? (welcome === 'models' && !manual ? <><p className="welcome-lead"><span className="eyebrow">STEP 1 OF 2 · YOUR MODELS</span></p><FindModels auto busy={busy} onAction={onAction} onAdded={() => setWelcome('agents')} onManual={() => setManual(true)} heading="Here is what is on this computer"/></> : <SetupForm status={status} busy={busy} onSave={onSave} onAction={onAction}/>) : <section className="local-model-panel">
       <div className="model-identity"><AgentAvatar large active={status.runtime?.busy}/><div><span className="eyebrow">YOUR LOCAL MODEL</span><h2>{status.config?.model?.name || 'Local model'}</h2><p>{status.runtime?.ready ? 'Ready on this computer. Open a conversation to begin.' : status.runtime?.state === 'starting' ? (status.config?.model?.source === 'server' ? 'Connecting to your local server. The server manages model loading.' : 'Loading the model into memory. This can take a moment.') : 'Start your model when you need it. Your conversations stay here.'}</p></div></div>
       <div className="model-facts"><div><span>Model</span><strong>{status.config?.model?.source === 'server' ? status.config.model.id : basename(status.config?.model?.file)}</strong></div><div><span>Processing</span><strong>{status.config?.model?.source === 'server' ? 'Local server' : status.config?.model?.gpuLayers ? `${status.config.model.gpuLayers} GPU layers` : 'CPU'}</strong></div><div><span>Context window</span><strong>{Number(status.config?.model?.context || 4096).toLocaleString()} tokens</strong></div></div>
       <div className="button-row">{running ? <button className="secondary" disabled={busy || status.runtime?.busy} onClick={() => onAction('runtime-stop', {}, 'Model stopped.')}><Icon name="power" size={16}/>{status.config?.model?.source === 'server' ? 'Disconnect model' : 'Stop model'}</button> : <button className="primary" disabled={busy} onClick={() => onAction('runtime-start', {}, status.config?.model?.source === 'server' ? 'Connecting to your local server.' : 'Starting your local model.')}><Icon name="power" size={16}/>{status.config?.model?.source === 'server' ? 'Connect model' : 'Start model'}</button>}<button className={running ? 'primary' : 'secondary'} disabled={busy} onClick={()=>onChat("chat")}><Icon name="chat" size={16}/>Open chat</button><button className="text-button" onClick={()=>onSettings("model")}>Change model <Icon name="arrow" size={15}/></button></div>
@@ -62,7 +68,7 @@ function Workspace({status, busy, onAction, onChat, onSettings, onPhone, onSave}
     </section>}
     {hardware.warnings?.length > 0 && <section className="inline-note"><strong>Hardware notes</strong><ul>{hardware.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></section>}
     {status.runtime?.error && <div className="notice error" role="alert"><div><strong>{status.config?.model?.source === 'server' ? 'The local server could not connect.' : 'The model could not start.'}</strong><p>{typeof status.runtime.error === 'string' ? status.runtime.error : 'Check that the model and runtime match this computer, then review your memory and performance settings.'}</p></div></div>}
-    <Harnesses status={status} busy={busy} onAction={onAction} onChat={onChat} onSettings={onSettings}/>
+    {welcome !== 'agents' && <Harnesses status={status} busy={busy} onAction={onAction} onChat={onChat} onSettings={onSettings}/>}
     <div className="principle-grid"><section><span className="step-number">01 / YOUR COMPUTER</span><h3>Local by default</h3><p>Conversation history lives on your machine. No Black Team account needed. Use a local model in your server to keep inference here.</p></section><section><span className="step-number">02 / YOUR CHOICE</span><h3>Bring your model</h3><p>Load a GGUF model or connect your existing local model server.</p></section><section><span className="step-number">03 / OPTIONAL COMPANION</span><h3>Continue from your phone</h3><p>Connect privately and keep working with the same model.</p><button className="text-button" onClick={onPhone}>Connect your phone →</button></section></div>
   </>;
 }
@@ -253,7 +259,7 @@ export default function App() {
       {desktop && page === 'phone' && <PhoneSettings status={status} busy={busy} onAction={action}/>}
       {desktop && page === 'settings' && <>
         <nav className="settings-sections" aria-label="Settings sections">{[['model','Models'],['agents','Agents & apps'],['data','App & data']].map(([id,label])=><button key={id} className={settingsSection===id?'selected':''} aria-current={settingsSection===id?'page':undefined} onClick={()=>setSettingsSection(id)}>{label}</button>)}</nav>
-        {settingsSection==='model'&&<><ModelList models={status.models} busy={busy} working={Boolean(status.runtime?.busy)} onSwitch={switchModel} onForget={forgetModel}/><SetupForm status={status} settings busy={busy} onAction={action} onSave={saveModel}/></>}
+        {settingsSection==='model'&&<><ModelList models={status.models} busy={busy} working={Boolean(status.runtime?.busy)} onSwitch={switchModel} onForget={forgetModel}/><FindModels busy={busy} onAction={action}/><SetupForm status={status} settings busy={busy} onAction={action} onSave={saveModel}/></>}
         {settingsSection==='agents'&&<Integrations status={status} busy={busy} onAction={action} onChat={()=>startChat('agent')}/>}
         {settingsSection==='data'&&<><section className="settings-data"><div><h2>Your data stays here</h2><p>Settings and conversations are saved on this computer.</p></div><button className="secondary" onClick={()=>action('open-data')} disabled={busy}>Open data folder</button></section><details><summary>Optional research: JEV</summary><p className="section-intro">Chat and agent work use local context management and need no JEV key. Optional research setup is described in docs/JEV.md.</p></details><p className="inline-note">Updates are your choice. Black Team does not automatically download models or new app versions.</p></>}
       </>}
