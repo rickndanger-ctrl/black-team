@@ -18,6 +18,11 @@ faster for a local model to search than a large personal one.
 | `Projects/<name>/` | Each project's overview, journal and its own facts |
 | `Archive/` | Older material: kept, but left out of recall |
 
+On first start Black Team creates this layout itself: the three folders and a
+`Core.md` holding only a guidance comment, which is not shown to the model. So
+memory is ready before anything is saved; the Memory page explains the flow
+and offers **Write Core** until the first note arrives.
+
 Notes link to each other with `[[Note name]]`. The **Memory** page shows them as
 a graph, lets you search, open and edit any note, and create projects.
 
