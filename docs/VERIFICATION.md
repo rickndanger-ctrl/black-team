@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.5**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.6**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -157,12 +157,19 @@ speech tool.
 
 The package's Electron sandbox helper is not installed setuid root, so the app
 relies on unprivileged user namespaces, which Ubuntu 24.04 and later deny to
-programs without an AppArmor profile. After alpha.5 the installer and launcher
+programs without an AppArmor profile. From alpha.6 the installer and launcher
 detect this, explain it, and offer `--enable-sandbox`, which installs one
 profile through `sudo`. This was tested with simulated kernel settings, and the
 generated profile compiles with the AppArmor 4.0.1 parser from Ubuntu 24.04. It
 has not been run on an Ubuntu machine, so whether the window then starts there
 is still unconfirmed.
+
+The alpha.6 package was built and put through the clean-home test on
+2026-10-11: checksums verified, the installer ran, the window started as before
+on this unrestricted laptop, Code wrote and ran a file and saved a fact in 67
+seconds, and Chat recalled it in 12 seconds, with no page errors. With the
+Ubuntu restriction simulated against the installed package, it reported the
+blocked sandbox and printed the `--enable-sandbox` instruction.
 
 ## Still outstanding
 
