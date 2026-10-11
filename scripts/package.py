@@ -115,7 +115,9 @@ def build(project, runtime_zip, out):
         copy_tree(project / 'THIRD-PARTY-NOTICES.md', app / 'THIRD-PARTY-NOTICES.md')
         copy_tree(project / 'LICENSE', app / 'LICENSE')
         for dependency in ('react', 'react-dom', 'scheduler', 'qrcode', 'dijkstrajs'):
-            license_path = project / 'node_modules' / dependency / ('LICENSE.md' if dependency == 'dijkstrajs' else 'LICENSE')
+            # Packages name this file differently (LICENSE, license, LICENSE.md).
+            folder = project / 'node_modules' / dependency
+            license_path = next((folder / name for name in ('LICENSE', 'LICENSE.md', 'license', 'license.md') if (folder / name).is_file()), folder / 'LICENSE')
             if not license_path.is_file():
                 raise ValueError(f'Missing bundled dependency license: {dependency}')
             # License files are copied explicitly; node_modules itself is never followed.

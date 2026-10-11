@@ -110,7 +110,14 @@ Code turn with two file changes, Undo, the memory graph and notes, Chat using
 memory, Remember this, and the dictation button, at desktop and phone widths,
 with no page errors.
 
-Not covered by that run: the packaged Electron build with these features, an
+The alpha.4 Linux package was then built and checked on the same laptop: both
+checksums verify, the payload contains the engine, tools and memory modules and
+the license, and the packaged app started with an empty data folder, opened its
+window, created its vault and engine folders, answered 401 without a session and
+403 for a foreign Host header, and quit cleanly. No model was run through the
+packaged build, and the installer script was not run.
+
+Not covered by that run: Code and memory exercised inside the packaged build, an
 owned GGUF runtime or Ollama/LM Studio with Code, trimming and approvals during
 a long real task, model condensing by a real model, and dictation with a real
 speech tool.
