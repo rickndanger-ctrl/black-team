@@ -11,6 +11,7 @@ const {privateDirectory}=require('./lib/history.cjs');
 const {ModelRuntime}=require('./lib/runtime.cjs');
 const {PhoneManager,validatePhone,COMMAND}=require('./lib/phone.cjs');
 const {createBackend}=require('./lib/server.cjs');
+const {createSavedModels,switchModel,forgetModel}=require('./lib/models.cjs');
 
 const dataRoot=process.env.XDG_DATA_HOME && path.isAbsolute(process.env.XDG_DATA_HOME)?process.env.XDG_DATA_HOME:path.join(os.homedir(),'.local/share');
 const stateDir=path.join(dataRoot,'black-team-data');
@@ -23,6 +24,9 @@ else {
     if(process.platform!=='linux')throw new Error('This Black Team preview supports Linux.');
     privateDirectory(stateDir);
     const configStore=createConfigStore(stateDir);configStore.read();
+    const savedModels=createSavedModels(stateDir);
+    // Someone who set up a model before the list existed sees it there from the start.
+    try{const current=configStore.read().model;if(!savedModels.read().length&&(current.source==='server'?current.id:current.file&&current.runtime))savedModels.remember(current);}catch{}
     const integrations=createIntegrations(stateDir);
     const agentRunner=createAgent({stateDir,integrations});
     runtime=new ModelRuntime({configStore});
@@ -30,7 +34,7 @@ else {
     // Dictation uses a system tool when one is installed (Voxtype is found automatically); a saved choice wins.
     let foundDictation=null;
     const dictation=()=>integrations.read().dictation||(foundDictation===null?(foundDictation=discoverInstalled().dictation||''):foundDictation);
-    backend=createBackend({stateDir,distDir:path.join(__dirname,'dist'),configStore,runtime,phone,integrations,agentRunner,dictation,version:app.getVersion()});
+    backend=createBackend({stateDir,distDir:path.join(__dirname,'dist'),configStore,runtime,phone,savedModels,integrations,agentRunner,dictation,version:app.getVersion()});
     try{await backend.listen();}catch(error){throw new Error(error.code==='EADDRINUSE'?'Black Team’s local port 18199 is already in use. Close the other copy or free this port, then reopen Black Team.':'Black Team could not open its local service. Check your system permissions.');}
     session.defaultSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
     session.defaultSession.setPermissionCheckHandler(()=>false);
@@ -61,7 +65,7 @@ else {
         await shell.openExternal(links.get(input.topic));return {opened:true};
       }
       if(action==='open-data'){const error=await shell.openPath(stateDir);if(error)throw new Error('Could not open the application data folder.');return {opened:true};}
-      if(!['integrations-save','harness-launch','setup-save','runtime-start','runtime-stop','phone-save','phone-setup','phone-off','phone-connect','phone-disconnect'].includes(action))throw new Error('Unsupported desktop action.');
+      if(!['integrations-save','harness-launch','setup-save','model-switch','model-forget','runtime-start','runtime-stop','phone-save','phone-setup','phone-off','phone-connect','phone-disconnect'].includes(action))throw new Error('Unsupported desktop action.');
       if(changing)throw new Error('Another setup action is still running.');changing=true;
       try {
         if(action==='integrations-save'){if(backend.isBusy())throw new Error('Wait for the current task before changing integrations.');integrations.save(input);return {saved:true};}
@@ -73,8 +77,13 @@ else {
           const previous=configStore.read().model;
           const model={...previous,...input.model};
           if(model.endpoint!==previous?.endpoint && input.model?.apiKey===undefined)model.apiKey='';
-          validateModelFiles(model);configStore.save({...input,model});return {saved:true};
+          validateModelFiles(model);const next=configStore.save({...input,model});
+          // Every model that is set up joins the list, so going back to it later is one choice.
+          let warning;try{savedModels.remember(next.model);}catch(error){warning=`Model saved. ${error.message}`;}
+          return {saved:true,...(warning?{warning}:{})};
         }
+        if(action==='model-switch')return await switchModel({key:input.key,saved:savedModels,configStore,runtime,busy:()=>backend.isBusy()});
+        if(action==='model-forget')return forgetModel({key:input.key,saved:savedModels,configStore});
         if(action==='runtime-start'){runtime.start().catch(()=>{});return runtime.status();}
         if(action==='runtime-stop'){
           if(backend.isBusy())throw new Error('Stop the response before stopping the model.');

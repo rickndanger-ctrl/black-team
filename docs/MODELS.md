@@ -85,9 +85,25 @@ context too: use a model and context size appropriate for agent work.
 
 ## Switching and sharing
 
-Stop active work before changing connections. Choose **Change model** in
-Workspace, then **Change model** in the connected-model card to disconnect and
-unlock the setup form. Save the new selection and send a message to connect it. Multiple external harnesses can
+Every model you set up is kept in a list, so you set each one up once. With two
+or more, the model name at the top of Chat / Code becomes a menu: choose another
+model there, or use **Settings → Models → Use**. Switching stops the model in
+use, and your next message starts the new one. Each reply is labelled with the
+model that wrote it. A response has to finish or be stopped before you switch.
+
+**Remove** takes a model off the list only; no model file or server is touched.
+The model in use cannot be removed. The list holds up to 24 models and is stored
+in `saved-models.json` in Black Team's data folder, readable only by you because
+an entry can hold a local server key.
+
+A model on a local server has to be running for Black Team to use it. If your
+computer can hold only one model in memory, start that server yourself before
+switching to it, or set the model up as a **Model file** so Black Team starts and
+stops it for you.
+
+To add a model, stop active work, then in **Settings → Models** choose **Change
+model** in the connected-model card to unlock the setup form. Save the new
+selection and send a message to connect it. Multiple external harnesses can
 share your server, but Black Team does not supervise their independent jobs or
 measure their individual resource consumption. Closing Black Team stops its
 owned GGUF runtime, which also affects external harnesses connected to it.
