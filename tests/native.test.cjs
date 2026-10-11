@@ -196,7 +196,8 @@ test('saving a model adds it to the list, and switching and removing reach the l
   assert.equal(captured.forgotten, 'abc');
   // A chosen model file is described and its companions found, through the same checks as a saved one.
   const described = await request(event(), 'model-inspect', { file: '/m/q.gguf' });
-  assert.deepEqual(described, { name: 'Described', context: 16384, trainingContext: 262144, bytes: 7, mmproj: '/m/mmproj.gguf', draft: '' });
+  // Objects cross the vm boundary, so compare by value, not by realm.
+  assert.equal(JSON.stringify(described), JSON.stringify({ name: 'Described', context: 16384, trainingContext: 262144, bytes: 7, mmproj: '/m/mmproj.gguf', draft: '' }));
   assert.equal(captured.inspected.file, '/m/q.gguf');
   await assert.rejects(request(event(), 'model-inspect', { file: '/m/q.gguf', extra: 1 }), /Unsupported setup setting/);
   const found = await request(event(), 'models-find');
