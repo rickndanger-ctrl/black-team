@@ -212,6 +212,12 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .chat-controls > label { font-size: 9px; }
 .chat-controls > small { margin-left: auto; max-width: none; font-size: 10px; color: var(--muted); }
 .chat-controls .model-switch { margin-left: auto; max-width: 220px; text-overflow: ellipsis; }
+.harnesses ul { margin: 16px 0 6px; padding: 0; list-style: none; }
+.harnesses li { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 0; border-top: 1px solid var(--line); }
+.harnesses li > div { min-width: 0; }
+.harnesses li strong { display: block; font-size: 13px; font-weight: 600; }
+.harnesses li span { font-size: 11.5px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.harnesses li button { flex-shrink: 0; min-width: 96px; justify-content: center; }
 .model-list { margin: 0 0 20px; padding: 26px 28px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow), inset 0 1px 0 var(--edge); }
 .model-list ul { margin: 14px 0 0; padding: 0; list-style: none; }
 .model-list li { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 0; border-top: 1px solid var(--line); }

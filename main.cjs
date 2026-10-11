@@ -3,7 +3,7 @@ const {app,BrowserWindow,ipcMain,dialog,shell,Menu,session}=require('electron');
 const path=require('node:path');
 const os=require('node:os');
 const {createConfigStore,validateModelFiles}=require('./lib/config.cjs');
-const {createIntegrations,launchHarness}=require('./lib/integrations.cjs');
+const {createIntegrations,launchHarness,connectHarness}=require('./lib/integrations.cjs');
 const {createAgent}=require('./lib/agent.cjs');
 const {discoverInstalled,inspectHermes}=require('./lib/discovery.cjs');
 const {discoverModels}=require('./lib/local-server.cjs');
@@ -65,11 +65,12 @@ else {
         await shell.openExternal(links.get(input.topic));return {opened:true};
       }
       if(action==='open-data'){const error=await shell.openPath(stateDir);if(error)throw new Error('Could not open the application data folder.');return {opened:true};}
-      if(!['integrations-save','harness-launch','setup-save','model-switch','model-forget','runtime-start','runtime-stop','phone-save','phone-setup','phone-off','phone-connect','phone-disconnect'].includes(action))throw new Error('Unsupported desktop action.');
+      if(!['integrations-save','harness-connect','harness-launch','setup-save','model-switch','model-forget','runtime-start','runtime-stop','phone-save','phone-setup','phone-off','phone-connect','phone-disconnect'].includes(action))throw new Error('Unsupported desktop action.');
       if(changing)throw new Error('Another setup action is still running.');changing=true;
       try {
         if(action==='integrations-save'){if(backend.isBusy())throw new Error('Wait for the current task before changing integrations.');integrations.save(input);return {saved:true};}
-        if(action==='harness-launch'){if(backend.isBusy())throw new Error('Wait for the current task before launching another harness.');return await launchHarness({id:input.id,store:integrations,config:configStore.read(),runtime});}
+        if(action==='harness-launch'){if(backend.isBusy())throw new Error('Wait for the current task before launching another harness.');return await launchHarness({id:input.id,store:integrations,config:configStore.read(),runtime,stateDir});}
+        if(action==='harness-connect'){if(backend.isBusy())throw new Error('Wait for the current task before changing integrations.');return connectHarness({id:input.id,store:integrations,found:discoverInstalled({saved:integrations.read().hermes})});}
         if(action==='setup-save') {
           if(backend.isBusy()||!['off','error'].includes(runtime.status().state))throw new Error('Stop the model before changing its configuration.');
           // Only the setup form's keys are accepted. Phone pairing is separate.
