@@ -272,19 +272,35 @@ also rejects `--no-webui`, which the plan always passes, so it cannot be used
 as Black Team's runtime; the finder only proposes a running server's executable
 when no `llama-server` is on PATH.
 
+That was fixed before the package was rebuilt: `--no-webui`, `--alias` and
+`--n-gpu-layers` are now added only when the build's help lists them (with
+`--webui none` for builds that take a value, and `-ngl` for that spelling), a
+help text without `--port` keeps the basics because the build could not be
+asked, and a build whose help shows `--spec-type mtp:...` gets the model's own
+MTP heads enabled instead of a draft file it cannot load. Run live through the
+same `ModelRuntime` path, the forked build then started the Qwen file with
+"6 threads, q8 cache, vision, MTP", was ready in 2.6 seconds warm, enforced the
+private key, and answered the same prompts at 6.5 tokens/s prompt and 2.0
+tokens/s generation, matching the user's hand-tuned launch. The mainline build's
+plan is unchanged.
+
 Automated suites at the build: 145 Node and 22 Python tests pass.
 
-The alpha.9 package was then installed into an empty home folder with a
-stripped environment and driven through its real window on the same laptop:
-checksums verified; the payload holds the launch plan and GGUF reader; the
-first screen found the running llama.cpp server; the vault started with its
-files and the Memory introduction; the Thinking selector showed Standard; in a
-new project, Code (thinking on) wrote and ran a file and saved a fact in 128
-seconds, labelled and formatted; the Memory graph showed four notes; Chat
-recalled the fact in 39 seconds; Settings showed the Code map card and the
-saved list; the Workspace cards showed the model server's memory. No page
-errors. The launch plan itself could not run there: a bare path has no model
-files.
+The alpha.9 package was rebuilt with that fix and installed into an empty
+home folder with a stripped environment, then driven through its real window
+on the same laptop: checksums verified; the payload holds the corrected launch
+plan; the first screen found the running llama.cpp server, already ticked, and
+one click added it; step two named it ready; in a new project, Code (thinking
+at Standard) created `greeting.txt` with the exact requested line and saved the
+requested fact to the vault in 80 seconds without asking for an approval; a
+fresh Chat recalled the fact in 7 seconds, citing the memory note it used; the
+Memory page listed the project's conversations; Settings showed the Code map
+card and the saved model; the Workspace cards showed the model server's 24.5
+GB. The vault held `Core.md`, the project's Overview and Journal and the saved
+note. One console error appeared on every load: the page's own inline theme
+script is blocked by its Content Security Policy (`script-src 'self'`), so the
+saved theme is applied a moment later by the app instead of before first paint.
+It does not affect function; a fix is to allow that script's hash.
 
 ## Still outstanding
 
