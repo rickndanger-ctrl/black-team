@@ -64,7 +64,7 @@ async function boot({phoneSetup = async () => ({connected: true})} = {}) {
   };
   const config = {
     read: () => ({ phone: { enabled: false, hostname: '', owner: '' } }),
-    save: value => { captured.writes.push(value); },
+    save: value => { captured.writes.push(value); return value; },
   };
   const mockedRequire = name => {
     if (name === './lib/integrations.cjs') return {createIntegrations:()=>({read:()=>({hermes:{enabled:false},harnesses:[]})})};
@@ -79,6 +79,12 @@ async function boot({phoneSetup = async () => ({connected: true})} = {}) {
     } };
     if (name === './lib/phone.cjs') return { PhoneManager: class { async setup() { return await phoneSetup(); } }, validatePhone: value => value, COMMAND: 'test command' };
     if (name === './lib/server.cjs') return { createBackend: () => backend };
+    // The saved-model list is replaced so a test never reads the real data folder.
+    if (name === './lib/models.cjs') return {
+      createSavedModels: () => ({ read: () => [], remember: model => { captured.remembered = model; } }),
+      switchModel: async input => { captured.switched = input.key; return { switched: true, name: 'Other', busy: input.busy() }; },
+      forgetModel: input => { captured.forgotten = input.key; return { removed: true }; },
+    };
     return require(name.startsWith('./') ? path.join(project, name) : name);
   };
   vm.runInNewContext(fs.readFileSync(path.join(project, 'main.cjs'), 'utf8'), {
@@ -174,6 +180,20 @@ test('preload bridge exposes no general IPC and rejects unapproved calls before 
   assert.equal(invocations[1][1], 'runtime');
 });
 
+
+test('saving a model adds it to the list, and switching and removing reach the list', async () => {
+  const { handlers, event, captured } = await boot();
+  const request = handlers.get('black-team:request');
+  const model = { source: 'server', endpoint: 'http://127.0.0.1:11434/v1', id: 'local', name: 'Local' };
+  assert.equal((await request(event(), 'setup-save', { model })).saved, true);
+  assert.equal(captured.remembered.id, 'local');
+  assert.equal(JSON.stringify(await request(event(), 'model-switch', { key: 'abc' })), JSON.stringify({ switched: true, name: 'Other', busy: false }));
+  assert.equal(captured.switched, 'abc');
+  assert.equal((await request(event(), 'model-forget', { key: 'abc' })).removed, true);
+  assert.equal(captured.forgotten, 'abc');
+  const preload = fs.readFileSync(path.join(project, 'preload.cjs'), 'utf8');
+  assert.match(preload, /'model-switch','model-forget'/);
+});
 
 test('setup mutations stay locked until async completion and unlock after failure', async () => {
   let finish;

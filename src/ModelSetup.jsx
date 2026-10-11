@@ -52,7 +52,7 @@ export default function ModelSetup({status,onSave,onAction,busy,settings=false})
     onSave({...form,model});
   };
   return <form className="setup-form" onSubmit={save}>
-    <div className="panel-heading"><div><span className="eyebrow">YOUR MODELS</span><h2>{settings?'Choose your model':'Connect a model. Start a conversation.'}</h2></div></div>
+    <div className="panel-heading"><div><span className="eyebrow">{settings?'ADD A MODEL':'YOUR MODELS'}</span><h2>{settings?'Add or change a model':'Connect a model. Start a conversation.'}</h2></div></div>
     <p className="section-intro">Choose where your model lives. Black Team fills in the connection details. Use a downloaded model to keep inference on this computer.</p>
     {running&&<div className="connection-card"><div><strong>{status.config.model.name}</strong><p>{status.runtime.busy?'Finish or stop the current response before changing models.':'Connected. Disconnect here to choose another model.'}</p></div><button type="button" className="secondary" disabled={busy||status.runtime.busy} onClick={()=>onAction('runtime-stop',{},'Ready to choose another model.')}>Change model</button></div>}
     <fieldset disabled={busy||checking||running}>

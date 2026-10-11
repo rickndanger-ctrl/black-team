@@ -25,6 +25,9 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   connect to an existing local OpenAI-compatible server such as Ollama or LM Studio.
   Discover its model IDs and select the one you want. You are not limited to a
   model name chosen by the developer.
+- **Several models, one menu.** Every model you set up is kept in a list. Switch
+  between them from the top of the conversation; each reply says which model
+  wrote it.
 - **Chat or Code, one switch.** The mark at the top of the page is the switch:
   the chat bubble for a conversation, the terminal for hands-on work. Launchers
   for other installed harnesses are one click away. A harness is the software
