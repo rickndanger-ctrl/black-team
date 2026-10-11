@@ -37,7 +37,7 @@ function fixture(t,options={}) {
   }
   const backend=make();
   t.after(async()=>{for(const item of backends)await item.close();fs.rmSync(directory,{recursive:true,force:true});});
-  return {directory,stateDir,distDir,config,runtime,calls,backend,make,disconnect:()=>{connected=false;}};
+  return {directory,stateDir,distDir,config,runtime,calls,backend,make,disconnect:()=>{connected=false;},reconnect:()=>{connected=true;}};
 }
 async function request(backend,url,options={}) {
   const data=options.raw!==undefined?Buffer.from(options.raw):options.body===undefined?null:Buffer.from(JSON.stringify(options.body));
@@ -257,4 +257,52 @@ test('Agent mode uses Hermes host, exposes approvals without callbacks, and pres
  const status=await backend.status();assert.equal(status.job.kind,'agent');assert.equal(status.job.approval.id,'approval');assert.equal('_approve' in status.job,false);assert.doesNotThrow(()=>structuredClone(status));
  finish();await backend.waitForIdle();const thread=backend.history.get(result.threadId);assert.equal(thread.kind,'agent');assert.equal(thread.hermesSession,'saved-session');assert.equal(thread.messages.at(-1).state,'done');
  assert.throws(()=>backend.submit({threadId:result.threadId,message:'chat',kind:'chat',requestId:crypto.randomUUID()}),/new conversation/);
+});
+
+
+test('phone pairing survives host restart and reconnect but honors disable, owner changes and key revocation',async t=>{
+  const {backend,config,stateDir,make,disconnect,reconnect}=fixture(t);
+  const headers={host:'computer.testnet.ts.net:8449','tailscale-user-login':'owner@example.test',origin:'https://computer.testnet.ts.net:8449'};
+  const owner=await desktop(backend);
+  const result=await request(backend,'/api/status',{headers:owner});
+  const key=new URLSearchParams(new URL(result.body.phone.url).hash.slice(1)).get('pair');
+  const paired=await request(backend,'/api/pair',{method:'POST',headers,body:{key}});
+  assert.equal(paired.statusCode,200);
+  headers.cookie=paired.headers['set-cookie'].split(';')[0];
+  assert.match(paired.headers['set-cookie'],/Max-Age=2592000/);
+  await backend.close();const restarted=make();
+  assert.equal((await request(restarted,'/api/status',{headers})).statusCode,200);
+  disconnect();assert.equal((await request(restarted,'/api/status',{headers})).statusCode,401);
+  reconnect();assert.equal((await request(restarted,'/api/status',{headers})).statusCode,200);
+  config.phone.enabled=false;
+  assert.equal((await request(restarted,'/api/status',{headers})).statusCode,403);
+  config.phone.enabled=true;
+  assert.equal((await request(restarted,'/api/status',{headers})).statusCode,200);
+  config.phone.owner='new-owner@example.test';
+  assert.equal((await request(restarted,'/api/status',{headers})).statusCode,401);
+  assert.equal((await request(restarted,'/api/status',{headers:{...headers,'tailscale-user-login':config.phone.owner}})).statusCode,401);
+  config.phone.owner='owner@example.test';
+  await restarted.close();fs.unlinkSync(path.join(stateDir,'phone.key'));const revoked=make();
+  assert.equal((await request(revoked,'/api/status',{headers})).statusCode,401);
+  assert.equal((await request(revoked,'/api/pair',{method:'POST',headers,body:{key}})).statusCode,401);
+});
+
+test('phone pairing and chat reject missing origin, cross-origin posts and direct network bypass',async t=>{
+  const {backend}=fixture(t);
+  const headers={host:'computer.testnet.ts.net:8449','tailscale-user-login':'owner@example.test',origin:'https://computer.testnet.ts.net:8449'};
+  const owner=await desktop(backend);
+  const result=await request(backend,'/api/status',{headers:owner});
+  const key=new URLSearchParams(new URL(result.body.phone.url).hash.slice(1)).get('pair');
+  for(const origin of [undefined,'https://untrusted.example','http://127.0.0.1:18199']) {
+    assert.equal((await request(backend,'/api/pair',{method:'POST',headers:{...headers,origin},body:{key}})).statusCode,403);
+  }
+  assert.equal((await request(backend,'/api/pair',{method:'POST',headers,body:{key},address:'100.100.100.100'})).statusCode,403);
+  const paired=await request(backend,'/api/pair',{method:'POST',headers,body:{key}});
+  headers.cookie=paired.headers['set-cookie'].split(';')[0];
+  const payload={requestId:crypto.randomUUID(),message:'phone test'};
+  assert.equal((await request(backend,'/api/chat',{method:'POST',headers:{...headers,origin:undefined},body:payload})).statusCode,403);
+  const sent=await request(backend,'/api/chat',{method:'POST',headers,body:payload});
+  assert.equal(sent.statusCode,202);await backend.waitForIdle();
+  const answer=await request(backend,'/api/thread/'+sent.body.threadId,{headers});
+  assert.equal(answer.statusCode,200);assert.equal(answer.body.messages.at(-1).state,'done');
 });

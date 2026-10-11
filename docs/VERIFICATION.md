@@ -6,8 +6,8 @@ Black Team project. It is separate from the older machine-specific installation.
 
 ## Automated checks
 
-The production React/Vite build passes. There are 73 passing JavaScript tests
-and 18 passing Python tests in this review. The suites cover:
+The production React/Vite build passes. There are 76 passing JavaScript tests
+and 20 passing Python tests in this review. The suites cover:
 
 - Per-user configuration, header/runtime validation, restricted file permissions,
   owned model process start/stop/authentication, cancellation and failure handling.
@@ -29,25 +29,43 @@ and 18 passing Python tests in this review. The suites cover:
 - Synthetic context experiment policy/response checks. No hosted JEV call is
   required by or made during the normal test suite.
 
-## What has not been verified here
+## Live follow-up — October 10, 2026
 
-This execution environment cannot bind local listening sockets or launch the live
-Electron UI. It exposes no browser for visual/device testing. Network access from
-the terminal cannot reach npm/GitHub. Therefore these remain unverified:
+A fresh GitHub clone completed npm installation and production build. The real
+Electron 44.7.0 app and an isolated packaged installation both launched. The
+archive checksum and all 110 payload hashes matched; installation into a path
+containing spaces succeeded. Installer upgrade/rollback checks also passed.
 
-- Fresh online `npm install`, including the pinned Electron 44.7.0 download.
-  Development build checks used the existing installed React/Vite dependencies.
-- Real portable app rendering, accessibility and narrow-screen layout.
-- Live Ollama/LM Studio discovery and generated responses on a fresh machine.
-- A real GGUF load, CPU/GPU inference and all model/runtime combinations.
-- Actual tool use, approvals/resume, browser and desktop work through the portable
-  Hermes host. It targets the APIs present in Hermes commit
-  `158fd638da1629c8e62caf9ade1515d162def8ab` and may need adaptation for other versions.
-- Physical iPhone and Android pairing, Home Screen cookies, reconnect, approvals,
-  file downloads and Taildrop delivery.
+Desktop controls discovered and connected an existing llama.cpp model server.
+Real local chat succeeded. A custom external harness launched through Black
+Team's provider environment and obtained the expected response from that model.
+This does not establish compatibility with every third-party harness.
 
-The old machine-specific prototype has separate historical live results. Those
-are not evidence that every new portable path works on another computer.
+The real Hermes host created and read workspace files. Cancellation stopped its
+process group in 1.55 seconds, and resuming preserved the saved session and prior
+conversation. A fix shares installed Hermes dependencies instead of reinstalling
+several gigabytes per conversation, while retaining separate conversation state.
+One model turn selected an incorrect nested path and added an unwanted newline;
+model task accuracy remains a limitation.
+
+Desktop phone setup enabled a separate private Tailscale route. A remote Mac
+client verified pairing, reconnect, and rejection of unpaired, wrong-key,
+cross-origin and direct-network access. Automated checks cover cookie persistence
+and revocation. This is remote-client evidence, not physical phone certification.
+
+## Still outstanding
+
+- Fresh-machine and other Linux distribution installation; a public binary release
+  and a simpler download/install experience.
+- Live Ollama/LM Studio and owned GGUF startup; other models and runtime combinations.
+- Physical iPhone/Android Home Screen cookies, background/reconnect behavior,
+  phone-triggered agent approvals and file downloads in this portable build.
+- Real UI approval/denial of a model-requested risky tool, browser/desktop opt-ins,
+  and additional named third-party harnesses.
+- CPU/RAM readings compared against system measurements during sustained work.
+
+The older machine-specific Camp's physical iPhone and image-upload results are
+separate. Its local image customization is not included in this public source.
 
 ## Live release checklist
 

@@ -7,7 +7,27 @@ Hermes modules are modified or monkey-patched.
 import sys
 import os
 sys.path.insert(0, os.environ['BLACK_TEAM_HERMES_SOURCE'])
-import hermes_bootstrap
+# Session profiles isolate history and settings, not the installed dependency
+# store. Resolve Hermes' own store before the profile overrides its home;
+# otherwise newer Hermes creates another Python/tool environment for every chat.
+from pathlib import Path
+profile_home = os.environ.pop('HERMES_HOME', None) or os.environ.get('BLACK_TEAM_HERMES_PROFILE')
+if profile_home:
+    # Hermes may exec a selected interpreter during bootstrap.
+    os.environ['BLACK_TEAM_HERMES_PROFILE'] = profile_home
+try:
+    if not os.environ.get('HERMES_RUNTIME_DIR'):
+        from pm.environments import store_root
+        os.environ['HERMES_RUNTIME_DIR'] = str(store_root(Path(os.environ['BLACK_TEAM_HERMES_SOURCE'])))
+    # Dependency activation also resolves install generations from the home.
+    # Bootstrap against the installed home, then restore the isolated session.
+    import hermes_bootstrap
+finally:
+    if profile_home is not None:
+        os.environ['HERMES_HOME'] = profile_home
+# Bootstrap exports scratch paths; rederive them for the restored conversation.
+if callable(getattr(hermes_bootstrap, 'export_scratch_tmp_env', None)):
+    hermes_bootstrap.export_scratch_tmp_env()
 import argparse
 import os
 import atexit

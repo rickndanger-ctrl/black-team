@@ -43,3 +43,22 @@ test('agent cancellation stops only its owned process group and clears approvals
  const running=host.run({thread,assistant:thread.messages[1],config:{workspace:dir,model:{source:'server',endpoint:'http://127.0.0.1:1234/v1',id:'test',context:4096}},runtime:{requestHeaders:()=>({})},endpoint:'http://127.0.0.1:1234/v1',job,signal:controller.signal,save:()=>{}});
  controller.abort();await assert.rejects(running,/Agent stopped/);assert.deepEqual(signals,[[-9999,'SIGINT']]);assert.equal(job._approve,undefined);
 });
+test('first agent use creates only the default workspace and rejects arbitrary missing directories', t=>{
+ const {dir}=fixture(t);
+ const {execFileSync}=require('node:child_process');
+ const modulePath=path.resolve(__dirname,'../lib/config.cjs');
+ const output=execFileSync(process.execPath,['-e',`
+   const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+   const {ensureWorkspace}=require(${JSON.stringify(modulePath)});
+   const defaultWorkspace=path.join(os.homedir(),'Black Team');
+   assert.equal(fs.existsSync(defaultWorkspace),false);
+   ensureWorkspace(defaultWorkspace);
+   assert.equal(fs.statSync(defaultWorkspace).isDirectory(),true);
+   assert.equal(fs.statSync(defaultWorkspace).mode&0o777,0o700);
+   const custom=path.join(os.homedir(),'arbitrary-missing');
+   assert.throws(()=>ensureWorkspace(custom),/existing/);
+   assert.equal(fs.existsSync(custom),false);
+   process.stdout.write('passed');
+ `],{env:{...process.env,HOME:dir},encoding:'utf8'});
+ assert.equal(output,'passed');
+});

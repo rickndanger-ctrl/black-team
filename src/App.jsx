@@ -27,7 +27,13 @@ async function api(path, options = {}) {
   return response.json();
 }
 const post = (path, value) => api(path, {method: 'POST', body: JSON.stringify(value)});
-const native = (action, data = {}) => window.blackTeam.request(action, data);
+const native = async (action, data = {}) => {
+  try {return await window.blackTeam.request(action, data);}
+  catch (cause) {
+    const message=String(cause?.message || 'The desktop action could not finish.').replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '');
+    throw new Error(message);
+  }
+};
 
 // One initialization promise survives React's development effect replay. The
 // pairing secret is consumed from the URL and never written to browser storage.
@@ -53,7 +59,7 @@ function initializeCompanion() {
 
 function StatusPill({status, connection}) {
   const ready = connection === 'online' && status?.runtime?.ready;
-  const label = connection !== 'online' ? (connection === 'connecting' ? 'Connecting' : 'Connection lost') : status?.runtime?.state === 'starting' ? 'Starting model' : status?.runtime?.busy ? 'Model responding' : ready ? 'Model ready' : 'Model stopped';
+  const label = connection !== 'online' ? (connection === 'connecting' ? 'Connecting' : 'Connection lost') : status?.runtime?.state === 'starting' ? (status?.config?.model?.source === 'server' ? 'Connecting model' : 'Starting model') : status?.runtime?.busy ? 'Model responding' : ready ? 'Model ready' : 'Model stopped';
   return <span className={`online status-pill${ready ? ' is-ready' : ''}`} role="status"><i className={ready ? 'live-dot' : 'idle-dot'}/>{label}</span>;
 }
 
@@ -123,13 +129,13 @@ function Workspace({status, busy, onAction, onChat, onSettings, onSave}) {
       <div><Icon name="folder"/><div><span>DISK AVAILABLE</span><strong>{byteSize(hardware.disk?.free)}</strong></div></div>
     </section>
     {!status.setupComplete ? <SetupForm status={status} busy={busy} onSave={onSave}/> : <section className="local-model-panel">
-      <div className="model-identity"><AgentAvatar large active={status.runtime?.busy}/><div><span className="eyebrow">YOUR LOCAL MODEL</span><h2>{status.config?.model?.name || 'Local model'}</h2><p>{status.runtime?.ready ? 'Ready on this computer. Open a conversation to begin.' : status.runtime?.state === 'starting' ? 'Loading the model into memory. This can take a moment.' : 'Start your model when you need it. Your conversations stay here.'}</p></div></div>
+      <div className="model-identity"><AgentAvatar large active={status.runtime?.busy}/><div><span className="eyebrow">YOUR LOCAL MODEL</span><h2>{status.config?.model?.name || 'Local model'}</h2><p>{status.runtime?.ready ? 'Ready on this computer. Open a conversation to begin.' : status.runtime?.state === 'starting' ? (status.config?.model?.source === 'server' ? 'Connecting to your local server. The server manages model loading.' : 'Loading the model into memory. This can take a moment.') : 'Start your model when you need it. Your conversations stay here.'}</p></div></div>
       <div className="model-facts"><div><span>Model</span><strong>{status.config?.model?.source === 'server' ? status.config.model.id : basename(status.config?.model?.file)}</strong></div><div><span>Processing</span><strong>{status.config?.model?.source === 'server' ? 'Local server' : status.config?.model?.gpuLayers ? `${status.config.model.gpuLayers} GPU layers` : 'CPU'}</strong></div><div><span>Context window</span><strong>{Number(status.config?.model?.context || 4096).toLocaleString()} tokens</strong></div></div>
-      <div className="button-row">{running ? <button className="secondary" disabled={busy || status.runtime?.busy} onClick={() => onAction('runtime-stop', {}, 'Model stopped.')}><Icon name="power" size={16}/>{status.config?.model?.source === 'server' ? 'Disconnect model' : 'Stop model'}</button> : <button className="primary" disabled={busy} onClick={() => onAction('runtime-start', {}, 'Starting your local model.')}><Icon name="power" size={16}/>{status.config?.model?.source === 'server' ? 'Connect model' : 'Start model'}</button>}<button className={running ? 'primary' : 'secondary'} disabled={!status.runtime?.ready || busy} onClick={onChat}><Icon name="chat" size={16}/>Open chat</button><button className="text-button" onClick={onSettings}>Model settings <Icon name="arrow" size={15}/></button></div>
+      <div className="button-row">{running ? <button className="secondary" disabled={busy || status.runtime?.busy} onClick={() => onAction('runtime-stop', {}, 'Model stopped.')}><Icon name="power" size={16}/>{status.config?.model?.source === 'server' ? 'Disconnect model' : 'Stop model'}</button> : <button className="primary" disabled={busy} onClick={() => onAction('runtime-start', {}, status.config?.model?.source === 'server' ? 'Connecting to your local server.' : 'Starting your local model.')}><Icon name="power" size={16}/>{status.config?.model?.source === 'server' ? 'Connect model' : 'Start model'}</button>}<button className={running ? 'primary' : 'secondary'} disabled={!status.runtime?.ready || busy} onClick={onChat}><Icon name="chat" size={16}/>Open chat</button><button className="text-button" onClick={onSettings}>Model settings <Icon name="arrow" size={15}/></button></div>
       {status.runtime?.busy && <p className="inline-note">A response is running. Open Conversations to stop the response before stopping the model.</p>}
     </section>}
     {hardware.warnings?.length > 0 && <section className="inline-note"><strong>Hardware notes</strong><ul>{hardware.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></section>}
-    {status.runtime?.error && <div className="notice error" role="alert"><div><strong>The model could not start.</strong><p>{typeof status.runtime.error === 'string' ? status.runtime.error : 'Check that the model and runtime match this computer, then review your memory and performance settings.'}</p></div></div>}
+    {status.runtime?.error && <div className="notice error" role="alert"><div><strong>{status.config?.model?.source === 'server' ? 'The local server could not connect.' : 'The model could not start.'}</strong><p>{typeof status.runtime.error === 'string' ? status.runtime.error : 'Check that the model and runtime match this computer, then review your memory and performance settings.'}</p></div></div>}
     <section className="local-model-panel"><span className="eyebrow">HARNESS LAUNCHER</span><h2>Choose how you work</h2><p>Black Team Chat and Agent work are built in. Launch other installed harnesses with your selected local model and workspace.</p><div className="button-row">{(status.integrations?.harnesses||[]).map(h=><button key={h.id} className="secondary" disabled={busy||status.runtime?.busy||!status.setupComplete} onClick={()=>onAction('harness-launch',{id:h.id},`${h.name} launched.`)}>{h.name}</button>)}<button className="text-button" onClick={onSettings}>Configure harnesses</button></div><small>Keep Black Team open while an external harness uses an app-owned GGUF runtime. Stop its tasks before stopping or changing the model.</small></section>
     <div className="principle-grid"><section><span className="step-number">01 / YOUR COMPUTER</span><h3>Local by default</h3><p>Conversation history lives on your machine. No Black Team account needed. Use a local model in your server to keep inference here.</p></section><section><span className="step-number">02 / YOUR CHOICE</span><h3>Bring your model</h3><p>Load a GGUF model or connect your existing local model server.</p></section><section><span className="step-number">03 / OPTIONAL COMPANION</span><h3>Continue from your phone</h3><p>Set up private network access when you need it. Your computer remains the host.</p></section></div>
   </>;
@@ -157,7 +163,7 @@ function PhoneSettings({status, busy, onAction}) {
   };
   return <section className="setup-form phone-setup">
     <div className="panel-heading"><div><span className="eyebrow">OPTIONAL / PRIVATE ACCESS</span><h2>Your computer. Your Companion.</h2></div><AgentAvatar/></div>
-    <p className="section-intro">Use Black Team Companion in a browser on your phone or Android phone, then add it to your Home Screen. Models and agent tools run on this computer, which must be awake and connected. A paired phone can use the Agent tools you enable in Settings.</p>
+    <p className="section-intro">Use Black Team Companion in Safari on your iPhone or Chrome on your Android phone, then add it to your Home Screen. Models and agent tools run on this computer, which must be awake and connected. A paired phone can use the Agent tools you enable in Settings.</p>
     <ol className="setup-steps"><li>Install Tailscale on this computer and your phone, then sign in to your private network.</li><li>Detect the computer’s private address and save the account allowed to use Companion.</li><li>Enable private access here, open the pairing link on your phone, and add it to your Home Screen using Safari’s Share menu or Chrome’s menu.</li></ol>
     <div className="button-row"><button className="secondary" disabled={busy} onClick={detect}><Icon name="refresh" size={16}/>Detect Tailscale</button>{detection && <p className="detection-state" role="status">{!detection.installed ? 'Tailscale is not installed on this computer.' : !detection.online ? 'Tailscale is installed. Sign in and connect before continuing.' : 'Private network detected. Review the details below.'}</p>}</div>
     <form onSubmit={event => {event.preventDefault(); setCommand(''); onAction('phone-save', phone, 'Companion settings saved. Enable private access to connect your phone.');}}>
@@ -200,7 +206,7 @@ function Chat({status, thread, threadId, connection, onSend, onCancel, onApprova
   };
   return <div className="chat-layout">
     <div className="chat-controls"><label htmlFor="work-kind" className="eyebrow">HARNESS</label><select id="work-kind" value={kind} disabled={Boolean(threadId)||sending||activeJob||Boolean(pendingRequest)} onChange={event=>setKind(event.target.value)}><option value="chat">Black Team Chat</option><option value="agent" disabled={!status.agentEnabled}>Black Team Agent · Hermes tools</option></select><label htmlFor="response-mode" className="eyebrow">RESPONSE LENGTH</label><select id="response-mode" value={mode} onChange={event => setMode(event.target.value)} disabled={kind==='agent' || sending || activeJob || Boolean(pendingRequest)}><option value="fast">Short</option><option value="balanced">Standard</option><option value="deep">Long</option><option value="extended">Extended</option></select><small>{modelName} · Runs on {desktop ? 'this' : 'your'} computer</small><p className="mode-help">{kind==='agent'?'Agent work uses Hermes tools, a 48-step budget and local context compaction.':'Sets the reply length limit. Speed and reasoning depend on your model.'}</p></div>
-    {!status.setupComplete ? <div className="notice"><p>Complete model setup in the Black Team desktop app to begin.</p></div> : !status.runtime?.ready && <div className="notice"><p>{status.runtime?.state === 'starting' ? 'Your model is starting. The chat will be ready when it finishes loading.' : 'Send a message to start or connect your configured local model.'}</p></div>}
+    {!status.setupComplete ? <div className="notice"><p>Complete model setup in the Black Team desktop app to begin.</p></div> : !status.runtime?.ready && <div className="notice"><p>{status.runtime?.state === 'starting' ? (status.config?.model?.source === 'server' ? 'Connecting to your local server. Chat will be ready when the connection finishes.' : 'Your model is starting. The chat will be ready when it finishes loading.') : 'Send a message to start or connect your configured local model.'}</p></div>}
     <div className="conversation" role="log" aria-label="Conversation" aria-live="off">
       {!thread?.messages?.length ? <div className="chat-empty"><AgentAvatar large active={Boolean(activity?.glowing)}/><span className="eyebrow">BLACK TEAM {desktop ? 'LOCAL' : 'COMPANION'}</span><h2>A space to think freely.</h2><p>Start a conversation with your local model.<br/>History is saved on your computer.</p></div> : thread.messages.map((item, index) => <article className={`message ${item.role === 'user' ? 'user' : 'assistant'}`} key={item.id || index}><div className="message-heading">{item.role !== 'user' && <AgentAvatar active={Boolean(activity?.glowing && (!activity.messageId ? index === thread.messages.length - 1 : activity.messageId === item.id))}/>}<span>{item.role === 'user' ? 'YOU' : modelName}</span>{activity?.messageId === item.id && <small className="response-label">{activity.label}</small>}</div>{item.thinking && <details className="thinking-content"><summary>Reasoning</summary><div>{item.thinking}</div></details>}<div className="message-body">{item.content || (item.state === 'writing' ? '…' : '')}</div>{item.role === 'assistant' && <ContextReport report={item.context}/>} {item.events?.length>0&&<details className="context-inspector"><summary>Agent tool activity ({item.events.length})</summary>{item.events.map((e,i)=><div key={i}><strong>{e.name}</strong><pre>{e.output}</pre></div>)}</details>}{item.artifacts?.map(a=><p key={a.id}><a href={`/api/file/${a.id}`} download={a.name}>{a.name} · Download</a></p>)} {item.state === 'interrupted' && <p className="message-note">Response stopped. Any text already received is saved here.</p>}{item.role === 'assistant' && item.finishReason === 'length' && <p className="message-note">This reply reached its length limit. Ask the model to continue, or choose a longer reply length for your next message.</p>}{item.state === 'error' && <p className="message-note">{typeof item.error === 'string' ? item.error : 'The response was interrupted. Try again when your model is ready.'}</p>}</article>)}
       {activity && !activity.messageId && <div className="response-status" role="status"><AgentAvatar active={activity.glowing}/><span>{activity.label}…</span></div>}
@@ -218,6 +224,7 @@ function Chat({status, thread, threadId, connection, onSend, onCancel, onApprova
 export default function App() {
   const [status, setStatus] = useState(null);
   const [connection, setConnection] = useState('connecting');
+  const [pairingRequired, setPairingRequired] = useState(false);
   const [page, setPage] = useState(desktop ? 'workspace' : 'conversations');
   const [threadId, setThreadId] = useState(null);
   const [thread, setThread] = useState(null);
@@ -239,14 +246,14 @@ export default function App() {
       await initializeCompanion();
       const next = desktop ? await native('status') : await api('/api/status');
       if (!mounted.current || networkUnavailable.current) return;
-      setStatus(next); setConnection('online');
+      setStatus(next); setConnection('online'); setPairingRequired(false);
       if (selectedThread.current) {
         const id = selectedThread.current;
         const nextThread = await api(`/api/thread/${encodeURIComponent(id)}`);
         if (mounted.current && !networkUnavailable.current && selectedThread.current === id) setThread(nextThread);
       }
     } catch (cause) {
-      if (mounted.current) {setConnection('offline'); if (cause.status === 403 || cause.status === 401) setError(cause.message);}
+      if (mounted.current) {setConnection('offline'); setPairingRequired(!desktop && [401, 403].includes(cause.status)); if (cause.status === 403 || cause.status === 401) setError(cause.message);}
     } finally {pollInFlight.current = false;}
   }, []);
   useEffect(() => {
@@ -301,7 +308,7 @@ export default function App() {
   const cancel = async () => {setSending(true); setError(''); try {await post('/api/cancel', {}); await refresh();} catch (cause) {setError(cause.message);} finally {setSending(false);}};
   const approval=async choice=>{setSending(true);setError('');try{await post('/api/approval',{id:status.job.approval.id,digest:status.job.approval.digest,choice});await refresh();}catch(cause){setError(cause.message);}finally{setSending(false);}};
   const navigate = next => {setPage(next); setMobileNav(false); setError(''); setNotice('');};
-  if (!status) return <div className="cabinet boot setup-boot"><div className="boot-brand"><Brand caption={desktop ? 'PRIVATE AI. TOTAL CONTROL.' : 'PRIVATE COMPANION'}/></div>{connection === 'connecting' ? <><span className="spinner"/><h1>Opening your workspace</h1><p>Connecting to Black Team on your computer.</p></> : <><h1>Your computer is out of reach.</h1><p>{error || (desktop ? 'Black Team could not connect to its local service. Reopen the app or try again.' : 'Keep your computer awake, connect your phone to Tailscale, and open the private Companion address from the desktop app.')}</p><button className="primary" onClick={() => {setConnection('connecting'); refresh();}}>Try again</button></>}</div>;
+  if (!status) return <div className="cabinet boot setup-boot"><div className="boot-brand"><Brand caption={desktop ? 'PRIVATE AI. TOTAL CONTROL.' : 'PRIVATE COMPANION'}/></div>{connection === 'connecting' ? <><span className="spinner"/><h1>Opening your workspace</h1><p>Connecting to Black Team on your computer.</p></> : <><h1>{pairingRequired ? 'Pair this phone with Black Team.' : 'Your computer is out of reach.'}</h1><p>{error || (desktop ? 'Black Team could not connect to its local service. Reopen the app or try again.' : 'Keep your computer awake, connect your phone to Tailscale, and open the private Companion address from the desktop app.')}</p><button className="primary" onClick={() => {setConnection('connecting'); refresh();}}>Try again</button></>}</div>;
   const titles = {workspace: ['YOUR LOCAL AI', 'Your local AI command center.', 'Models, harnesses, tools and performance. On your computer.'], conversations: [desktop ? 'LOCAL CONVERSATIONS' : 'BLACK TEAM COMPANION', thread?.title || 'Your private conversation.', 'A direct connection to the model on your computer.'], phone: ['BLACK TEAM COMPANION', 'Take the conversation with you.', 'Private access to your local models and agent work.'], settings: ['LOCAL CONFIGURATION', 'Built around your machine.', 'You choose the model, workspace, and processing settings.']};
   const [eyebrow, title, description] = titles[page] || titles.conversations;
   return <div className={`cabinet cabinet-companion black-team-app${desktop ? ' desktop-app' : ' phone-app'}`}>
