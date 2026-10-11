@@ -1,19 +1,18 @@
-/* Shared Black Team artwork. The source PNG is preserved exactly as supplied. */
-:root { background: #0c0f13; color: #e9edf2; }
-.cabinet .black-team-brand {
+/* Black Team artwork. The supplied PNG is shown unchanged on its own black card in every theme. */
+.black-team-brand {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  margin: 0 0 42px;
+  margin: 0;
   padding: 15px 8px 17px;
-  background: #000;
-  border: 1px solid #252a32;
-  border-radius: 5px;
+  background: var(--brand-bg);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
   line-height: 1;
 }
-.cabinet .brand-lockup { position: relative; width: 100%; aspect-ratio: 1800 / 300; overflow: hidden; }
-.cabinet .brand-lockup img {
+.brand-lockup { position: relative; width: 100%; aspect-ratio: 1800 / 300; overflow: hidden; }
+.brand-lockup img {
   position: absolute;
   display: block;
   max-width: none;
@@ -22,20 +21,14 @@
   left: -7.222%;
   top: -62%;
 }
-.cabinet .black-team-brand .brand-caption {
+.brand-caption {
   display: block;
-  font-size: 7px;
-  font-weight: 500;
-  letter-spacing: 1.6px;
-  color: #b3b9c3;
   margin: 0;
+  font: 500 7px var(--font-mono);
+  letter-spacing: 1.6px;
+  color: var(--brand-caption);
   white-space: nowrap;
 }
-.cabinet .chat-empty .empty-mark { display: block; width: 56px; height: 56px; margin: 0 auto 20px; border-radius: 50%; }
-.cabinet .boot-brand { width: 270px; margin: 0 auto 12px; }
-@media(max-width:1050px) and (min-width:761px) {
-  .cabinet .black-team-brand .brand-caption { font-size: 6px; letter-spacing: 1.2px; }
-}
-@media(max-width:760px) {
-  .cabinet .companion-nav .black-team-brand { width: 230px; max-width: 100%; align-self: center; margin: 0 auto 6px; }
+@media (max-width: 1100px) and (min-width: 761px) {
+  .brand-caption { font-size: 6px; letter-spacing: 1.2px; }
 }

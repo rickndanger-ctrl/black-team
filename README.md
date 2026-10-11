@@ -232,6 +232,9 @@ limits](docs/JEV.md) before explicitly running a hosted experiment.
 Our product guideline is to detect what is installed, show the shortest useful
 path, and keep advanced controls optional. See [Make the next step easy](docs/PRODUCT-PRINCIPLES.md).
 
+Appearance is chosen at the bottom of the sidebar: **Covert** (default), **Light**,
+or **Ghost**. The choice is remembered on each device and never sent anywhere.
+
 Data defaults to `~/.local/share/black-team-data`, or
 `$XDG_DATA_HOME/black-team-data` when that variable is an absolute path. Settings
 has an **Open data folder** button. Quit before backing it up. Backups include

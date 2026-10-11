@@ -1,0 +1,118 @@
+/* Black Team themes. Every color in the app comes from these tokens.
+   Switch with data-theme="covert" | "light" | "ghost" on <html>. */
+
+:root {
+  --font-body: 'Black Team Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Black Team Mono', 'SFMono-Regular', Consolas, monospace;
+  --font-display: var(--font-body);
+  --radius: 6px;
+  --radius-lg: 10px;
+  --control: 38px;
+
+  /* Covert: matte black, a soft haze of light, silver controls. */
+  color-scheme: dark;
+  --bg: #07090c;
+  --haze:
+    radial-gradient(1400px 800px at 18% -6%, #434c5a 0%, #434c5a00 58%),
+    radial-gradient(1800px 700px at 50% 0%, #1b212a 0%, #1b212a00 70%),
+    radial-gradient(900px 600px at 105% 72%, #182028 0%, #18202800 62%),
+    repeating-linear-gradient(115deg, #ffffff03 0 1px, transparent 1px 5px),
+    linear-gradient(165deg, #0b0e12 0%, #07090c 55%, #040506 100%);
+  --edge: #ffffff08;
+  --sidebar: #090b0f;
+  --surface: #10141a;
+  --surface-2: #161b22;
+  --field: #0a0d11;
+  --ink: #e9edf2;
+  --ink-2: #c2c9d2;
+  --muted: #8b95a2;
+  --faint: #626c78;
+  --line: #232931;
+  --line-2: #353d48;
+  --accent: #d8dee6;
+  --accent-2: #f2f5f8;
+  --on-accent: #0b0e12;
+  --ring: #d8dee628;
+  --btn-primary-bg: var(--accent);
+  --btn-primary-ink: var(--on-accent);
+  --btn-primary-line: var(--accent);
+  --btn-primary-hover: var(--accent-2);
+  --ok: #a3c7b2; --ok-bg: #111f19; --ok-line: #2a4236;
+  --warn: #d9c18d; --warn-bg: #211d14; --warn-line: #51442a;
+  --bad: #e5a8a8; --bad-bg: #281a1d; --bad-line: #5c353b;
+  --shadow: 0 10px 30px #00000045, 0 1px 2px #00000030;
+  --shadow-lg: 0 24px 70px #00000070;
+  --brand-bg: #000;
+  --brand-caption: #b3b9c3;
+}
+
+:root[data-theme="light"] {
+  /* Light: cool paper, white cards, graphite controls. The haze stays, in white. */
+  color-scheme: light;
+  --bg: #eef0f3;
+  --haze:
+    radial-gradient(1100px 650px at 10% -10%, #ffffff 0%, #ffffff00 60%),
+    radial-gradient(900px 600px at 100% 80%, #dbe0e6 0%, #dbe0e600 60%),
+    linear-gradient(165deg, #f4f5f7 0%, #edeff2 60%, #e7eaee 100%);
+  --sidebar: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #f3f5f7;
+  --field: #f7f8fa;
+  --ink: #14171c;
+  --ink-2: #363c45;
+  --muted: #646d78;
+  --faint: #8a929d;
+  --line: #dfe3e8;
+  --line-2: #c5ccd4;
+  --accent: #1a1e24;
+  --accent-2: #2c323b;
+  --on-accent: #f5f7fa;
+  --ring: #1a1e2422;
+  --ok: #2f6b4a; --ok-bg: #e9f3ed; --ok-line: #bcd8c7;
+  --warn: #7a5a14; --warn-bg: #f9f2dd; --warn-line: #e4d3a4;
+  --bad: #9a3843; --bad-bg: #f9e9eb; --bad-line: #e5bfc4;
+  --shadow: 0 8px 24px #1a1e2412, 0 1px 2px #1a1e240f;
+  --shadow-lg: 0 24px 60px #1a1e2428;
+  --edge: #ffffff;
+}
+
+:root[data-theme="ghost"] {
+  /* Ghost: lights off. Pure black, hairline outlines, no haze, no fill. */
+  color-scheme: dark;
+  --bg: #000;
+  --haze: radial-gradient(900px 500px at 15% -10%, #0c0e11 0%, #00000000 60%);
+  --sidebar: #000;
+  --surface: #000;
+  --surface-2: #0b0c0e;
+  --field: #000;
+  --ink: #d6d9dd;
+  --ink-2: #a4a9b0;
+  --muted: #6e737b;
+  --faint: #4e535a;
+  --line: #1c1f23;
+  --line-2: #30343a;
+  --accent: #e4e7eb;
+  --accent-2: #ffffff;
+  --on-accent: #000;
+  --ring: #e4e7eb22;
+  --btn-primary-bg: transparent;
+  --btn-primary-ink: var(--accent);
+  --btn-primary-line: #8e949c;
+  --btn-primary-hover: #ffffff12;
+  --ok: #8fb8a0; --ok-bg: transparent; --ok-line: #2b4637;
+  --warn: #c9b27f; --warn-bg: transparent; --warn-line: #4a4027;
+  --bad: #d49a9a; --bad-bg: transparent; --bad-line: #55343a;
+  --shadow: none;
+  --shadow-lg: 0 0 0 1px var(--line-2);
+  --edge: transparent;
+}
+
+:root {
+  background: var(--bg);
+  background-image: var(--haze);
+  background-attachment: fixed;
+  color: var(--ink);
+}
+@media (max-width: 760px), (prefers-reduced-motion: reduce) {
+  :root { background-attachment: scroll; }
+}
