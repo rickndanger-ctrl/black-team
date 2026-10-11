@@ -21,15 +21,16 @@ test('discovery accepts saved custom installations and preserves venv symlink pa
  assert.deepEqual(discoverInstalled({home,env:{PATH:''},saved}).hermes,[saved]);
 });
 test('missing/incomplete installs and relative PATH entries are not treated as connections',t=>{
- const home=fixture(t);const {presets,...none}=discoverInstalled({home,env:{PATH:'.:relative'}});assert.deepEqual(none,{hermes:[],apps:[],terminals:[],runtime:'',dictation:''});assert.deepEqual(presets.map(p=>p.command),['claude','codex','pi','opencode','dsh','aider']);
+ const home=fixture(t);const {presets,...none}=discoverInstalled({home,env:{PATH:'.:relative'}});assert.deepEqual(none,{hermes:[],apps:[],terminals:[],runtime:'',dictation:'',graph:''});assert.deepEqual(presets.map(p=>p.command),['claude','codex','pi','opencode','dsh','aider']);
  const expected=hermes(home);fs.unlinkSync(path.join(expected.source,'hermes_bootstrap.py'));assert.equal(inspectHermes(expected.source),null);assert.equal(inspectHermes('relative'),null);
 });
 
 test('known harnesses on the path are found and marked as ready to connect',t=>{
  const home=fixture(t);const bin=path.join(home,'bin');fs.mkdirSync(bin,{recursive:true});
- for(const name of ['claude','dsh','hermes','ghostty'])fs.writeFileSync(path.join(bin,name),'#!/bin/sh\n',{mode:0o755});
+ for(const name of ['claude','dsh','hermes','ghostty','graphify'])fs.writeFileSync(path.join(bin,name),'#!/bin/sh\n',{mode:0o755});
  fs.writeFileSync(path.join(bin,'codex'),'not executable',{mode:0o644});
  const found=discoverInstalled({home,env:{PATH:bin}});
  assert.deepEqual(found.apps.map(app=>[app.id,app.name,app.preset]),[['claude','Claude Code',true],['dsh','DeepSeek Harness',true],['hermes','Hermes Terminal',false]]);
  assert.deepEqual(found.terminals.map(item=>item.name),['Ghostty']);
+ assert.equal(found.graph,path.join(bin,'graphify'));
 });

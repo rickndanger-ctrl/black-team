@@ -41,6 +41,9 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   model's reading and writing speed, budgets its context from that, and trims
   without spending a model call. A gauge shows the speeds and how full the
   budget is.
+- **A map of your code.** With [graphify](https://pypi.org/project/graphifyy/)
+  installed, Code asks a graph of the project where things live before it reads,
+  so a local model reads far less. See [Black Team Code](docs/CODE.md).
 - **Every change shown, with Undo.** Edits appear as diffs in the conversation.
   Commands that delete, install or reach the network wait for your approval.
 - **Memory that stays local.** The [Black Team vault](docs/MEMORY.md) is a small

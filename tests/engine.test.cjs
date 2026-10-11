@@ -275,3 +275,40 @@ test('search never returns lines from credential files or private data, and a st
   for(const command of ['cat ~/.local/share/black*/phone.key','cat /home/x/.config/app/config.json','ls .ssh'])assert.ok(RISKY.test(command),command);
   for(const command of ['cat .gitignore','ls .github','./run.sh','python3 a.py'])assert.ok(!RISKY.test(command),command);
 });
+
+test('the map tool builds a code map outside the project and asks it, within the result budget', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-map-')); t.after(() => fs.rmSync(dir, {recursive: true, force: true}));
+  const workspace = path.join(dir, 'work'), artifacts = path.join(dir, 'artifacts'), undoDir = path.join(dir, 'undo'), graphDir = path.join(dir, 'graphs');
+  fs.mkdirSync(workspace); fs.mkdirSync(artifacts); fs.writeFileSync(path.join(workspace, 'a.py'), 'def f():\n    pass\n');
+  // A stand-in graphify: records its arguments, writes a graph for extract, answers for query.
+  const log = path.join(dir, 'calls.log'), fake = path.join(dir, 'graphify');
+  fs.writeFileSync(fake, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(log)}\nif [ "$1" = extract ]; then out=""; while [ $# -gt 0 ]; do [ "$1" = --out ] && out=$2; shift; done; mkdir -p "$out/graphify-out"; echo '{"nodes":[]}' > "$out/graphify-out/graph.json"; echo "[graphify extract] wrote"; exit 0; fi\nif [ "$1" = query ]; then [ -f "$4" ] || { echo "error: graph file not found: $4"; exit 0; }; echo "Graph: $4 (1 nodes)"; echo "NODE f() [src=a.py loc=L1 community=a.py]"; seq 1 400 | sed 's/^/NODE pad/'; exit 0; fi\nexit 1\n`, {mode: 0o755});
+  const without = createTools({workspace, artifacts, undoDir, useRtk: false});
+  assert.equal(without.schemas.some(schema => schema.function.name === 'map'), false);
+  assert.match((await without.call('map', {question: 'x'})).output, /No code map tool/);
+  const tools = createTools({workspace, artifacts, undoDir, useRtk: false, limit: () => 3000, graph: fake, graphDir});
+  assert.equal(tools.schemas.some(schema => schema.function.name === 'map'), true);
+  const first = await tools.call('map', {question: 'where is f defined'});
+  assert.match(first.output, /^Map built\. Graph: .*NODE f\(\) \[src=a\.py loc=L1/s);
+  assert.ok(first.output.length <= 3100 && /characters left out/.test(first.output), 'the answer is clipped to the result budget');
+  assert.equal(first.log, 'map: where is f defined');
+  const calls = () => fs.readFileSync(log, 'utf8').trim().split('\n');
+  assert.match(calls()[0], new RegExp(`^extract ${workspace.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')} --code-only --out ${path.join(graphDir, '[a-f0-9]{16}')}$`));
+  assert.match(calls()[1], /^query where is f defined --graph .*graph\.json --budget 685$/);
+  assert.equal(fs.existsSync(path.join(workspace, 'graphify-out')), false, 'nothing is written into the project');
+  // A fresh map is reused; an edit in this conversation makes the next question rebuild it.
+  const second = await tools.call('map', {question: 'again'});
+  assert.equal(second.output.startsWith('Graph:'), true);
+  assert.equal(calls().length, 3);
+  await tools.call('edit', {path: 'a.py', old: 'pass', new: 'return 1'});
+  await tools.call('map', {question: 'after edit'});
+  assert.equal(calls().filter(line => line.startsWith('extract')).length, 2);
+  await tools.call('map', {question: 'forced', refresh: true});
+  assert.equal(calls().filter(line => line.startsWith('extract')).length, 3);
+  // A map that cannot answer is an error the model can read, not a crash.
+  fs.rmSync(path.join(graphDir), {recursive: true, force: true});
+  fs.writeFileSync(fake, '#!/bin/sh\nif [ "$1" = extract ]; then echo "boom: unsupported"; exit 1; fi\n', {mode: 0o755});
+  const failed = await tools.call('map', {question: 'x', refresh: true});
+  assert.equal(failed.error, true);
+  assert.match(failed.output, /could not be built: boom: unsupported/);
+});
