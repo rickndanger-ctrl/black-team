@@ -44,6 +44,9 @@
   --shadow-lg: 0 24px 70px #00000070;
   --brand-bg: #000;
   --brand-caption: #b3b9c3;
+  --mist-1: #8a94a366;
+  --mist-2: #5c667455;
+  --mist-3: #2b313a99;
 }
 
 :root[data-theme="light"] {
@@ -74,6 +77,10 @@
   --shadow: 0 8px 24px #1a1e2412, 0 1px 2px #1a1e240f;
   --shadow-lg: 0 24px 60px #1a1e2428;
   --edge: #ffffff;
+  --brand-caption: #5a6370;
+  --mist-1: #3a414c55;
+  --mist-2: #5a626e44;
+  --mist-3: #15181d66;
 }
 
 :root[data-theme="ghost"] {
@@ -105,6 +112,9 @@
   --shadow: none;
   --shadow-lg: 0 0 0 1px var(--line-2);
   --edge: transparent;
+  --mist-1: #3a3f4733;
+  --mist-2: #2a2e3433;
+  --mist-3: #00000000;
 }
 
 :root {

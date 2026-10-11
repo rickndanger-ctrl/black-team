@@ -21,6 +21,6 @@ test('discovery accepts saved custom installations and preserves venv symlink pa
  assert.deepEqual(discoverInstalled({home,env:{PATH:''},saved}).hermes,[saved]);
 });
 test('missing/incomplete installs and relative PATH entries are not treated as connections',t=>{
- const home=fixture(t);assert.deepEqual(discoverInstalled({home,env:{PATH:'.:relative'}}),{hermes:[],apps:[],terminals:[],runtime:''});
+ const home=fixture(t);assert.deepEqual(discoverInstalled({home,env:{PATH:'.:relative'}}),{hermes:[],apps:[],terminals:[],runtime:'',dictation:''});
  const expected=hermes(home);fs.unlinkSync(path.join(expected.source,'hermes_bootstrap.py'));assert.equal(inspectHermes(expected.source),null);assert.equal(inspectHermes('relative'),null);
 });

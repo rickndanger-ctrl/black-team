@@ -139,7 +139,8 @@ def build(project, runtime_zip, out):
         (distribution / 'install.sh').chmod(0o755)
         copy_tree(project / 'docs/DISTRIBUTION.md', distribution / 'DISTRIBUTION.md')
         for name in ('README.md', 'docs/DISTRIBUTION.md', 'docs/PHONE.md', 'docs/PRIVACY.md',
-                     'docs/VERIFICATION.md', 'docs/CONTEXT-RESEARCH.md', 'docs/HARNESSES.md', 'docs/MODELS.md', 'docs/JEV.md'):
+                     'docs/VERIFICATION.md', 'docs/CONTEXT-RESEARCH.md', 'docs/HARNESSES.md', 'docs/MODELS.md', 'docs/JEV.md',
+                     'docs/CODE.md', 'docs/MEMORY.md'):
             if (project / name).is_file():
                 copy_tree(project / name, distribution / name)
         artifact = out / f'{stem}.tar.gz'

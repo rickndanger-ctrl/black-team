@@ -27,7 +27,10 @@ else {
     const agentRunner=createAgent({stateDir,integrations});
     runtime=new ModelRuntime({configStore});
     const phone=new PhoneManager({configStore});
-    backend=createBackend({stateDir,distDir:path.join(__dirname,'dist'),configStore,runtime,phone,integrations,agentRunner,version:app.getVersion()});
+    // Dictation uses a system tool when one is installed (Voxtype is found automatically); a saved choice wins.
+    let foundDictation=null;
+    const dictation=()=>integrations.read().dictation||(foundDictation===null?(foundDictation=discoverInstalled().dictation||''):foundDictation);
+    backend=createBackend({stateDir,distDir:path.join(__dirname,'dist'),configStore,runtime,phone,integrations,agentRunner,dictation,version:app.getVersion()});
     try{await backend.listen();}catch(error){throw new Error(error.code==='EADDRINUSE'?'Black Team’s local port 18199 is already in use. Close the other copy or free this port, then reopen Black Team.':'Black Team could not open its local service. Check your system permissions.');}
     session.defaultSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
     session.defaultSession.setPermissionCheckHandler(()=>false);

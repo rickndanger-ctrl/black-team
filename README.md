@@ -6,15 +6,16 @@
 
 Black Team is a local AI workspace for Linux. It gives you one place to connect
 your own LLMs, launch the harnesses you use, watch CPU and memory usage, and work
-with an agent that can use tools on your computer. Its built-in **Black Team
-harness** connects a compatible local model to **Hermes tools** for coding, files,
-terminal work, task planning, and optional browser or desktop work.
+with an agent that can use tools on your computer. **Black Team Code** is its own
+agent loop, built for local models: it measures how fast your model really reads
+and sizes its work to match, shows every file change with Undo, and remembers
+across conversations in a private, local-only memory vault.
 
 You can use it at your desk or connect privately from your phone. The model and
 agent run on your computer; your phone is a window into that same workspace.
 The phone interface supports browser access from **iPhone and Android**.
 
-**Status: Linux alpha, 0.1.0-alpha.3.** Source and automated tests are available;
+**Status: Linux alpha, 0.1.0-alpha.4.** Source and automated tests are available;
 the portable agent/server integrations still need live testing on fresh machines
 and physical phones. See [verification and known limits](docs/VERIFICATION.md).
 
@@ -24,18 +25,33 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   connect to an existing local OpenAI-compatible server such as Ollama or LM Studio.
   Discover its model IDs and select the one you want. You are not limited to a
   model name chosen by the developer.
-- **Choose a harness.** Use Black Team Chat for a conversation, Black Team Agent
-  for Hermes-powered work, or configure launchers for other installed harnesses.
-  A harness is the software around the model: it manages prompts, context,
-  tools, sessions, and the way you interact with the model.
+- **Chat or Code, one switch.** The mark at the top of the page is the switch:
+  the chat bubble for a conversation, the terminal for hands-on work. Launchers
+  for other installed harnesses are one click away. A harness is the software
+  around the model: it manages prompts, context, tools, sessions, and the way
+  you interact with the model.
+- **An agent sized to your hardware.** [Black Team Code](docs/CODE.md) reads,
+  searches and edits files, runs commands and keeps a todo list. It measures your
+  model's reading and writing speed, budgets its context from that, and trims
+  without spending a model call. A gauge shows the speeds and how full the
+  budget is.
+- **Every change shown, with Undo.** Edits appear as diffs in the conversation.
+  Commands that delete, install or reach the network wait for your approval.
+- **Memory that stays local.** The [Black Team vault](docs/MEMORY.md) is a small
+  folder of linked notes that only your local models use. Code saves and recalls
+  facts; Chat is handed the few lines that match your message. A keeper holds it
+  within limits, using your own model to condense notes that grow too long.
+- **Projects in the sidebar.** Name a project and it gets a folder to work in
+  and its own notes and journal. Open it later and pick up where you left off.
 - **See what your computer is doing.** The desktop shows live whole-system CPU
   utilization, CPU cores, load average, available RAM, and disk space. CPU and
   memory readings also appear in the phone interface. These are system readings,
   not per-model speed benchmarks or GPU telemetry.
-- **Give your local model tools.** Enable Hermes terminal/file/task tools; opt
-  into browser or desktop tools when their local dependencies are installed.
-  Tool activity and approval requests appear in the conversation. Continue a
-  saved agent session or stop a running task.
+- **Bring Hermes if you use it.** Connect an installed Hermes Agent for its
+  browser or desktop tools and choose it for Code conversations. It is optional.
+- **Dictate.** When a system dictation tool is installed (Voxtype is detected),
+  a microphone button in the text bar starts and stops it. Speech is transcribed
+  on your computer by that tool.
 - **Work privately from your phone.** Send instructions, read replies and tool
   activity, respond to approval cards, stop tasks, and download attached files
   through your private network. Your computer does the work.
@@ -50,7 +66,9 @@ Your Linux computer
   Black Team desktop
     ├── Model connection: owned llama.cpp / existing local server
     ├── Black Team Chat: streaming conversations + context control
-    ├── Black Team Agent: local model + installed Hermes tools
+    ├── Black Team Code: own agent loop, tools, diffs + undo, approvals
+    ├── Black Team vault: local-only memory, projects, keeper
+    ├── Optional: installed Hermes tools for browser/desktop work
     ├── Other installed harnesses: configured local launchers
     └── Local history, agent sessions, approvals, files and performance
               │
@@ -59,10 +77,11 @@ Your Linux computer
      Your phone browser / Home Screen app
 ```
 
-Black Team supplies the workspace and orchestration. Your model supplies the
-inference. Hermes supplies the agent tool runtime. Other harnesses remain their
+Black Team supplies the workspace, the agent loop and the memory. Your model
+supplies the inference. Other harnesses remain their
 own applications; their interfaces are not all embedded or mirrored to the phone.
-The phone can interact with Black Team's built-in Chat and Agent conversations.
+The phone can interact with Black Team's built-in Chat and Code conversations,
+projects and memory.
 
 ## What “local” means
 
@@ -155,19 +174,23 @@ explains the differences in context measurement and estimates.
 
 ## Use multiple harnesses
 
-**Black Team Chat** is ready once you connect a model. For **Black Team Agent**,
-open **Settings → Agents & apps**. Black Team looks for an installed Hermes Agent.
-When it finds one, choose **Connect Hermes**, then **Start agent conversation**.
+**Black Team Chat** and **Black Team Code** are ready once you connect a model.
+Code needs a model that supports tool calling and a context window of at least
+8,192 tokens. See [Black Team Code](docs/CODE.md) and [memory](docs/MEMORY.md).
+
+Hermes is optional. To use it, open **Settings → Agents & apps**. Black Team
+looks for an installed Hermes Agent. When it finds one, choose **Connect
+Hermes**, then pick **Hermes** as what runs new Code conversations.
 If more than one installation is found, select the one you want. If yours is
 elsewhere, use **Choose Hermes folder**; if it is not installed, **Install Hermes
 Agent** opens its installation guide. After installing it, choose **Find again**.
 
 **Tools and advanced setup** contains manual source/Python paths and the optional
 browser and desktop controls. File, terminal, search and planning tools are the
-default; browser and desktop work need their own Hermes dependencies. Each agent
-conversation has its own Hermes profile/session. Approval cards allow an action
-once or deny it; they do not grant permanent approval. The current agent budget
-is 48 steps / 30 minutes per turn.
+default; browser and desktop work need their own Hermes dependencies. Each Hermes
+conversation has its own Hermes profile/session. With either engine, approval
+cards allow an action once or deny it; they do not grant permanent approval, and
+one turn is limited to 48 steps / 30 minutes.
 
 For another installed harness, use **Other apps → Add an app**, choose a detected
 app or browse for an executable, select **Add app**, then **Save changes**. A
@@ -211,9 +234,10 @@ Physical iPhone/Android verification is still required for the portable alpha.
 
 ## JEV and context management
 
-JEV is **not enabled in chat or Agent mode**, and local operation needs no JEV
-key. Black Team Chat budgets context locally. Hermes Agent uses local model
-compaction; its compression provider is pinned to the selected local endpoint.
+JEV is **not enabled in Chat or Code**, and local operation needs no JEV
+key. Black Team Chat budgets context locally. Black Team Code trims its own
+context without a model call. Hermes uses local model compaction; its
+compression provider is pinned to the selected local endpoint.
 
 An optional synthetic research script supports JEV through a separately supplied
 reviewed adapter. If you want to run it with your own key:
@@ -238,7 +262,8 @@ or **Ghost**. The choice is remembered on each device and never sent anywhere.
 Data defaults to `~/.local/share/black-team-data`, or
 `$XDG_DATA_HOME/black-team-data` when that variable is an absolute path. Settings
 has an **Open data folder** button. Quit before backing it up. Backups include
-conversation content, keys, agent sessions, and pairing material; keep them private.
+conversation content, the memory vault, keys, agent sessions, and pairing material;
+keep them private.
 Model weights stay where you selected them.
 
 ```sh

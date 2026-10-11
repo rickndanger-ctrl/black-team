@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {native} from './desktop.mjs';
 
-const defaults = {hermes:{enabled:false,python:'',source:'',browserExecutable:'',desktopDriver:'',coding:true,browser:false,desktop:false},harnesses:[]};
+const defaults = {hermes:{enabled:false,python:'',source:'',browserExecutable:'',desktopDriver:'',coding:true,browser:false,desktop:false},harnesses:[],engine:'black-team',dictation:''};
 const basename = value => value.split('/').filter(Boolean).at(-1) || 'My app';
 
 function Arguments({label, values, onChange}) {
@@ -68,17 +68,21 @@ export default function Integrations({status,busy,onAction,onChat}) {
   const connected=status.integrations?.hermes?.enabled;
   return <section className="setup-form agent-setup">
     <div className="panel-heading"><div><span className="eyebrow">AGENTS & APPS</span><h2>Give your model tools</h2></div></div>
-    <p className="section-intro">Connect Hermes for agent work inside Black Team, on your computer and phone. Add other apps below to open them from your workspace.</p>
+    <p className="section-intro">Code is built in and needs no setup. Hermes is optional, for its browser and desktop tools. Add other apps below to open them from your workspace.</p>
     <fieldset disabled={disabled}>
-      <div className="connection-card full"><div><h3>Black Team Agent</h3><p>Hermes tools for files, coding and tasks. Uses your selected local model.</p><span className="connection-label" role="status">{connected?'Connected':detecting?'Looking for Hermes…':found?'Hermes found on this computer':'Hermes installation needed'}</span></div>
-        {connected?<button type="button" className="primary" disabled={!status.setupComplete} onClick={onChat}>Start agent conversation</button>:found?<button type="button" className="primary" onClick={connect}>Connect Hermes</button>:<button type="button" className="secondary" onClick={browseHermes}>Choose Hermes folder</button>}
+      <div className="connection-card full"><div><h3>Black Team Code</h3><p>Black Team’s own engine, built for local models: it measures your model’s speed and sizes its work to match. Reads, searches and edits files, runs commands, shows every change with Undo, and remembers across conversations.</p><span className="connection-label ready" role="status">Built in</span></div>
+        <button type="button" className="primary" disabled={!status.setupComplete} onClick={onChat}>Open Code</button>
+      </div>
+      {connected&&<div className="full engine-choice"><div className="mode-toggle" role="group" aria-label="What runs new Code conversations">{[['black-team','Black Team'],['hermes','Hermes']].map(([id,label])=><button type="button" key={id} className={(form.engine||'black-team')===id?'selected':''} aria-pressed={(form.engine||'black-team')===id} onClick={()=>save({...form,engine:id})}>{label}</button>)}</div><small>Runs new Code conversations. Existing ones keep the engine they started with.</small></div>}
+      <div className="connection-card full"><div><h3>Hermes</h3><p>The Hermes agent, if you have it installed. Slower to start on a local model; adds browser and desktop tools.</p><span className="connection-label" role="status">{connected?'Connected':detecting?'Looking for Hermes…':found?'Hermes found on this computer':'Hermes installation needed'}</span></div>
+        {connected?null:found?<button type="button" className="primary" onClick={connect}>Connect Hermes</button>:<button type="button" className="secondary" onClick={browseHermes}>Choose Hermes folder</button>}
       </div>
       {!connected&&installed?.hermes?.length>1&&<label className="form-field full">Choose an installation<select value={selected} onChange={e=>setSelected(e.target.value)}>{installed.hermes.map((item,index)=><option value={index} key={item.source}>{item.source}</option>)}</select></label>}
       {!connected&&!found&&!detecting&&<p className="inline-note full"><button type="button" className="text-button" onClick={()=>onAction("setup-help",{topic:"hermes"})}>Install Hermes Agent</button>, then choose Find again. If it is already installed elsewhere, choose its folder. Black Team never downloads an agent without your action.</p>}
       <div className="button-row full"><button type="button" className="text-button" onClick={scan}>Find again</button>{found&&!connected&&<button type="button" className="text-button" onClick={browseHermes}>Choose another installation</button>}</div>
-      {(connected||found)&&<p className="inline-note full">Black Team Agent uses file and terminal tools as your Linux user. Your model must support tool calls. Browser and desktop control stay optional.</p>}
+      {(connected||found)&&<p className="inline-note full">Code and Hermes use file and terminal tools as your Linux user. Your model must support tool calls. Browser and desktop control stay optional.</p>}
       <details className="full advanced-settings"><summary>Tools and advanced setup</summary><div className="form-grid">
-        <label className="checkbox-field full"><input type="checkbox" checked={form.hermes.enabled} onChange={e=>update('enabled',e.target.checked)}/>Enable Black Team Agent</label>
+        <label className="checkbox-field full"><input type="checkbox" checked={form.hermes.enabled} onChange={e=>update('enabled',e.target.checked)}/>Enable Hermes</label>
         <label className="form-field full">Hermes source folder<div className="button-row"><input value={form.hermes.source} onChange={e=>update('source',e.target.value)}/><button className="secondary" type="button" onClick={browseHermes}>Browse</button></div></label>
         <label className="form-field full">Hermes Python<div className="button-row"><input value={form.hermes.python} onChange={e=>update('python',e.target.value)}/><button className="secondary" type="button" onClick={()=>pick('python')}>Browse</button></div></label>
         {['coding','browser','desktop'].map(key=><label className="checkbox-field full" key={key}><input type="checkbox" checked={form.hermes[key]} onChange={e=>update(key,e.target.checked)}/><span>{{coding:'Files, terminal, search and planning',browser:'Browser tools — requires Hermes browser setup',desktop:'Desktop control — requires a computer-use driver'}[key]}</span></label>)}

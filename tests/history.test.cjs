@@ -21,7 +21,7 @@ test('conversation saves are atomic, private and retain full content separately 
   assert.deepEqual(fs.readdirSync(path.dirname(file)),[thread.id+'.json']);
   const read=new History(stateDir);assert.deepEqual(read.get(thread.id).messages,thread.messages);
   assert.equal(read.requests.get(request.id).threadId,thread.id);assert.equal(read.requests.get(request.id).state,'done');
-  assert.deepEqual(Object.keys(read.list()[0]).sort(),['id','title','updated']);
+  assert.deepEqual(Object.keys(read.list()[0]).sort(),['id','kind','title','updated']);
 });
 test('restart preserves partial replies and interrupts running request IDs without replay',t=>{
   const {stateDir}=fixture(t);const original=new History(stateDir),thread=original.create('question');

@@ -32,7 +32,8 @@ sensitive document. Only publish intended deliverables.
 
 ## Local storage and desktop
 
-Configuration, server keys, chat history, agent sessions and artifacts live under
+Configuration, server keys, chat history, agent sessions, the memory vault,
+project list, undo records and artifacts live under
 `~/.local/share/black-team-data` (or an absolute `XDG_DATA_HOME`). They use private
 directories and owner-only files. They are **not application-encrypted**. Your OS
 account, disk encryption and backups still matter. Other processes running as the
@@ -47,6 +48,20 @@ The Electron renderer uses sandboxing, context isolation, no Node integration,
 and a small bridge restricted to its main frame. Remote renderer requests,
 popups, navigation, webviews and browser permission requests are denied. Model
 and harness configuration is available through desktop IPC rather than phone APIs.
+
+## Memory and Code
+
+The [memory vault](MEMORY.md) is read and written only by Black Team, for your
+local models. Its contents are sent to one place: the local model endpoint you
+configured, as part of a prompt. Black Team Code cannot read the data folder as
+files and asks before running a command that names it. Other programs running as
+your user, including hosted coding assistants, can still read those files; keep
+them out of that folder if you want the vault to stay local-only.
+
+Black Team Code edits files only inside its workspace, records what each file
+held before an edit so the change can be undone, and keeps the 300 most recent
+records. Those records contain file contents. Dictation, when you use it, is
+done by the system tool you installed; Black Team only starts and stops it.
 
 ## Phone and optional services
 
