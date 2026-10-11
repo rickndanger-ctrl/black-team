@@ -1,17 +1,56 @@
-/* Black Team artwork. The supplied PNG is shown unchanged on its own black card in every theme. */
+/* Black Team artwork. The supplied PNG is shown unchanged; its black ground dissolves into
+   the sidebar through a soft mask, with slow grey fog drifting behind it. */
 .black-team-brand {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   margin: 0;
-  padding: 15px 8px 17px;
-  background: var(--brand-bg);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius);
+  padding: 14px 4px 12px;
   line-height: 1;
+  isolation: isolate;
+  overflow: hidden;
 }
-.brand-lockup { position: relative; width: 100%; aspect-ratio: 1800 / 300; overflow: hidden; }
+.black-team-brand::before,
+.black-team-brand::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+/* The ground: the logo's black, feathered out so no edge or corner shows. */
+.black-team-brand::after {
+  inset: -10% -6%;
+  background: radial-gradient(ellipse 58% 48% at 50% 40%, var(--brand-bg) 0%, var(--brand-bg) 40%, transparent 78%);
+}
+/* The fog: three blurred plumes drifting slowly across the ground. */
+.black-team-brand::before {
+  inset: -30% -12%;
+  background:
+    radial-gradient(30% 40% at 30% 50%, var(--mist-1) 0%, transparent 70%),
+    radial-gradient(26% 36% at 70% 42%, var(--mist-2) 0%, transparent 70%),
+    radial-gradient(44% 50% at 50% 60%, var(--mist-3) 0%, transparent 72%);
+  filter: blur(12px);
+  /* The fog thins to nothing before the box edge, so no rectangle ever shows. */
+  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 25%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 25%, transparent 72%);
+  animation: brand-mist 24s ease-in-out infinite alternate;
+}
+@keyframes brand-mist {
+  0%   { transform: translate3d(-5%, 3%, 0) scale(1); }
+  50%  { transform: translate3d(4%, -4%, 0) scale(1.1); }
+  100% { transform: translate3d(6%, 4%, 0) scale(1.03); }
+}
+.brand-lockup {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1800 / 300;
+  overflow: hidden;
+  /* Opaque over the lettering; the image's black ground reaches zero at its own edges. */
+  mask-image: radial-gradient(ellipse 66% 50% at 50% 50%, #000 60%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 66% 50% at 50% 50%, #000 60%, transparent 100%);
+}
 .brand-lockup img {
   position: absolute;
   display: block;
@@ -31,4 +70,7 @@
 }
 @media (max-width: 1100px) and (min-width: 761px) {
   .brand-caption { font-size: 6px; letter-spacing: 1.2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .black-team-brand::before { animation: none; }
 }

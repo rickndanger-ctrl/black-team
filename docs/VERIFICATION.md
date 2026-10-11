@@ -1,12 +1,12 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.3**. This source includes the local server,
-configurable harness, performance, and Hermes Agent work added for the public
-Black Team project. It is separate from the older machine-specific installation.
+Version reviewed: **0.1.0-alpha.4**. This source includes the local server,
+configurable harness, performance, Black Team Code, the memory vault, projects
+and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
 ## Automated checks
 
-The production React/Vite build passes. There are 87 passing JavaScript tests
+The production React/Vite build passes. There are 112 passing JavaScript tests
 and 20 passing Python tests in this review. The suites cover:
 
 - Per-user configuration, header/runtime validation, restricted file permissions,
@@ -21,6 +21,16 @@ and 20 passing Python tests in this review. The suites cover:
   session resume, process-group cancellation and temporary query cleanup with a
   mocked Hermes subprocess. These do not prove live Hermes/model compatibility.
 - Agent-vs-chat routing, public job serialization and saved conversation kind.
+- Black Team Code with a scripted model: the tool loop, append-only history,
+  speed-derived budgets, trimming at step boundaries, overflow retry, the
+  stuck-call guard, approvals bound to one command, stop, key redaction,
+  workspace-confined writes, credential and private-data refusal, diffs and
+  ordered undo, and search without ripgrep.
+- The memory vault: path confinement, links and graph, dated facts by project,
+  journals, chat lookup that stays quiet without a real match, limits, archive
+  sweeps and model condensing that keeps the original.
+- Server routes for memory, projects, undo and dictation; Core and recalled
+  lines replayed unchanged across turns; the keeper using only a loaded model.
 - Host/origin checks, desktop/phone authentication, private route isolation,
   streaming parsing, durable request IDs, persistence and interrupted recovery.
 - Electron bridge sandbox and action allowlists using mocked Electron.
@@ -78,6 +88,32 @@ These checks do not certify visual layout or physical phone scanning. The earlie
 packaged archive predates this UI revision; it must be rebuilt and checked before
 shipping the new flows as a binary. The [product principles](PRODUCT-PRINCIPLES.md)
 record the simplicity guideline and the remaining acceptance scenarios.
+
+## Live follow-up — October 11, 2026 (alpha.4)
+
+On one Linux laptop (CPU only), the portable backend was run without mocks
+against an existing llama.cpp server holding a 35B Q4 model at a 65,536-token
+context, connected as a local server.
+
+- **Code:** asked to change a function in a small Python file, run it, report the
+  output and save a fact. It searched, read, edited, ran and remembered in 57
+  seconds; the file and the reported output (`15`) were correct. Measured 49
+  tokens/s reading and 13 writing, using 1,998 of a 35,185-token working budget.
+- **Memory:** the fact was filed under the project with a journal entry. A new
+  Chat conversation asking about it was handed that one line and answered
+  correctly in 6 seconds.
+- **Undo:** undoing the recorded edit restored the original line.
+
+The interface was also driven in headless Chromium against the same real
+backend, with only the model scripted: creating a project from the sidebar, a
+Code turn with two file changes, Undo, the memory graph and notes, Chat using
+memory, Remember this, and the dictation button, at desktop and phone widths,
+with no page errors.
+
+Not covered by that run: the packaged Electron build with these features, an
+owned GGUF runtime or Ollama/LM Studio with Code, trimming and approvals during
+a long real task, model condensing by a real model, and dictation with a real
+speech tool.
 
 ## Still outstanding
 

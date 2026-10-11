@@ -1,15 +1,24 @@
 # Harnesses and agent work
 
 A model generates responses; a harness manages the conversation, tool calls,
-context and execution around it. Black Team offers built-in Chat and Hermes-based
-Agent work plus launchers for other locally installed harnesses.
+context and execution around it. Black Team has its own built-in harness for Chat
+and Code, can use an installed Hermes Agent instead for Code, and offers launchers
+for other locally installed harnesses.
 
-## Black Team Agent / Hermes
+## Black Team Code
+
+Code is built in and needs no setup beyond a model that supports tool calling.
+It is described in [Black Team Code](CODE.md), with its tools, budgets, approvals
+and boundaries. [Memory](MEMORY.md) describes the vault it remembers in.
+
+## Hermes (optional)
 
 Install [Hermes Agent](https://github.com/NousResearch/hermes-agent) and its needed
 dependencies separately. Open **Settings → Agents & apps**. Black Team scans for
 ready local installations and offers **Connect Hermes** when one is found. Select
-an installation first if several are found, then choose **Start agent conversation**.
+an installation first if several are found. Once connected, choose **Hermes** as
+what runs new Code conversations; existing conversations keep the engine they
+started with. Hermes is mainly useful for its browser and desktop tools.
 
 If Hermes is elsewhere, choose **Choose Hermes folder**. Black Team checks that
 folder for its Python environment. If nothing is installed, **Install Hermes Agent**
