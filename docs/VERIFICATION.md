@@ -318,6 +318,23 @@ Light the attribute already read `light` while the document was still loading.
 
 Automated suites at the build: 148 Node and 22 Python tests pass.
 
+The alpha.10 package was then checked as an update: in an empty home folder
+with a stripped environment, the alpha.9 package was installed first and the
+alpha.10 installer run over it under the same prefix. It verified the payload,
+staged the release, switched `current` to alpha.10 and left `previous` on
+alpha.9. The installed app was driven through its real window on the same
+laptop: no console errors on load (the page has no inline script and loads
+`theme.js`); the first screen found the running llama.cpp server, already
+ticked, and one click added it; in a new project, Code (thinking at Standard)
+created `greeting.txt` with the exact requested line and saved the requested
+fact in 61 seconds without an approval prompt; a fresh Chat recalled the fact
+in 7 seconds, citing the memory note, and the stored reply read exactly "The
+project codename is Heron."; the Memory page listed the project's two
+conversations; Settings showed the Code map card; the Workspace cards showed
+the model server's memory; choosing Light and reloading showed the attribute
+already set to `light` while the document was still loading. The vault held
+`Core.md` and the project's Overview, Journal and saved note.
+
 ## Still outstanding
 
 - Installation under a separate account, on another machine and on other Linux
