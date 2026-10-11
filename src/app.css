@@ -214,6 +214,14 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .chat-controls > label { font-size: 9px; }
 .chat-controls > small { margin-left: auto; max-width: none; font-size: 10px; color: var(--muted); }
 .chat-controls .model-switch { margin-left: auto; max-width: 220px; text-overflow: ellipsis; }
+.found-prompt { margin: 0 0 20px; padding: 22px 26px; border: 1px solid var(--line-2); border-radius: var(--radius-lg); background: var(--surface-2); }
+.found-prompt h2 { margin: 6px 0 0; font-size: 17px; font-weight: 500; }
+.found-prompt ul { margin: 12px 0 0; padding: 0; list-style: none; }
+.found-prompt li { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 0; border-top: 1px solid var(--line); }
+.found-prompt li > div:first-child { min-width: 0; }
+.found-prompt li strong { display: block; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.found-prompt li span { font-size: 11.5px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.found-prompt li .button-row { flex-shrink: 0; margin: 0; }
 .harnesses ul { margin: 16px 0 6px; padding: 0; list-style: none; }
 .harnesses li { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 0; border-top: 1px solid var(--line); }
 .harnesses li > div { min-width: 0; }
