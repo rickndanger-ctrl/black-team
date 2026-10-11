@@ -55,7 +55,9 @@ test('finds running servers and model files, and leaves helper files out', async
   assert.deepEqual(found.servers.map(item => [item.provider, item.name, item.context, item.contextKnown]),
     [['Ollama', 'llama3:8b', 4096, false], ['Ollama', 'qwen:7b', 4096, false], ['llama.cpp', 'Ornith-35B-Q4', 65536, true]]);
   // The model a server already has loaded is not offered a second time as a file.
-  assert.deepEqual(found.files.map(item => [item.name, item.runtime, item.context, item.tooBig]), [['Qwen-27B-Q4', '/usr/bin/llama-server', 8192, false]]);
+  // The context comes from the model's metadata and the memory left beside it; the files beside it are picked up.
+  assert.deepEqual(found.files.map(item => [item.name, item.runtime, item.context, item.tooBig]), [['Qwen-27B-Q4', '/usr/bin/llama-server', 32768, false]]);
+  assert.deepEqual([path.basename(found.files[0].mmproj), path.basename(found.files[0].draft)], ['mmproj-F16.gguf', 'mtp-Qwen-27B.gguf']);
   assert.ok(found.looked.ports.includes(18081) && found.looked.ports.includes(1234));
   assert.deepEqual(found.looked.folders, [path.join(home, 'models'), path.join(home, 'Downloads')]);
   assert.ok(asked.every(url => url.startsWith('http://127.0.0.1:')), 'only loopback addresses are contacted');

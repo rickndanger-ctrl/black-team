@@ -111,6 +111,27 @@ The search contacts only this computer's own loopback address, reads file names,
 sizes and the first 24 bytes of each GGUF file, and runs nothing. A model file
 that a running server already has loaded is listed once, as the running server.
 
+## How a model file is started
+
+When Black Team starts a model file itself, it reads the llama-server build's
+own help text once and adds each setting only when that build understands it,
+so a start never fails over a flag:
+
+- threads set to the physical cores (hyper-threads slow a model down), for both
+  generation and prompt processing;
+- smaller batches on a CPU (`256` / `128`) to keep prompt-processing memory down;
+- the prompt cache held to 1 GiB instead of the 8 GiB default;
+- an eight-bit KV cache with flash attention, which halves context memory;
+- the vision projector found beside the model (`mmproj-*.gguf`), so it can see
+  images, and a draft model found beside it (`mtp-*.gguf` or `*draft*.gguf`) for
+  speculative decoding, which makes replies faster at no cost in quality.
+
+The Settings form shows both companion files when it finds them and lets you
+leave either out. The context offered for a file is the model's own training
+length capped by the memory left beside its weights (32,768, 16,384 or 8,192
+tokens); raise or lower it in Settings. The Workspace page lists what the running
+launch used, such as "CPU · 6 threads · q8 cache · vision · MTP draft".
+
 ## Switching and sharing
 
 Every model you set up is kept in a list, so you set each one up once. With two

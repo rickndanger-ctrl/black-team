@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import {native} from './desktop.mjs';
 
-const baseModel={source:'server',endpoint:'http://127.0.0.1:11434/v1',id:'',name:'',file:'',runtime:'',context:4096,gpuLayers:0,threads:4};
+const baseModel={source:'server',endpoint:'http://127.0.0.1:11434/v1',id:'',name:'',file:'',runtime:'',context:4096,gpuLayers:0,threads:4,mmproj:'',draft:''};
 const filename=value=>value.split('/').filter(Boolean).at(-1)||'';
 const modelLabel=value=>filename(value).replace(/\.gguf$/i,'').slice(0,120);
 const providers=[['ollama','Ollama','Use models downloaded in Ollama','http://127.0.0.1:11434/v1'],['lmstudio','LM Studio','Use its running local server','http://127.0.0.1:1234/v1'],['gguf','Model file','Choose a GGUF on this computer'],['custom','Another server','Enter a local address']];
@@ -43,7 +43,13 @@ export default function ModelSetup({status,onSave,onAction,busy,settings=false})
       const value=await window.blackTeam.pick(kind);
       if(!value)return;
       if(kind==='workspace')setForm(previous=>({...previous,workspace:value}));
-      else setForm(previous=>({...previous,model:{...previous.model,[kind==='model'?'file':'runtime']:value,...(kind==='model'?{name:filename(value).replace(/\.gguf$/i,'').slice(0,120)}:{})}}));
+      else if(kind==='runtime')setForm(previous=>({...previous,model:{...previous.model,runtime:value}}));
+      else {
+        // The file is read for its own name, a context that fits this computer, and the files beside it.
+        let info={};
+        try{info=await native('model-inspect',{file:value});}catch(cause){setError(cause.message);}
+        setForm(previous=>({...previous,model:{...previous.model,file:value,name:info.name||filename(value).replace(/\.gguf$/i,'').slice(0,120),context:info.context||previous.model.context,mmproj:info.mmproj||'',draft:info.draft||''}}));
+      }
     }catch(cause){setError(cause.message);}
   };
   const save=event=>{
@@ -65,6 +71,8 @@ export default function ModelSetup({status,onSave,onAction,busy,settings=false})
         {(models.length>0||form.model.id)&&<label className="form-field full">Model<select value={form.model.id} onChange={e=>setForm(previous=>({...previous,model:{...previous.model,id:e.target.value,name:modelLabel(e.target.value)}}))}>{[...new Set([form.model.id,...models].filter(Boolean))].map(id=><option key={id} value={id}>{modelLabel(id)}</option>)}</select></label>}
       </>:<>
         <div className="file-picker full"><div><strong>Model file</strong><span className="file-path">{form.model.file?filename(form.model.file):'Choose a GGUF already on your computer'}</span></div><button type="button" className="secondary" onClick={()=>pick('model')}>Choose model</button></div>
+        {form.model.mmproj&&<div className="file-picker full companion"><div><strong>Vision projector</strong><span className="file-path">{filename(form.model.mmproj)} · found beside the model; lets it see images</span></div><button type="button" className="text-button" onClick={()=>update('mmproj','')}>Leave out</button></div>}
+        {form.model.draft&&<div className="file-picker full companion"><div><strong>Draft model for faster replies</strong><span className="file-path">{filename(form.model.draft)} · found beside the model</span></div><button type="button" className="text-button" onClick={()=>update('draft','')}>Leave out</button></div>}
         <div className="file-picker full"><div><strong>{form.model.runtime?'llama.cpp ready':'Choose llama.cpp once'}</strong><span className="file-path">{form.model.runtime||'Select the llama-server executable from your installation'}</span></div><button type="button" className="secondary" onClick={()=>pick('runtime')}>{form.model.runtime?'Change':'Choose runtime'}</button></div>
       </>}
       <details className="full advanced-settings"><summary>Advanced connection and performance</summary><div className="form-grid">

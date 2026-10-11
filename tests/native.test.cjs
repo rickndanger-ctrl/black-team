@@ -70,7 +70,7 @@ async function boot({phoneSetup = async () => ({connected: true})} = {}) {
     if (name === './lib/integrations.cjs') return {createIntegrations:()=>({read:()=>({hermes:{enabled:false},harnesses:[]})})};
     if (name === './lib/agent.cjs') return {createAgent:()=>({})};
     if (name === 'electron') return electron;
-    if (name === './lib/config.cjs') return { createConfigStore: () => config, validateModelFiles: () => {} };
+    if (name === './lib/config.cjs') return { createConfigStore: () => config, validateModelFiles: input => { captured.inspected = input; return { model: { bytes: 7 } }; } };
     if (name === './lib/history.cjs') return { privateDirectory: () => {} };
     if (name === './lib/runtime.cjs') return { ModelRuntime: class {
       status() { return { state: 'off', ready: false }; }
@@ -79,7 +79,7 @@ async function boot({phoneSetup = async () => ({connected: true})} = {}) {
     } };
     if (name === './lib/phone.cjs') return { PhoneManager: class { async setup() { return await phoneSetup(); } }, validatePhone: value => value, COMMAND: 'test command' };
     if (name === './lib/server.cjs') return { createBackend: () => backend };
-    if (name === './lib/find-models.cjs') return { findModels: async () => ({ servers: [{ source: 'server', id: 'found' }], files: [], runtime: '', looked: { ports: [], folders: [] } }) };
+    if (name === './lib/find-models.cjs') return { findModels: async () => ({ servers: [{ source: 'server', id: 'found' }], files: [], runtime: '', looked: { ports: [], folders: [] } }), describeFile: (file, bytes) => ({ name: 'Described', context: 16384, trainingContext: 262144, bytes }), companionsFor: () => ({ mmproj: '/m/mmproj.gguf', draft: '' }) };
     // The saved-model list is replaced so a test never reads the real data folder.
     if (name === './lib/models.cjs') return {
       createSavedModels: () => ({ read: () => [], list: () => [], ignored: () => ['abcdef0123456789'], ignore: key => { captured.ignored = key; return { ignored: true }; }, remember: model => { captured.remembered = model; } }),
@@ -194,6 +194,12 @@ test('saving a model adds it to the list, and switching and removing reach the l
   assert.equal(captured.switched, 'abc');
   assert.equal((await request(event(), 'model-forget', { key: 'abc' })).removed, true);
   assert.equal(captured.forgotten, 'abc');
+  // A chosen model file is described and its companions found, through the same checks as a saved one.
+  const described = await request(event(), 'model-inspect', { file: '/m/q.gguf' });
+  // Objects cross the vm boundary, so compare by value, not by realm.
+  assert.equal(JSON.stringify(described), JSON.stringify({ name: 'Described', context: 16384, trainingContext: 262144, bytes: 7, mmproj: '/m/mmproj.gguf', draft: '' }));
+  assert.equal(captured.inspected.file, '/m/q.gguf');
+  await assert.rejects(request(event(), 'model-inspect', { file: '/m/q.gguf', extra: 1 }), /Unsupported setup setting/);
   const found = await request(event(), 'models-find');
   assert.equal(found.servers[0].id, 'found');
   assert.equal(found.servers[0].saved, false);
@@ -205,7 +211,7 @@ test('saving a model adds it to the list, and switching and removing reach the l
   assert.equal(captured.addedItems[0].id, 'found');
   await assert.rejects(request(event(), 'models-add', { items: [], model: {} }), /Unsupported setup setting/);
   const preload = fs.readFileSync(path.join(project, 'preload.cjs'), 'utf8');
-  assert.match(preload, /'models-find','models-add','models-ignore','model-switch','model-forget'/);
+  assert.match(preload, /'server-discover','model-inspect',/);
 });
 
 test('setup mutations stay locked until async completion and unlock after failure', async () => {

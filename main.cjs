@@ -12,7 +12,7 @@ const {ModelRuntime}=require('./lib/runtime.cjs');
 const {PhoneManager,validatePhone,COMMAND}=require('./lib/phone.cjs');
 const {createBackend}=require('./lib/server.cjs');
 const {createSavedModels,switchModel,forgetModel,addModels,keyOf}=require('./lib/models.cjs');
-const {findModels}=require('./lib/find-models.cjs');
+const {findModels,companionsFor,describeFile}=require('./lib/find-models.cjs');
 
 const dataRoot=process.env.XDG_DATA_HOME && path.isAbsolute(process.env.XDG_DATA_HOME)?process.env.XDG_DATA_HOME:path.join(os.homedir(),'.local/share');
 const stateDir=path.join(dataRoot,'black-team-data');
@@ -59,6 +59,8 @@ else {
         return discoverModels({endpoint:input.endpoint,apiKey:input.apiKey ?? (input.endpoint===saved.endpoint?saved.apiKey:'')});
       }
       if(action==='models-find'){const found=await findModels({runtime:discoverInstalled().runtime});const have=new Set(savedModels.list().map(model=>model.key)),passed=new Set(savedModels.ignored());const mark=item=>({...item,key:keyOf(item),saved:have.has(keyOf(item)),ignored:passed.has(keyOf(item))});return {...found,servers:found.servers.map(mark),files:found.files.map(mark)};}
+      // A chosen model file is read for its name, a context that fits, and the files that belong beside it.
+      if(action==='model-inspect'){if(Object.keys(input).some(k=>k!=='file'))throw new Error('Unsupported setup setting.');const info=validateModelFiles({source:'gguf',file:input.file,runtime:discoverInstalled().runtime||''}).model;return {...describeFile(input.file,info.bytes),...companionsFor(input.file)};}
       if(action==='installed-discover')return discoverInstalled({saved:integrations.read().hermes});
       if(action==='hermes-inspect')return inspectHermes(input.source,input.python);
       if(action==='phone-detect')return phone.detect();
