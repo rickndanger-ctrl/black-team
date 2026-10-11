@@ -223,6 +223,28 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .message-heading .agent-avatar { --avatar-size: 30px; }
 .message-heading small { margin: 0 0 0 auto; font-size: 9px; letter-spacing: 0; color: var(--muted); }
 .message-body, .thinking-content > div { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.8; color: var(--ink); }
+.message-body.md { white-space: normal; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p { margin: 0 0 10px; white-space: pre-wrap; }
+.md ul, .md ol { margin: 0 0 10px; padding-left: 22px; }
+.md li { margin: 2px 0; white-space: pre-wrap; }
+.md li > ul, .md li > ol { margin: 2px 0 0; }
+.md .md-h { margin: 16px 0 8px; font-weight: 600; letter-spacing: -.01em; line-height: 1.4; color: var(--ink); }
+.md .md-h1 { font-size: 17px; }
+.md .md-h2 { font-size: 15px; }
+.md .md-h3, .md .md-h4, .md .md-h5, .md .md-h6 { font-size: 13px; }
+.md code { padding: 1px 5px; border: 1px solid var(--line); border-radius: 5px; background: var(--field); font: 12px/1.5 var(--font-mono); color: var(--ink); }
+.md pre.md-code { margin: 0 0 10px; max-height: 420px; white-space: pre; overflow: auto; font-size: 12px; color: var(--ink); }
+.md pre.md-code code { padding: 0; border: 0; background: none; font: inherit; }
+.md blockquote { margin: 0 0 10px; padding: 2px 0 2px 14px; border-left: 2px solid var(--line-2); color: var(--ink-2); }
+.md hr { margin: 14px 0; border: 0; border-top: 1px solid var(--line); }
+.md .md-table { margin: 0 0 10px; max-width: 100%; overflow-x: auto; }
+.md table { border-collapse: collapse; font-size: 12px; }
+.md th, .md td { padding: 5px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.md th { background: var(--field); font-weight: 600; }
+.md .md-link { text-decoration: underline; text-underline-offset: 3px; }
+.md .md-link small { color: var(--muted); text-decoration: none; display: inline-block; }
 .thinking-content { margin: 0 0 14px; font-size: 12px; color: var(--muted); }
 .thinking-content > div { padding-top: 10px; font-size: 12px; color: var(--muted); }
 .response-status { display: flex; align-items: center; gap: 14px; padding: 14px 20px; font-size: 11px; color: var(--ink-2); }

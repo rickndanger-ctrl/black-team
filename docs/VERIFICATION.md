@@ -114,18 +114,52 @@ The alpha.4 Linux package was then built and checked on the same laptop: both
 checksums verify, the payload contains the engine, tools and memory modules and
 the license, and the packaged app started with an empty data folder, opened its
 window, created its vault and engine folders, answered 401 without a session and
-403 for a foreign Host header, and quit cleanly. No model was run through the
-packaged build, and the installer script was not run.
+403 for a foreign Host header, and quit cleanly.
 
-Not covered by that run: Code and memory exercised inside the packaged build, an
+The published alpha.4 release was then installed and used the way a new user
+would, on the same laptop on 2026-10-11. This was an empty home folder with a
+stripped environment, not a separate Linux account: nothing from the developer's
+own setup was visible to the installer or the app.
+
+- **Download and install:** both release files were fetched from GitHub and both
+  checksums verified. `install.sh` installed the app, launcher and menu entry,
+  and refused a second install of the same version.
+- **First run:** the installed app opened its real window on the setup screen.
+  It was connected to the llama.cpp server through "Another server", found the
+  model, and saved a 65,536-token context.
+- **Code in the packaged build:** in a new project, asked to write a script, run
+  it, report the output and save a fact. It did all three in 53 seconds; the
+  file and reported output were correct and the diff with Undo appeared.
+  Measured 48 tokens/s reading and 12 writing.
+- **Memory in the packaged build:** the Memory graph showed the project's notes,
+  and a new Chat conversation recalled the saved fact and answered correctly in
+  11 seconds.
+- **Privacy on disk:** the data folder and vault were mode 700 and the
+  configuration and phone key files 600. Nothing was written outside the test
+  home. No page errors.
+
+That run showed replies displaying Markdown as raw text (`**bold**`, code
+fences). Replies are now formatted, by a small renderer that builds interface
+elements from text and never inserts HTML; links are shown with their address
+and are not clickable. This fix is in the source after alpha.4 and is covered by
+parser tests and a rendered check at desktop and phone widths; it is not in the
+alpha.4 package.
+
+Not covered by these runs: a separate Linux account or another machine, an
 owned GGUF runtime or Ollama/LM Studio with Code, trimming and approvals during
 a long real task, model condensing by a real model, and dictation with a real
 speech tool.
 
+One risk is known and untested: the package's Electron sandbox helper is not
+installed setuid root, so the app relies on unprivileged user namespaces.
+Distributions that restrict them by default, such as Ubuntu 24.04, may refuse to
+start it until the user allows that or the installer handles it.
+
 ## Still outstanding
 
-- Fresh-machine and other Linux distribution installation; a public binary release
-  and a simpler download/install experience.
+- Installation under a separate account, on another machine and on other Linux
+  distributions, including ones that restrict unprivileged user namespaces; a
+  simpler download/install experience.
 - Live Ollama/LM Studio and owned GGUF startup; other models and runtime combinations.
 - Physical iPhone/Android Home Screen cookies, background/reconnect behavior,
   phone-triggered agent approvals and file downloads in this portable build.
