@@ -21,6 +21,8 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "BlackTeamKit", targets: ["BlackTeamKit"]),
+        // The command: `black-team`. The old name stays as a second product of the same program.
+        .executable(name: "black-team", targets: ["BlackTeamCLI"]),
         .executable(name: "black-team-cli", targets: ["BlackTeamCLI"]),
     ] + platformProducts,
     // The only dependency, used on Linux where CryptoKit does not exist.
@@ -31,9 +33,13 @@ let package = Package(
         .target(name: "BlackTeamKit",
                 dependencies: [.product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: [.linux]))],
                 path: "Sources/BlackTeamKit", swiftSettings: [.swiftLanguageMode(.v5)]),
-        .executableTarget(name: "BlackTeamCLI", dependencies: ["BlackTeamKit"], path: "Sources/BlackTeamCLI",
+        // The terminal parts that need no model or screen: line editor, keys, history, slash commands, prompt, one-shot arguments.
+        .target(name: "BlackTeamTerminal", path: "Sources/BlackTeamTerminal", swiftSettings: [.swiftLanguageMode(.v5)]),
+        .executableTarget(name: "BlackTeamCLI", dependencies: ["BlackTeamKit", "BlackTeamTerminal"], path: "Sources/BlackTeamCLI",
                           swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "BlackTeamKitTests", dependencies: ["BlackTeamKit"], path: "Tests/BlackTeamKitTests",
+                    swiftSettings: [.swiftLanguageMode(.v5)]),
+        .testTarget(name: "BlackTeamTerminalTests", dependencies: ["BlackTeamTerminal"], path: "Tests/BlackTeamTerminalTests",
                     swiftSettings: [.swiftLanguageMode(.v5)]),
     ] + platformTargets
 )

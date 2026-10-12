@@ -15,11 +15,14 @@ VERSION="${BLACK_TEAM_VERSION:-$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' ../
 VERSION="${VERSION:-0.1.0}"
 ARCH="$(uname -m)"
 swift build -c release --product BlackTeam
+swift build -c release --product black-team
 BIN="$(swift build -c release --show-bin-path)"
 APP="build/Black Team.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/BlackTeam" "$APP/Contents/MacOS/BlackTeam"
+# The terminal program, so `black-team install-command` can link the one inside the app.
+cp "$BIN/black-team" "$APP/Contents/MacOS/black-team"
 # SwiftPM's resource bundles (fonts, logo); the app looks for them in Resources.
 for bundle in "$BIN"/*.bundle; do [ -d "$bundle" ] && cp -R "$bundle" "$APP/Contents/Resources/"; done
 cat > "$APP/Contents/Info.plist" <<PLIST
@@ -63,6 +66,7 @@ if [[ $MODE == --release ]]; then
   [[ -n $IDENTITY ]] || { echo 'No Developer ID Application certificate found in the keychain.' >&2; exit 1; }
   # Sign inside out; the hardened runtime is required for notarization.
   find "$APP/Contents/Resources" -name '*.bundle' -print0 | xargs -0 -I{} codesign --force --timestamp --sign "$IDENTITY" {}
+  codesign --force --timestamp --options runtime --sign "$IDENTITY" "$APP/Contents/MacOS/black-team"
   codesign --force --timestamp --options runtime --sign "$IDENTITY" "$APP"
   codesign --verify --deep --strict "$APP"
   ZIP="build/Black-Team-${VERSION}-mac-${ARCH}.zip"

@@ -63,8 +63,8 @@ Cloud models (Mac only): "Available configurations" can add an OpenAI-compatible
 conversation levels, refusals, conversion, project switch). Privacy travels with the work: every conversation is `local` or
 `cloud`, a local one is never silently sent to a cloud model, projects are local only until allowed, cloud conversations get no
 memory, phones cannot start or convert one, harnesses are not launched against a cloud model. See `docs/PRIVACY.md` and
-`docs/MODELS.md`. `black-team-cli cloud add|models` and `--allow-cloud`. The CLI alone honours `BLACK_TEAM_CLOUD_TEST_HOST=127.0.0.1:<port>`
-(through an injected `CloudRules` in `BlackTeamCLI/main.swift`) so `Tests/CloudStub/stub.py`, a stand-in service, can be used
+`docs/MODELS.md`. `black-team cloud add|models` and `--allow-cloud`. The CLI alone honours `BLACK_TEAM_CLOUD_TEST_HOST=127.0.0.1:<port>`
+(through an injected `CloudRules` in `BlackTeamCLI/CloudTest.swift`) so `Tests/CloudStub/stub.py`, a stand-in service, can be used
 without a real key; the app, built from `Backend()` with the default rules, neither contains that code nor the variable's name.
 
 Subscription agents (`Sources/BlackTeamKit/Agents/`, `App/BackendAgents.swift`): a task can be handed to the person's own Claude Code or
@@ -85,11 +85,20 @@ CLI: `agent claude|codex "<task>" [--workspace <folder>] [--thread <id>] [--allo
 Not built yet, and left off the screens until they work: Hermes and its plugins, dictation, DSH session listing. Not done for
 images: removing a conversation's picture files (no conversation delete yet), and keeping unsent drafts across app launches.
 
-`black-team-cli` runs the same backend from a terminal (`status`, `starter list`,
-`starter install <id>`, `chat`, `code`, `agent`, `find`, `models`, `use`, `memory`, `phone status|enable|disable|link|reset`,
-and `serve`, which keeps phone access answering until Ctrl-C; `--web <folder>` or `BLACK_TEAM_WEB` names the built web app), which is
-how the app is tested on a Mac with nobody at the screen. `BLACK_TEAM_DATA=<folder>`
-points the app or the CLI at a throwaway data folder.
+`black-team` (target `BlackTeamCLI`, product `black-team`; `black-team-cli` is kept as a second name for the same program) is the
+terminal program for Mac and Linux. With no arguments it starts a session (a line editor, replies as they arrive, slash commands,
+approvals and privacy questions asked inline); `-p "<message>"` sends one message and prints the reply; and the subcommands
+(`status`, `starter list|install`, `chat`, `code`, `agent`, `room`, `find`, `models`, `use`, `cloud`, `memory`,
+`phone status|enable|disable|link|reset`, `serve`, which keeps phone access answering until Ctrl-C, `install-command`) drive the
+backend one step at a time, which is also how the app is tested on a Mac with nobody at the screen. `--web <folder>` or
+`BLACK_TEAM_WEB` names the built web app. `BLACK_TEAM_DATA=<folder>` points the app or the command at a throwaway data folder.
+Layout: `Sources/BlackTeamCLI` has `main.swift` (start-up), `Commands.swift` (the subcommands), `Session.swift` (the interactive
+session), `Terminal.swift` (raw mode, key reading), `Reply.swift` (following a running reply), `OneShotRun.swift`, `Signals.swift`,
+`InstallCommand.swift`, `Help.swift`; `Sources/BlackTeamTerminal` is the part without a terminal or a model in it (line buffer, key
+decoder, history, slash commands, prompt, colours, one-shot arguments), with its tests. `docs/COMMAND.md` is the user guide.
+The app and the command can share a data folder: `Core/EngineLock.swift` lets only one of them run the local model.
+`macos/dev/install-cli.sh` builds the release binary and runs `install-command`; `build-app.sh` also puts `black-team` in the app
+bundle at `Contents/MacOS/black-team`.
 
 `Tests/DesignSnapshot` renders every screen to PNG at the size of the Linux
 reference screenshots; the Mac interface is meant to match the daily app exactly.

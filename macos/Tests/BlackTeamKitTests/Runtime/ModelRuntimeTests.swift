@@ -41,6 +41,25 @@ final class ModelRuntimeTests: XCTestCase {
         return Harness(files: files, runtime: runtime, spawned: spawned, requests: requests)
     }
 
+    func testALaunchGuardRefusesALocalStartButNotAServer() async throws {
+        let files = try RuntimeFixture(self)
+        try files.store.save(files.config)
+        let spawned = RuntimeBox<Int>(0)
+        let refuse: @Sendable () throws -> Void = { throw BlackTeamError("Your local model is in use by the Black Team app. Stop it there, or use a cloud model or a subscription agent here.") }
+        let runtime = ModelRuntime(configStore: files.store, spawn: { _, _ in spawned.update { $0 += 1 }; throw SpawnError(code: "EPERM") },
+                                   fetch: { r in (Data("{}".utf8), response(r.url!)) }, reservePort: { 45232 }, launchGuard: refuse)
+        do { _ = try await runtime.start(); XCTFail("refused") } catch { XCTAssertTrue(messageOf(error).hasPrefix("Your local model is in use by the Black Team app.")) }
+        XCTAssertEqual(spawned.value, 0)
+        // A server somebody else runs is not a launch, so the guard is not asked.
+        var config = files.config
+        config.model = ModelConfig(source: "server", endpoint: "http://127.0.0.1:18081/v1", id: "ornith", apiKey: "k", name: "Ornith")
+        try files.store.save(config)
+        let server = ModelRuntime(configStore: files.store, spawn: { _, _ in throw SpawnError(code: "EPERM") },
+                                  fetch: { r in (Data(#"{"data":[{"id":"ornith"}]}"#.utf8), response(r.url!)) }, launchGuard: refuse)
+        let endpoint = try await server.start()
+        XCTAssertEqual(endpoint, "http://127.0.0.1:18081/v1")
+    }
+
     func testEnvironmentKeepsOnlyHardwareAndLocaleSettings() {
         let kept = runtimeEnvironment(["PATH": "/usr/bin", "HOME": "/Users/a", "LANG": "en_US.UTF-8", "LC_ALL": "C", "TMPDIR": "/tmp/x",
                                        "LD_LIBRARY_PATH": "/x", "DYLD_LIBRARY_PATH": "/x", "LLAMA_ARG_HOST": "0.0.0.0", "CUDA_VISIBLE_DEVICES": "0",

@@ -331,6 +331,8 @@ public actor ModelRuntime {
     private let appleSilicon: Bool
     private let cores: @Sendable () -> Int
     private let startupTimeoutMs: Int, pollIntervalMs: Int, stopTimeoutMs: Int, killTimeoutMs: Int
+    /// Asked before this runtime starts a model process of its own; throwing refuses the start (another Black Team holds the model).
+    private let launchGuard: (@Sendable () throws -> Void)?
 
     private var state = RuntimeState.off
     private var error: String?
@@ -353,7 +355,9 @@ public actor ModelRuntime {
                 environment: @escaping @Sendable () -> [String: String] = { runtimeEnvironment() },
                 appleSilicon: Bool = SystemInfo.isAppleSilicon,
                 cores: @escaping @Sendable () -> Int = { SystemInfo.cpuTopology().cores },
-                startupTimeoutMs: Int = 120_000, pollIntervalMs: Int = 350, stopTimeoutMs: Int = 3000, killTimeoutMs: Int = 1000) {
+                startupTimeoutMs: Int = 120_000, pollIntervalMs: Int = 350, stopTimeoutMs: Int = 3000, killTimeoutMs: Int = 1000,
+                launchGuard: (@Sendable () throws -> Void)? = nil) {
+        self.launchGuard = launchGuard
         self.configStore = configStore; self.spawn = spawn; self.fetch = fetch; self.reservePort = reservePort
         self.helpProbe = help; self.environment = environment; self.appleSilicon = appleSilicon; self.cores = cores
         self.startupTimeoutMs = startupTimeoutMs; self.pollIntervalMs = pollIntervalMs
@@ -474,6 +478,7 @@ public actor ModelRuntime {
                 return found.endpoint
             }
             externalEndpoint = nil
+            try launchGuard?()
             let chosenPort = try await reservePort()
             try assertCurrent(generation)
             if chosenPort < 1 || chosenPort > 65535 { throw BlackTeamError("Could not reserve a local model port.") }
