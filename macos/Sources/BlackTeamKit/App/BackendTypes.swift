@@ -190,6 +190,27 @@ public struct BackendStatus: Codable, Equatable, Sendable {
     public var hardware: HardwareSummary
     /// The llama.cpp runtime Black Team downloaded, if any.
     public var downloadedRuntime: InstalledRuntime?
+    /// Whether the model in use can read images.
+    public var vision: VisionStatus
+}
+
+/// Whether the current model can see images, and if not, what would make it able to.
+public struct VisionStatus: Codable, Equatable, Sendable {
+    /// Images can be sent: a projector is set, or the model is on a server, where support is unknown and Black Team just tries.
+    public var canSee: Bool
+    /// A starter model without its vision file: `bytes` is the download.
+    public var needsFile: Bool
+    public var bytes: Int64
+    public var summary: String
+    public init(canSee: Bool, needsFile: Bool = false, bytes: Int64 = 0, summary: String) {
+        self.canSee = canSee; self.needsFile = needsFile; self.bytes = bytes; self.summary = summary
+    }
+}
+
+public struct VisionInstallResult: Codable, Equatable, Sendable {
+    public var file: String
+    /// The model server was running, so it was restarted to load the projector.
+    public var restarted: Bool
 }
 
 // MARK: Results

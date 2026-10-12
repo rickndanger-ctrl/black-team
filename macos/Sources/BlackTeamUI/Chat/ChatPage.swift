@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import BlackTeamKit
 
 /// Chat and Code share one screen (`view==='chat'` in Companion.jsx): controls, the conversation, the composer.
@@ -137,7 +138,7 @@ struct ConversationLog: View {
                     let live = activity.map { $0.messageId == nil ? index == messages.count - 1 : $0.messageId == message.id } ?? false
                     MessageView(message: message, fallbackModel: model.modelName, glowing: live && activity?.glowing == true,
                                 liveLabel: live && activity?.messageId == message.id ? activity?.label : nil, busy: busy,
-                                canRemember: model.status?.memory == true, canRetry: index == messages.count - 1 && !busy, model: model)
+                                canRemember: model.status?.memory == true, canRetry: index == messages.count - 1 && !busy, model: model, threadId: model.threadId)
                         .equatable()
                         .padding(.vertical, 6)
                 }
@@ -200,7 +201,8 @@ struct ChatFooter: View {
                 }
                 .padding(.vertical, 8)
             }
-            ComposerBar(model: model, drafts: drafts).padding(.top, 16)
+            ImageArea(model: model, drafts: drafts)
+            ComposerBar(model: model, drafts: drafts).padding(.top, model.imageAreaShown ? 0 : 16)
             VStack(spacing: 0) {
                 Text(note).font(BTFont.mono(8)).tracking(0.64).foregroundStyle(theme.faint)
                     .btLines(8, 1.8, mono: true)
@@ -214,7 +216,23 @@ struct ChatFooter: View {
         if model.activeJob, job?.threadId != model.threadId {
             return job?.kind == "memory" ? "Black Team is tidying memory with your model." : "A response is running in another conversation."
         }
-        return "Enter to send \u{00B7} Shift + Enter for a new line"
+        // The daily wording, truthful for the Mac: drafts here are in memory, not in the browser.
+        return "Enter to send \u{00B7} Shift + Enter for a new line \u{00B7} Images require a vision model (Chat mode). Draft images stay in memory until sent; reattach after reopening."
+    }
+}
+
+/// The pictures waiting to be sent, and, when the model cannot read them yet, the notice with its one button (Chat only).
+struct ImageArea: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var drafts: DraftStore
+
+    var body: some View {
+        if model.imageAreaShown {
+            VStack(alignment: .leading, spacing: 0) {
+                ImagePreviews(items: model.previewItems, onRemove: { model.removeImage($0) }, disabled: model.sending || model.pending != nil || model.preparing)
+                if model.visionNoticeShown, let vision = model.status?.vision { VisionNotice(model: model, bytes: vision.bytes) }
+            }
+        }
     }
 }
 
@@ -224,6 +242,7 @@ struct ComposerBar: View {
     @ObservedObject var drafts: DraftStore
     @Environment(\.btTheme) private var theme
     @Environment(\.btFlatLayout) private var flatLayout
+    @State private var dropping = false
 
     var body: some View {
         let key = model.draftKey
@@ -231,8 +250,12 @@ struct ComposerBar: View {
         let text = drafts.draft(key).message
         let activeJob = model.activeJob
         let available = model.setupComplete && !model.sending && (model.pending != nil || !activeJob)
-        let canSend = available && (model.pending != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        let hasImages = kind == .chat && !model.draftImages.isEmpty
+        let canSend = available && !model.preparing && !(hasImages && model.visionNoticeShown)
+            && (model.pending != nil || hasImages || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         HStack(alignment: .bottom, spacing: 10) {
+            // Images are Chat only: in Code the button is absent, not disabled.
+            if kind == .chat { filesButton }
             composerField(key: key, kind: kind)
                 .frame(height: 64)
                 .accessibilityLabel(kind == .agent ? "Describe a task for Code" : "Message your local model")
@@ -250,6 +273,34 @@ struct ComposerBar: View {
         .background(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).fill(theme.surface))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).inset(by: 0.5).stroke(theme.line2, lineWidth: 1))
         .btShadow(theme.shadow)
+        .modifier(DropTarget(enabled: !flatLayout, dropping: $dropping, perform: drop))
+        .overlay { if dropping { RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).stroke(theme.accent, lineWidth: 2) } }
+    }
+
+    private var filesButton: some View {
+        Button { model.chooseImages() } label: { Text(model.preparing ? "Preparing\u{2026}" : "+ Files") }
+            .buttonStyle(.btSecondary)
+            .disabled(!model.setupComplete || model.preparing || model.sending || model.pending != nil || model.activeJob || model.draftImages.count >= ImageRules.maxImages)
+            .accessibilityLabel("Add image files")
+    }
+
+    /// Image files dropped on the composer are prepared like chosen ones.
+    private func drop(_ providers: [NSItemProvider]) -> Bool {
+        guard model.setupComplete, !model.sending, model.pending == nil, !model.activeJob else { return false }
+        let found = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        guard !found.isEmpty else { return false }
+        let collected = DroppedURLs()
+        let group = DispatchGroup()
+        for provider in found {
+            group.enter()
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) { collected.add(url) }
+                else if let url = item as? URL { collected.add(url) }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { [model] in model.addImages(collected.urls.map { .url($0) }) }
+        return true
     }
 
     /// An image render cannot draw the AppKit text view, so it gets the same text drawn by SwiftUI.
@@ -263,7 +314,7 @@ struct ComposerBar: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
             ComposerField(text: binding, placeholder: placeholder, enabled: model.setupComplete && !model.sending && model.pending == nil,
-                          theme: theme, onSubmit: submit)
+                          theme: theme, onSubmit: submit, onPasteImages: { model.addImages($0) })
         }
     }
 
@@ -271,7 +322,9 @@ struct ComposerBar: View {
         let key = model.draftKey
         let draft = drafts.draft(key)
         let text = model.pending?.message ?? draft.message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard model.setupComplete, !model.sending, model.pending != nil || !model.activeJob, !text.isEmpty else { return }
+        let hasImages = model.currentKind == .chat && !draft.images.isEmpty
+        guard model.setupComplete, !model.sending, !model.preparing, model.pending != nil || !model.activeJob, !text.isEmpty || hasImages,
+              !(hasImages && model.visionNoticeShown) else { return }
         model.send(text, mode: draft.mode)
     }
 }
@@ -300,5 +353,26 @@ private struct ClampLayout: Layout {
         let height = subviews[0].sizeThatFits(ProposedViewSize(width: bounds.width, height: nil)).height
         let y = height > bounds.height ? bounds.maxY - height : bounds.minY
         subviews[0].place(at: CGPoint(x: bounds.minX, y: y), anchor: .topLeading, proposal: ProposedViewSize(width: bounds.width, height: height))
+    }
+}
+
+
+/// File addresses collected from a drop, which arrives on several threads.
+final class DroppedURLs: @unchecked Sendable {
+    private let lock = NSLock()
+    private var list: [URL] = []
+    func add(_ url: URL) { lock.lock(); list.append(url); lock.unlock() }
+    var urls: [URL] { lock.lock(); defer { lock.unlock() }; return list.sorted { $0.path < $1.path } }
+}
+
+
+/// The drop target is an AppKit view, which an image render draws as a yellow placeholder; renders go without it.
+struct DropTarget: ViewModifier {
+    let enabled: Bool
+    @Binding var dropping: Bool
+    let perform: ([NSItemProvider]) -> Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled { content.onDrop(of: [.fileURL], isTargeted: $dropping, perform: perform) } else { content }
     }
 }

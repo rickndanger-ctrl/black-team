@@ -33,6 +33,7 @@ public final class Backend: @unchecked Sendable {
     public let savedModels: SavedModels
     public let memory: Memory
     public let integrations: Integrations
+    public let images: ImageStore
     let runtime: BackendRuntime
     let engine: CodeEngine?
     let fetch: HTTPFetch
@@ -92,6 +93,7 @@ public final class Backend: @unchecked Sendable {
             _ = try? savedModels.remember(current)
         }
         integrations = Integrations(stateDir: dataFolder)
+        images = ImageStore(dataFolder: dataFolder)
         history = try History(stateDir: dataFolder)
         // The Black Team vault: what the local models remember. It lives in the private data folder only.
         memory = try customMemory ?? Memory(vault: dataFolder + "/vault")
@@ -200,7 +202,8 @@ public final class Backend: @unchecked Sendable {
                 source: model.source, endpoint: model.endpoint, id: model.id, name: model.name, file: model.file, runtime: model.runtime,
                 context: model.context, gpuLayers: model.gpuLayers, threads: model.threads, mmproj: model.mmproj, draft: model.draft), workspace: config.workspace),
             models: savedModels.list(active: model), serverKeyConfigured: !model.apiKey.isEmpty,
-            integrations: try? integrations.read(), hardware: hardware, downloadedRuntime: installer.installedRuntime())
+            integrations: try? integrations.read(), hardware: hardware, downloadedRuntime: installer.installedRuntime(),
+            vision: visionStatus(config.model))
     }
 
     // MARK: Conversations
@@ -246,9 +249,12 @@ public final class Backend: @unchecked Sendable {
     @discardableResult
     public func submit(message rawMessage: String, kind: String = "chat", mode: String = "balanced", requestId: String,
                        threadId givenThread: String? = nil, project givenProject: String? = nil,
-                       workspace workspaceOverride: String? = nil) throws -> SubmitResult {
+                       workspace workspaceOverride: String? = nil, images uploads: [ImageUpload] = []) throws -> SubmitResult {
         if locked({ closing }) { throw BlackTeamError("Black Team is closing.") }
-        let message = EText.trim(rawMessage)
+        // Images are Chat only, and an empty message with images asks for a description, as the daily app does.
+        let kinds = try ImageRules.validate(uploads)
+        if !uploads.isEmpty, kind == "agent" { throw BlackTeamError(ImageRules.codeRefusal) }
+        let message = uploads.isEmpty || !EText.trim(rawMessage).isEmpty ? EText.trim(rawMessage) : ImageRules.defaultMessage
         if message.isEmpty || EText.length(message) > 16000 { throw BlackTeamError("Enter a message of up to 16,000 characters.") }
         if !["chat", "agent"].contains(kind) { throw BlackTeamError("Choose Chat or Agent work.") }
         if !MODES.contains(mode) { throw BlackTeamError("Choose a supported response length.") }
@@ -259,6 +265,7 @@ public final class Backend: @unchecked Sendable {
         var parts: [JSONValue] = [threadId.map { .string($0) } ?? .null, .string(message), .string(mode)]
         if kind == "agent" { parts.append(.string(kind)) }
         if let givenProject { parts.append(.string(givenProject)) }
+        if !uploads.isEmpty { parts.append(ImageRules.digest(uploads)) }
         let hash = SHA256.hash(data: Data(JSONValue.array(parts).text().utf8)).map { String(format: "%02x", $0) }.joined()
         if let saved = history.request(requestId) {
             if saved["hash"]?.string != hash { throw BlackTeamError("Request ID was already used for another message.") }
@@ -289,6 +296,7 @@ public final class Backend: @unchecked Sendable {
             }
             if engine == nil { throw BlackTeamError("Code is unavailable in this build.") }
         }
+        if !uploads.isEmpty, config.model.source != "server", config.model.mmproj.isEmpty { throw BlackTeamError(ImageRules.needsVisionFile) }
         var thread = existing ?? history.create(message)
         thread = thread.setting("kind", .string(kind))
         if let agentEngine { thread = thread.setting("engine", .string(agentEngine)) }
@@ -300,14 +308,18 @@ public final class Backend: @unchecked Sendable {
             throw BlackTeamError("This conversation is full. Start a new conversation.")
         }
         let assistant: JSONValue = ["id": .string(UUID().uuidString.lowercased()), "role": "assistant", "content": "", "state": "writing", "model": .string(config.model.name)]
-        messages.append(["id": .string(UUID().uuidString.lowercased()), "role": "user", "content": .string(message), "state": "done"])
+        // The files are written only now that every check has passed, so a refused message leaves none behind.
+        let refs = uploads.isEmpty ? [] : try images.save(uploads, kinds: kinds, threadId: thread["id"]?.string ?? "")
+        var userMessage: JSONValue = ["id": .string(UUID().uuidString.lowercased()), "role": "user", "content": .string(message), "state": "done"]
+        if !refs.isEmpty { userMessage = userMessage.setting("images", .array(refs.map(\.json))) }
+        messages.append(userMessage)
         messages.append(assistant)
         let request: JSONValue = ["id": .string(requestId), "hash": .string(hash), "state": "running"]
         var requests = thread["requests"]?.array ?? []
         requests.append(request)
         thread = thread.setting("messages", .array(messages)).setting("requests", .array(requests)).setting("updated", .string(EText.iso(now())))
         // Saved before the request is remembered, so a failed save leaves no trace and the ID can be retried.
-        try history.save(thread)
+        do { try history.save(thread) } catch { images.remove(refs, threadId: thread["id"]?.string ?? ""); throw error }
         history.remember(&thread, request)
 
         let current = JobState(id: requestId, threadId: thread["id"]?.string, kind: kind, state: "running", progress: "Preparing local model\u{2026}")
@@ -404,8 +416,8 @@ public final class Backend: @unchecked Sendable {
         job.context = prepared.report.json
         job.progress = "Thinking\u{2026}"
         var body: [String: JSONValue] = [
-            "model": .string(config.model.source == "server" ? config.model.id : "black-team-local"), "messages": .array(prepared.messages),
-            "stream": true, "stream_options": ["include_usage": true], "max_tokens": .number(Double(prepared.maxTokens)), "temperature": 0.7,
+            "model": .string(config.model.source == "server" ? config.model.id : "black-team-local"),
+            "messages": .array(try modelMessages(prepared.messages, threadId: thread["id"]?.string ?? "")), "stream": true, "stream_options": ["include_usage": true], "max_tokens": .number(Double(prepared.maxTokens)), "temperature": 0.7,
         ]
         for (name, value) in thinkingOptions(mode) { body[name] = value }
         var urlRequest = URLRequest(url: URL(string: endpoint + "/chat/completions")!)
@@ -416,7 +428,8 @@ public final class Backend: @unchecked Sendable {
         urlRequest.httpBody = Data(JSONValue.object(body).text().utf8)
         let (response, lines) = try await stream(urlRequest)
         if !(200..<300).contains(response.statusCode) {
-            throw BlackTeamError("Local model request failed (\(response.statusCode)). Check your model and context settings.")
+            let sawImages = (thread["messages"]?.array ?? []).contains { !($0["images"]?.array ?? []).isEmpty }
+            throw BlackTeamError("Local model request failed (\(response.statusCode)). " + (sawImages ? ImageRules.visionRequired : "Check your model and context settings."))
         }
         var assistant = ref.value["messages"]?.array?.last?.object ?? [:]
         var content = assistant["content"]?.string ?? ""

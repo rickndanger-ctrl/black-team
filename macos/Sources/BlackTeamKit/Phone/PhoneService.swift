@@ -210,7 +210,18 @@ final class BackendPhone: PhoneBackend, @unchecked Sendable {
     func submit(message: String, kind: String, mode: String, requestId: String, threadId: String?, project: String?) throws -> SubmitResult {
         try backend.submit(message: message, kind: kind, mode: mode, requestId: requestId, threadId: threadId, project: project)
     }
-    func thread(_ id: String) -> JSONValue? { backend.thread(id) }
+    /// The phone's web app has no image support and would draw a broken picture, so a conversation reaches it without its
+    /// image references: it shows the text of the message. No image data is ever in a conversation, and none is served.
+    func thread(_ id: String) -> JSONValue? {
+        guard var thread = backend.thread(id) else { return nil }
+        let messages = (thread["messages"]?.array ?? []).map { message -> JSONValue in
+            var object = message.object ?? [:]
+            object["images"] = nil
+            return .object(object)
+        }
+        thread = thread.setting("messages", .array(messages))
+        return thread
+    }
     func request(_ id: String) -> SubmitResult? { backend.request(id) }
     func cancel() -> CancelResult { backend.cancel() }
     func approve(id: String, digest: String, choice: String) throws { try backend.approve(id: id, digest: digest, choice: choice) }

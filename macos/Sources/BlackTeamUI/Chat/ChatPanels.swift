@@ -8,7 +8,7 @@ struct ContextNote: View {
     let info: ContextInfo
     @Environment(\.btTheme) private var theme
     var body: some View {
-        Text("Context: \(Fmt.number(info.measured)) / \(Fmt.number(info.context)) tokens"
+        Text("Context\(info.imageReserve != nil ? " (text + image reserve)" : ""): \(Fmt.number(info.measured)) / \(Fmt.number(info.context)) tokens"
              + (info.maxTokens.map { " \u{00B7} \(Fmt.number($0)) reserved for reply" } ?? "")
              + (info.omitted > 0 ? " \u{00B7} Older turns excluded from this reply; full history stays saved." : ""))
             .btBody(11, 1.8, theme.warn).textSelection(.enabled).padding(.top, 10)

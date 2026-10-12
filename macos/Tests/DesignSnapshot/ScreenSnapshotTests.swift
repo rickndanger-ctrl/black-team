@@ -1,6 +1,8 @@
 import XCTest
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
+import ImageIO
 import BlackTeamKit
 @testable import BlackTeamUI
 
@@ -154,6 +156,70 @@ final class ScreenSnapshotTests: XCTestCase {
             """, "a1", extra: ["context": ["measuredInputTokens": 16436, "context": 65536, "maxTokens": 2048, "omittedMessages": 0, "method": "measured"]]),
         ])
         try render("b9-chat-image", .camp, height: 1600, model: image)
+    }
+
+    // MARK: Image attachments
+
+    /// A picture made on the spot and prepared the way a chosen file is: `shape` is "circle" or "square" on white (or on black for the emblem).
+    private func picture(_ name: String, red: CGFloat, green: CGFloat, blue: CGFloat, shape: String = "circle", background: CGFloat = 1) throws -> ImageUpload {
+        let size = 400
+        let c = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        c.setFillColor(CGColor(red: background, green: background, blue: background, alpha: 1)); c.fill(CGRect(x: 0, y: 0, width: size, height: size))
+        c.setFillColor(CGColor(red: red, green: green, blue: blue, alpha: 1))
+        let box = CGRect(x: 80, y: 80, width: 240, height: 240)
+        if shape == "circle" { c.fillEllipse(in: box) } else { c.fill(box) }
+        let out = NSMutableData()
+        let d = CGImageDestinationCreateWithData(out, UTType.png.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(d, c.makeImage()!, nil); CGImageDestinationFinalize(d)
+        return try ImagePreparer.prepare(data: out as Data, name: name)
+    }
+
+    func testCampImages() async throws {
+        let red = try picture("red-circle.png", red: 1, green: 0, blue: 0)
+        let blue = try picture("blue-square.png", red: 0, green: 0, blue: 1, shape: "square")
+
+        // The composer holding two previews, with "+ Files" beside the box.
+        let two = try await dailyModel()
+        two.status?.vision = VisionStatus(canSee: true, summary: "Can read images.")
+        two.drafts.set(two.draftKey, images: [DraftImage(red), DraftImage(blue)])
+        try render("c0-composer-two-images", .camp, height: 800, model: two)
+
+        // "Preparing..." while a picture is read.
+        let preparing = try await dailyModel()
+        preparing.status?.vision = VisionStatus(canSee: true, summary: "Can read images.")
+        preparing.drafts.set(preparing.draftKey, images: [DraftImage(red)])
+        preparing.preparing = true
+        try render("c1-composer-preparing", .camp, height: 800, model: preparing)
+
+        // The model needs its vision file: the notice sits where the previews are.
+        let needs = try await dailyModel()
+        needs.status?.config.model.name = "Qwen3.5 0.8B (tiny)"
+        needs.status?.vision = VisionStatus(canSee: false, needsFile: true, bytes: 921_704_672, summary: "Needs its vision file (922 MB).")
+        needs.drafts.set(needs.draftKey, images: [DraftImage(red)])
+        try render("c2-vision-notice", .camp, height: 800, model: needs)
+
+        let fetching = try await dailyModel()
+        fetching.status?.vision = VisionStatus(canSee: false, needsFile: true, bytes: 921_704_672, summary: "Needs its vision file (922 MB).")
+        fetching.drafts.set(fetching.draftKey, images: [DraftImage(red)])
+        fetching.visionInstall = VisionInstall(running: true, progress: SetupProgress(stage: "Downloading the vision file for Ornith 1.5 9B (medium)", fraction: 0.38, bytesPerSecond: 24_500_000))
+        try render("c3-vision-downloading", .camp, height: 800, model: fetching)
+
+        // Code has no "+ Files" button.
+        let code = try await dailyModel()
+        code.newKind = .agent
+        code.campPage = .chat
+        try render("c4-code-composer", .camp, height: 800, model: code)
+
+        // A sent message with its picture, as b9-chat-image.png.
+        let sent = try await dailyModel()
+        sent.status?.vision = VisionStatus(canSee: true, summary: "Can read images.")
+        let emblem = try picture("3DAED5A8-1284-4B07-A2C1-9F0E6B7D5C31.jpeg", red: 0.75, green: 0.75, blue: 0.78, background: 0)
+        let refs = try sent.backend.images.save([emblem], kinds: [.jpeg], threadId: chatId)
+        open(sent, thread: chatId, kind: "chat", messages: [
+            ["id": "u1", "role": "user", "content": "What\u{2019}s in this image?", "state": "done", "images": .array(refs.map(\.json))],
+            reply("This is a **light grey circle** on a black background.", "a1", extra: ["context": ["measuredInputTokens": 1836, "context": 65536, "maxTokens": 2048, "omittedMessages": 0, "method": "local-tokenizer", "imageReserveTokens": 1700]]),
+        ])
+        try render("c5-chat-image", .camp, height: 1000, model: sent)
     }
 
     func testCampCode() async throws {
