@@ -121,6 +121,10 @@ public final class AppModel: ObservableObject {
     @Published var privacyNow = PrivacyCheck()
     /// Set when a send was refused for privacy; the screen shows it with its choices where errors appear.
     @Published var refusal: PrivacyCheck?
+    /// The subscription agent chosen for a new conversation in the model menu; nil for a saved model.
+    @Published var agentChoice: AgentService?
+    /// The subscription agents found on this Mac, read with the status.
+    @Published var agentsInstalled: Set<AgentService> = []
     let imageCache = NSCache<NSString, NSImage>()
 
     private var lastRuntimeError = ""
@@ -209,7 +213,12 @@ public final class AppModel: ObservableObject {
     /// Asks the Backend what a send from here would do. The Backend decides again when a message is really sent.
     func updatePrivacy() {
         guard status != nil else { return }
-        let next = backend.privacyCheck(threadId: threadId, project: threadId == nil ? projectId : nil, kind: currentKind.rawValue)
+        let next: PrivacyCheck
+        if let agent = activeAgent {
+            next = backend.agentPrivacyCheck(service: agent, threadId: threadId, project: threadId == nil ? projectId : nil)
+        } else {
+            next = backend.privacyCheck(threadId: threadId, project: threadId == nil ? projectId : nil, kind: currentKind.rawValue)
+        }
         if next != privacyNow { privacyNow = next }
         if refusal != nil, !next.refused { refusal = nil }
     }
@@ -220,6 +229,8 @@ public final class AppModel: ObservableObject {
         repeat {
             refreshAgain = false
             do {
+                let installed = Set(AgentService.allCases.filter { backend.agentInstalled($0) })
+                if installed != agentsInstalled { agentsInstalled = installed }
                 let next = try await backend.status()
                 lastStatusAt = Date()
                 if next != status { status = next }
@@ -250,6 +261,7 @@ public final class AppModel: ObservableObject {
     /// Whether the open conversation (or, for a new one, the model that would start it) leaves this Mac, and for where.
     var leavesThisMac: (cloud: Bool, provider: String) {
         if let thread, thread["privacy"]?.string == "cloud" { return (true, thread["provider"]?.string ?? "") }
+        if thread == nil, let agent = agentChoice { return (true, agent.provider) }
         if thread != nil { return (false, "") }
         return (cloudSelected, cloud.provider)
     }
@@ -261,8 +273,25 @@ public final class AppModel: ObservableObject {
     }
     var locked: Bool { sending || pending != nil }
 
+    /// The subscription agent the open conversation continues, or the one chosen for a new conversation.
+    var threadAgent: AgentService? { AgentService.forEngine(thread?["engine"]?.string) }
+    var activeAgent: AgentService? { thread == nil ? agentChoice : threadAgent }
+
+    /// The model menu's subscription-agent entries: only the tools found on this Mac, and only for a new conversation or one with an agent.
+    var agentMenu: [(key: String, label: String)] {
+        guard thread == nil || threadAgent != nil else { return [] }
+        return AgentService.allCases.filter { agentsInstalled.contains($0) }.map { ("agent:\($0.engine)", "\($0.displayName) \u{00B7} your subscription") }
+    }
+
+    /// Chooses a subscription agent for the next new conversation, or nil to go back to a model.
+    func chooseAgent(_ agent: AgentService?) {
+        agentChoice = agent
+        updatePrivacy()
+    }
+
     var currentKind: ChatKind {
         if let kind = thread?["kind"]?.string, let known = ChatKind(rawValue: kind) { return known }
+        if activeAgent != nil { return .agent }
         return pending?.kind ?? newKind
     }
 
@@ -495,8 +524,11 @@ public final class AppModel: ObservableObject {
         if currentKind == .agent, !images.isEmpty { error = ImageRules.codeRefusal; return false }
         // A private conversation is not sent to a cloud model, and a local-only project does not use one. The Backend refuses it too;
         // asking first lets the screen offer the choices instead of an error.
+        // A subscription agent is asked the same question, about the same conversation, before anything starts.
+        let agent = activeAgent
         if pending == nil {
-            let check = backend.privacyCheck(threadId: threadId, project: threadId == nil ? projectId : nil, kind: currentKind.rawValue)
+            let check = agent.map { backend.agentPrivacyCheck(service: $0, threadId: threadId, project: threadId == nil ? projectId : nil) }
+                ?? backend.privacyCheck(threadId: threadId, project: threadId == nil ? projectId : nil, kind: currentKind.rawValue)
             if check.refused { refusal = check; return false }
         }
         refusal = nil
@@ -504,8 +536,14 @@ public final class AppModel: ObservableObject {
                                                 threadId: threadId, project: threadId == nil ? projectId : nil, images: images)
         pending = payload
         do {
-            let result = try backend.submit(message: payload.message, kind: payload.kind.rawValue, mode: payload.mode, requestId: payload.id,
+            let result: SubmitResult
+            if let agent {
+                result = try backend.submitAgentTask(service: agent, message: payload.message, requestId: payload.id, threadId: payload.threadId,
+                                                     project: payload.project)
+            } else {
+                result = try backend.submit(message: payload.message, kind: payload.kind.rawValue, mode: payload.mode, requestId: payload.id,
                                             threadId: payload.threadId, project: payload.project, images: payload.images.map(\.upload))
+            }
             pending = nil
             let key = draftKey
             threadId = result.threadId
@@ -524,7 +562,8 @@ public final class AppModel: ObservableObject {
                 return true
             }
             if error is BlackTeamError { pending = nil }
-            let check = backend.privacyCheck(threadId: payload.threadId, project: payload.project, kind: payload.kind.rawValue)
+            let check = agent.map { backend.agentPrivacyCheck(service: $0, threadId: payload.threadId, project: payload.project) }
+                ?? backend.privacyCheck(threadId: payload.threadId, project: payload.project, kind: payload.kind.rawValue)
             if check.refused { refusal = check; return false }
             self.error = error is BlackTeamError ? plainMessage(error) : "The message could not be sent. Retry it to recover the same response."
             return false
@@ -544,6 +583,16 @@ public final class AppModel: ObservableObject {
     func cancel() {
         _ = backend.cancel()
         Task { await refresh() }
+    }
+
+    /// "Roll back this task": puts back the files the subscription agent changed in that run. The reply then reads "Rolled back".
+    func rollBack(_ message: ChatMessage) {
+        guard let threadId, let run = message.run else { return }
+        do {
+            _ = try backend.rollBack(threadId: threadId, runId: run)
+            thread = backend.thread(threadId)
+            Task { await refresh() }
+        } catch { self.error = plainMessage(error) }
     }
 
     func approve(_ choice: String) {
@@ -620,6 +669,8 @@ extension AppModel {
     func startNewCloudConversation() {
         let old = drafts.draft(draftKey)
         refusal = nil
+        // A new conversation with the same subscription agent keeps the agent.
+        if let agent = threadAgent { agentChoice = agent }
         startChat(currentKind)
         drafts.set(draftKey, message: old.message)
         drafts.set(draftKey, mode: old.mode)
@@ -638,7 +689,11 @@ extension AppModel {
     func sendToCloud(_ check: PrivacyCheck) {
         guard let id = threadId else { return }
         do {
-            try backend.convertToCloud(threadId: id, confirmingProvider: check.provider)
+            if let agent = threadAgent {
+                try backend.convertToCloud(threadId: id, confirmingProvider: check.provider, agent: agent)
+            } else {
+                try backend.convertToCloud(threadId: id, confirmingProvider: check.provider)
+            }
             thread = backend.thread(id)
             refusal = nil
             updatePrivacy()

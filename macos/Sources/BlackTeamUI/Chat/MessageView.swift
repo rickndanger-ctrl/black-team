@@ -108,6 +108,12 @@ struct MessageView: View, Equatable {
         if canRetry, ["error", "interrupted"].contains(message.state) {
             Button("Retry") { model.retryLast() }.buttonStyle(.btSecondary).disabled(busy).padding(.top, 10)
         }
+        if message.run != nil, !message.isUser, !busy, !message.rollbackNote.isEmpty, !message.rollbackReady, !message.rolledBack {
+            note(message.rollbackNote)
+        }
+        if message.run != nil, !message.isUser, !busy, message.rollbackReady || message.rolledBack, message.state != "writing" {
+            RollBackControl(model: model, message: message).padding(.top, 10)
+        }
     }
 
     private func note(_ text: String) -> some View {
@@ -132,6 +138,29 @@ struct PercentIndent: Layout {
         let indent = bounds.width * fraction
         subviews[0].place(at: CGPoint(x: bounds.minX + indent, y: bounds.minY), anchor: .topLeading,
                           proposal: ProposedViewSize(width: bounds.width - indent, height: bounds.height))
+    }
+}
+
+/// "Roll back this task" under a subscription agent's finished reply. Asks first; then the reply reads "Rolled back".
+private struct RollBackControl: View {
+    let model: AppModel
+    let message: ChatMessage
+    @State private var confirming = false
+    @Environment(\.btTheme) private var theme
+    var body: some View {
+        if message.rolledBack {
+            Text("Rolled back").btBody(11, 1.5, theme.muted).accessibilityLabel("Rolled back")
+        } else {
+            Button("Roll back this task") { confirming = true }
+                .buttonStyle(.btSecondary)
+                .accessibilityLabel("Roll back this task")
+                .confirmationDialog("Roll back this task?", isPresented: $confirming, titleVisibility: .visible) {
+                    Button("Roll back", role: .destructive) { model.rollBack(message) }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("The files this task changed go back to how they were before it ran. Files it created are removed.")
+                }
+        }
     }
 }
 

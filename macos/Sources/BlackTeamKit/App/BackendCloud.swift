@@ -62,23 +62,40 @@ extension Backend {
 
     func privacyDecision(config: Config, existing: JSONValue?, project: Project?, kind: String, viaPhone: Bool) -> PrivacyCheck {
         guard config.model.source == "cloud" else { return .allowed() }
-        let provider = cloudHost(config.model.endpoint, rules: cloudRules)
-        let name = config.model.name
+        let destination = CloudDestination.model(host: cloudHost(config.model.endpoint, rules: cloudRules), name: config.model.name)
         let alternative = savedModels.list(active: config.model).first { !$0.isCloud }
+        return cloudDecision(destination: destination, alternative: alternative.map { ($0.name, $0.key) }, existing: existing, project: project,
+                             kind: kind, viaPhone: viaPhone)
+    }
+
+    /// The one rule for anything that would leave this Mac: a cloud model, or a subscription agent. Only the destination differs.
+    func cloudDecision(destination: CloudDestination, alternative: (name: String, key: String)?, existing: JSONValue?, project: Project?,
+                       kind: String, viaPhone: Bool) -> PrivacyCheck {
+        let provider = destination.provider
+        let name = destination.name
         var result = PrivacyCheck.allowed()
         result.provider = provider; result.modelName = name
         result.localModelName = alternative?.name ?? ""; result.localModelKey = alternative?.key ?? ""
-        result.willLeave = Backend.leaves(kind: kind)
-        let choices = alternative.map { "Start a new cloud conversation, switch back to \($0.name), or send this conversation to \(provider)." }
-            ?? "Start a new cloud conversation, or send this conversation to \(provider)."
+        let isAgent = destination.isAgent
+        result.willLeave = isAgent ? CloudDestination.agentLeaves : Backend.leaves(kind: kind)
+        let choices: String
+        if isAgent {
+            choices = "Start a new conversation with \(name), or send this conversation to \(provider)."
+        } else {
+            choices = alternative.map { "Start a new cloud conversation, switch back to \($0.name), or send this conversation to \(provider)." }
+                ?? "Start a new cloud conversation, or send this conversation to \(provider)."
+        }
         result.convertWarning = "Send this conversation to \(provider)? Everything in it so far will be sent to \(provider) with your next message: all your messages and the replies"
-            + (kind == "agent" ? ", and the file contents and command output the agent saw" : "")
+            + (isAgent ? ", and the file contents and command output the agent saw" : (kind == "agent" ? ", and the file contents and command output the agent saw" : ""))
             + ". The conversation stays marked as having left this Mac, even if you later continue it with a local model."
         // A project that is local only never uses a cloud model.
         if let project, !project.cloudAllowed {
             result.outcome = .projectLocalOnly
-            result.message = "The project \(project.name) is local only, so the cloud model \(name) is not used for conversations in it. "
-                + "To change that, choose \u{201C}Allow cloud models\u{201D} in the project\u{2019}s menu, or select a local model."
+            result.message = isAgent
+                ? "The project \(project.name) is local only, so \(name) (which runs on \(provider)) is not used for conversations in it. "
+                    + "To change that, choose \u{201C}Allow cloud models\u{201D} in the project\u{2019}s menu."
+                : "The project \(project.name) is local only, so the cloud model \(name) is not used for conversations in it. "
+                    + "To change that, choose \u{201C}Allow cloud models\u{201D} in the project\u{2019}s menu, or select a local model."
             return result
         }
         if let existing {
@@ -86,8 +103,10 @@ extension Backend {
             let sentTo = existing["provider"]?.string ?? ""
             if level == "local" {
                 result.outcome = .needsChoice
-                result.message = "This conversation is private to this Mac, and \(name) is a cloud model that would send it to \(provider). "
-                    + "Nothing in a private conversation is sent off this Mac without your say-so. " + choices
+                result.message = isAgent
+                    ? "This conversation is private to this Mac, and \(name) would send it to \(provider). "
+                    : "This conversation is private to this Mac, and \(name) is a cloud model that would send it to \(provider). "
+                result.message += "Nothing in a private conversation is sent off this Mac without your say-so. " + choices
                 return result
             }
             if sentTo != provider {
@@ -101,13 +120,36 @@ extension Backend {
         // A new conversation with a cloud model. A phone does not start one: that decision is made at the Mac.
         if viaPhone {
             result.outcome = .phoneNeedsMac
-            result.message = "Starting a conversation with a cloud model is a decision made at the Mac. Open Black Team on your Mac to start one, or ask there."
+            result.message = isAgent
+                ? "Starting a conversation with \(name) is a decision made at the Mac. Open Black Team on your Mac to start one, or ask there."
+                : "Starting a conversation with a cloud model is a decision made at the Mac. Open Black Team on your Mac to start one, or ask there."
             return result
         }
         result.outcome = .startsCloud
-        result.message = "This conversation leaves this Mac. It is sent to \(provider), which you chose for it: \(result.willLeave.joined(separator: ", and ")). "
-            + "Memory is not used in cloud conversations."
+        result.message = isAgent
+            ? "This conversation leaves this Mac. It is handed to \(name), which runs on \(provider) under your subscription: \(result.willLeave.joined(separator: ", and ")). "
+                + "\(name) uses its own tools and its maker\u{2019}s service, and Black Team\u{2019}s memory is not used."
+            : "This conversation leaves this Mac. It is sent to \(provider), which you chose for it: \(result.willLeave.joined(separator: ", and ")). "
+                + "Memory is not used in cloud conversations."
         return result
+    }
+
+    // MARK: Subscription agents (Claude Code, Codex)
+
+    /// What a subscription agent run would do, whatever model is selected: the agent runs on its maker's cloud.
+    public func agentPrivacyCheck(service: AgentService, threadId: String?, project projectId: String?, viaPhone: Bool = false) -> PrivacyCheck {
+        let existing = threadId.flatMap { history.get($0) }
+        let wanted = existing != nil ? existing?["project"]?.string : projectId
+        let project = locked { projects.first { $0.id == wanted } }
+        return cloudDecision(destination: .agent(service), alternative: nil, existing: existing, project: project, kind: "chat", viaPhone: viaPhone)
+    }
+
+    /// THE GATE. The runner must call this before starting, resuming or messaging a subscription agent, and must not proceed if it
+    /// throws. `existing` is the saved conversation (nil for a new one). Returns the level and provider to save on a new conversation.
+    func authorizeAgentRun(service: AgentService, existing: JSONValue?, project: Project?, viaPhone: Bool) throws -> (privacy: String, provider: String) {
+        let check = cloudDecision(destination: .agent(service), alternative: nil, existing: existing, project: project, kind: "chat", viaPhone: viaPhone)
+        if let refusal = check.refusal { throw BlackTeamError(refusal) }
+        return ("cloud", service.provider)
     }
 
     /// What would happen if this message were sent now. The interface asks this to show the pre-send notice and the refusal
@@ -127,7 +169,16 @@ extension Backend {
     public func convertToCloud(threadId: String, confirmingProvider: String) throws {
         let config = try configStore.read()
         guard config.model.source == "cloud" else { throw BlackTeamError("Select a cloud model first.") }
-        let provider = cloudHost(config.model.endpoint, rules: cloudRules)
+        try convert(threadId: threadId, provider: cloudHost(config.model.endpoint, rules: cloudRules), confirming: confirmingProvider)
+    }
+
+    /// The same conversion for a subscription agent: the confirmation must name the agent's provider (e.g. "anthropic.com").
+    /// Works whatever model is selected.
+    public func convertToCloud(threadId: String, confirmingProvider: String, agent: AgentService) throws {
+        try convert(threadId: threadId, provider: agent.provider, confirming: confirmingProvider)
+    }
+
+    private func convert(threadId: String, provider: String, confirming confirmingProvider: String) throws {
         guard confirmingProvider == provider else {
             throw BlackTeamError("Confirm which service this conversation will be sent to (\(provider)) before it is converted.")
         }
@@ -198,5 +249,59 @@ extension Backend {
             CloudRequest.body(model: config.model.id, messages: messages, tools: nil, maxTokens: prepared.maxTokens, mode: mode, caps: caps)
         }
         try await readReply(lines, job: job, signal: signal, ref: ref, prepared: prepared, cloudHost: target.host)
+    }
+}
+
+// MARK: Destinations
+
+/// A subscription agent: the person's own command-line app, running on its maker's cloud under their subscription.
+public enum AgentService: String, Sendable, CaseIterable {
+    case claudeCode, codex
+    public var provider: String { self == .claudeCode ? "anthropic.com" : "openai.com" }
+    public var displayName: String { self == .claudeCode ? "Claude Code" : "Codex" }
+}
+
+/// Where a conversation would go when it leaves this Mac.
+enum CloudDestination {
+    case model(host: String, name: String)
+    case agent(AgentService)
+
+    var provider: String { switch self { case .model(let host, _): return host; case .agent(let service): return service.provider } }
+    var name: String { switch self { case .model(_, let name): return name; case .agent(let service): return service.displayName } }
+    var isAgent: Bool { if case .agent = self { return true }; return false }
+
+    static let agentLeaves = ["your messages", "the files in this project folder that the agent chooses to read", "the output of commands it runs"]
+}
+
+extension Backend {
+    /// Cap on what is handed to a subscription agent, in UTF-16 units.
+    static let agentTaskLimit = 24_000
+
+    /// What the runner hands to a subscription agent, and the ONLY thing it may hand over: the conversation's user and assistant
+    /// text plus the new message. Never `core`, `recalled` notes, image data, recall results or engine memory. Keeps the newest
+    /// turns within `agentTaskLimit`; if the new message alone is larger, its end is kept.
+    func agentTaskText(thread: JSONValue, newMessage: String) -> String {
+        var turns: [String] = []
+        for message in thread["messages"]?.array ?? [] {
+            let role = message["role"]?.string
+            guard role == "user" || role == "assistant", let text = message["content"]?.string, !text.isEmpty else { continue }
+            turns.append((role == "user" ? "User:\n" : "Assistant:\n") + text)
+        }
+        turns.append("User:\n" + newMessage)
+        var kept: [String] = []
+        var used = 0
+        for turn in turns.reversed() {
+            let size = turn.utf16.count + (kept.isEmpty ? 0 : 2)
+            if used + size > Backend.agentTaskLimit {
+                if kept.isEmpty {
+                    var tail = Substring(turn)
+                    while tail.utf16.count > Backend.agentTaskLimit { tail = tail.dropFirst() }
+                    kept.append(String(tail))
+                }
+                break
+            }
+            kept.append(turn); used += size
+        }
+        return kept.reversed().joined(separator: "\n\n")
     }
 }

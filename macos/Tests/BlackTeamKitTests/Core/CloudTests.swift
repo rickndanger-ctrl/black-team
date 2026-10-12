@@ -125,6 +125,22 @@ final class CloudTests: XCTestCase {
 
     // MARK: Finding models
 
+    func testOnlyAnthropicIsSentAnthropicStyleHeaders() async throws {
+        let list = #"{"data":[{"id":"m"}]}"#
+        let seen = CloudHeaderBox()
+        let fetch: HTTPFetch = { request in
+            seen.add(request.url!.host!, request.allHTTPHeaderFields ?? [:])
+            return (Data(list.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        _ = try await discoverCloudModels(endpoint: "https://openrouter.ai/api/v1", apiKey: "k", fetch: fetch)
+        _ = try await discoverCloudModels(endpoint: "https://api.anthropic.com/v1", apiKey: "k", fetch: fetch)
+        XCTAssertNil(seen.headers["openrouter.ai"]?["x-api-key"])
+        XCTAssertNil(seen.headers["openrouter.ai"]?["anthropic-version"])
+        XCTAssertEqual(seen.headers["openrouter.ai"]?["Authorization"], "Bearer k")
+        XCTAssertEqual(seen.headers["api.anthropic.com"]?["x-api-key"], "k")
+        XCTAssertEqual(seen.headers["api.anthropic.com"]?["anthropic-version"], "2023-06-01")
+    }
+
     func testFreeModelsThatCanUseToolsAreRecognised() async throws {
         let list = #"{"data":[{"id":"a/free-tools:free","context_length":262144,"pricing":{"prompt":"0","completion":"0"},"supported_parameters":["tools","temperature"]},"# +
             #"{"id":"b/free-no-tools:free","pricing":{"prompt":"0","completion":"0"},"supported_parameters":["temperature"]},"# +
@@ -273,4 +289,10 @@ final class CloudTests: XCTestCase {
         let (strict, _) = try configStore()
         XCTAssertThrowsError(try strict.save(Config(model: cloudModel("http://127.0.0.1:9/v1"), workspace: NSTemporaryDirectory())))
     }
+}
+
+final class CloudHeaderBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var headers: [String: [String: String]] = [:]
+    func add(_ host: String, _ value: [String: String]) { lock.lock(); headers[host] = value; lock.unlock() }
 }

@@ -76,7 +76,7 @@ struct ModelSetupForm: View {
     @State private var gpuLayers = 0
     @State private var workspace = ""
     @State private var found: [String] = []
-    @State private var cloudPreset = "openai"
+    @State private var cloudPreset = "openrouter"
     @State private var cloudContexts: [String: Int] = [:]
     @State private var freeAgents: Set<String> = []
     @State private var freeOnly = false

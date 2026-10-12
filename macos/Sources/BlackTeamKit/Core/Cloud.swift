@@ -117,9 +117,13 @@ public struct DiscoveredCloud: Equatable, Sendable {
 public func discoverCloudModels(endpoint: String, apiKey: String, fetch: HTTPFetch = LocalHTTP.fetch, rules: CloudRules = .standard) async throws -> DiscoveredCloud {
     let target = try rules(endpoint)
     var headers = try cloudHeaders(apiKey)
-    // The same key, named the way services with their own models route expect it. It goes to the same host only.
-    headers["x-api-key"] = apiKey
-    headers["anthropic-version"] = "2023-06-01"
+    // Anthropic's own models route wants the key under its own header name. Only Anthropic gets these:
+    // a relay such as OpenRouter takes them as a request for its Anthropic-style list, whose model names
+    // ("anthropic/…[1m]") are not the ids its chat route accepts.
+    if target.host == "anthropic.com" || target.host.hasSuffix(".anthropic.com") {
+        headers["x-api-key"] = apiKey
+        headers["anthropic-version"] = "2023-06-01"
+    }
     var models: [CloudModelInfo] = []
     var after: String?
     for _ in 0..<5 {

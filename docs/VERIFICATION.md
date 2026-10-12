@@ -326,11 +326,17 @@ tool calls, usage totals, and the retries that learn what a service rejects.
 The variable that lets tests use a stand-in address is read only by the
 command-line tool and is absent from the app binary.
 
-The owner then added a free OpenRouter model with his own key in the app on a
-second Mac mini and reported that it works. That is the only real cloud service
-tried. Not checked: OpenAI, Anthropic and Google directly; image attachments to
-a cloud model; Code against a real cloud service by anyone but the owner's own
-use. Known limits of the boundary are listed in `docs/PRIVACY.md`.
+The first real use, by the owner with a free OpenRouter model, failed: every
+message was rejected as "not a valid model ID". The cause was in Black Team:
+its model search sent Anthropic-style headers to every service, and OpenRouter
+answers those with a different list whose names its chat route does not accept.
+Those headers now go to Anthropic only. With that fix and the owner's key, a
+free OpenRouter model (Nemotron 3.5 Lightning) answered a Chat message and
+completed a Code step that edited a file. That is the only real service tried;
+OpenAI, Anthropic and Google have not been tried directly, nor image attachments
+to a cloud model. alpha.15 as released has the fault. (An earlier version of
+this note said the owner had used a free model successfully before release;
+that had not happened.)
 
 ## Live follow-up — October 11, 2026 (alpha.14)
 
