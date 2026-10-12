@@ -114,6 +114,11 @@ struct ChatMessage: Equatable, Identifiable {
     var finishReason: String
     var meter: SpeedInfo?
     var images: [ImageRef]
+    /// A subscription-agent reply: the run it belongs to, whether its files can be rolled back, and whether they were.
+    var run: String?
+    var rollbackReady = false
+    var rolledBack = false
+    var rollbackNote = ""
 
     var isUser: Bool { role == "user" }
     var changes: [FileChange] { events.compactMap(\.change) }
@@ -134,6 +139,7 @@ struct ChatMessage: Equatable, Identifiable {
         a.id == b.id && a.role == b.role && a.content == b.content && a.state == b.state && a.model == b.model && a.thinking == b.thinking
             && a.context == b.context && a.events == b.events && a.artifacts == b.artifacts && a.note == b.note && a.error == b.error
             && a.finishReason == b.finishReason && a.meter == b.meter && a.images == b.images && a.recalled.map(\.title) == b.recalled.map(\.title)
+            && a.run == b.run && a.rollbackReady == b.rollbackReady && a.rolledBack == b.rolledBack && a.rollbackNote == b.rollbackNote
     }
 
     init(_ json: JSONValue, index: Int) {
@@ -161,6 +167,10 @@ struct ChatMessage: Equatable, Identifiable {
         finishReason = json["finishReason"]?.string ?? ""
         meter = SpeedInfo(json["meter"])
         images = (json["images"]?.array ?? []).compactMap { ImageRef($0) }
+        run = json["run"]?.string
+        rollbackReady = json["rollback"]?.bool == true
+        rolledBack = json["rolledBack"]?.bool == true
+        rollbackNote = json["rollbackNote"]?.string ?? ""
     }
 
     static func messages(of thread: JSONValue?) -> [ChatMessage] {

@@ -21,6 +21,9 @@ Usage: black-team-cli [--json] <command>
   chat "<message>" [--image <path>]... [--thread <id>] [--mode fast|balanced|deep|extended] [--allow-cloud]
   vision status | install             can the model read images; download a starter model's vision file
   code "<message>" [--workspace <folder>] [--thread <id>] [--mode ...] [--approve once|deny] [--allow-cloud]
+  agent claude|codex "<message>" [--workspace <folder>] [--thread <id>] [--allow-cloud]
+                                      hand a task to your Claude Code or Codex subscription (it leaves this Mac)
+  agent rollback <thread id> <run id> undo the files a task changed
   memory core | list | search <query>
   phone status | enable | disable | link | reset
   serve [--web <folder>]              keep Black Team and phone access running until Ctrl-C
@@ -58,6 +61,70 @@ func gigabytes(_ bytes: Int64) -> String { String(format: "%.1f GB", Double(byte
 func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", bytesPerSecond / 1_048_576) }
 
 // MARK: Turns
+
+/// Runs one subscription-agent task (Claude Code or Codex) and prints its steps and text as they arrive. Returns the exit status.
+/// The gate is the Backend's: a refusal prints its message, with the command-line choices, and exits non-zero.
+@MainActor func runAgentTask(_ backend: Backend, service: AgentService, message: String, thread: String?, workspace: String?, allowCloud: Bool) async -> Int32 {
+    let check = backend.agentPrivacyCheck(service: service, threadId: thread, project: nil)
+    if allowCloud, thread != nil, check.outcome == .needsChoice {
+        do { try backend.convertToCloud(threadId: thread!, confirmingProvider: check.provider, agent: service) } catch { fail(describe(error)) }
+        if !asJSON { print("[cloud] This conversation was sent to \(check.provider) because --allow-cloud was given.") }
+    }
+    if thread == nil, !asJSON { FileHandle.standardError.write(Data((check.message + "\n").utf8)) }
+    let sent: SubmitResult
+    do { sent = try backend.submitAgentTask(service: service, message: message, requestId: UUID().uuidString.lowercased(), threadId: thread, workspace: workspace) }
+    catch {
+        var text = describe(error)
+        if backend.agentPrivacyCheck(service: service, threadId: thread, project: nil).outcome == .needsChoice {
+            text += "\nOn the command line: add --allow-cloud to send this conversation, omit --thread to start a new one."
+        }
+        fail(text)
+    }
+    var printed = ""
+    var steps = 0
+    func show() {
+        guard let view = backend.thread(sent.threadId), let reply = view["messages"]?.array?.last else { return }
+        let content = reply["content"]?.string ?? ""
+        let events = reply["events"]?.array ?? []
+        while steps < events.count {
+            let event = events[steps]; steps += 1
+            let name = event["name"]?.string ?? "", output = (event["output"]?.string ?? "").replacingOccurrences(of: "\n", with: " ")
+            switch event["type"]?.string {
+            case "tool_use": if !asJSON { print("[\(name)] \(String(output.prefix(160)))") }
+            case "tool_result": if !asJSON { print("  -> \(String(output.prefix(160)))") }
+            default: break
+            }
+        }
+        if !asJSON, content.hasPrefix(printed), content.count > printed.count {
+            print(String(content.dropFirst(printed.count)), terminator: "")
+            printed = content
+        }
+        fflush(stdout)
+    }
+    while backend.isBusy { show(); try? await Task.sleep(nanoseconds: 80_000_000) }
+    await backend.waitForIdle()
+    show()
+    let finalThread = backend.thread(sent.threadId)
+    let reply = finalThread?["messages"]?.array?.last
+    let state = reply?["state"]?.string ?? "error"
+    let rollbackReady = reply?["rollback"]?.bool == true
+    if asJSON {
+        var out: [String: JSONValue] = ["threadId": .string(sent.threadId), "runId": .string(sent.id), "state": .string(state),
+                                         "reply": .string(reply?["content"]?.string ?? "")]
+        if let error = reply?["error"]?.string { out["error"] = .string(error) }
+        print(JSONValue.object(out).text(pretty: true))
+    } else {
+        print("\n")
+        print("thread: \(sent.threadId)")
+        print("run: \(sent.id)")
+        print("state: \(state)")
+        if rollbackReady { print("rollback: black-team-cli agent rollback \(sent.threadId) \(sent.id)") }
+        if let note = reply?["rollbackNote"]?.string { print("rollback: \(note)") }
+        print("privacy: leaves this Mac, sent to \(service.provider) under your \(service.displayName) subscription")
+        if let error = reply?["error"]?.string { FileHandle.standardError.write(Data(("error: " + error + "\n").utf8)) }
+    }
+    return state == "done" ? 0 : 1
+}
 
 /// Runs one Chat or Code turn and prints it. Returns the exit status.
 /// `allowCloud` answers the one question the Backend asks before a private conversation goes to a cloud service.
@@ -285,6 +352,32 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
             guard ["once", "deny"].contains(approve) else { fail("--approve takes once or deny.", code: 2) }
             guard let message = arguments.first, arguments.count == 1 else { fail("Give one message in quotes.\n\n\(usage)", code: 2) }
             return await runTurn(backend, message: message, kind: command == "chat" ? "chat" : "agent", mode: mode, thread: thread, workspace: workspace, approve: approve, images: uploads, allowCloud: allowCloud)
+
+        case "agent":
+            let action = arguments.isEmpty ? "" : arguments.removeFirst()
+            if action == "rollback" {
+                guard arguments.count == 2 else { fail("agent rollback needs a thread id and a run id.\n\n\(usage)", code: 2) }
+                do {
+                    let restored = try backend.rollBack(threadId: arguments[0], runId: arguments[1])
+                    if asJSON { print(JSONValue.object(["restored": .array(restored.restored.map { .string($0) }), "removed": .array(restored.removed.map { .string($0) })]).text(pretty: true)) }
+                    else {
+                        print("restored \(restored.restored.count) file(s)\(restored.restored.isEmpty ? "" : ": " + restored.restored.joined(separator: ", "))")
+                        print("removed \(restored.removed.count) file(s)\(restored.removed.isEmpty ? "" : ": " + restored.removed.joined(separator: ", "))")
+                    }
+                    return 0
+                } catch { fail(describe(error)) }
+            }
+            guard let service = AgentService.allCases.first(where: { $0.program == action }) else {
+                fail("agent takes claude or codex, then the task in quotes, or rollback.\n\n\(usage)", code: 2)
+            }
+            let thread = option("--thread")
+            let rawWorkspace = option("--workspace")
+            // A folder given on the command line is made absolute, so the saved folder still means the same thing later.
+            let workspace = rawWorkspace.map { URL(fileURLWithPath: $0).standardizedFileURL.path }
+            let allowCloud = arguments.contains("--allow-cloud")
+            arguments.removeAll { $0 == "--allow-cloud" }
+            guard let message = arguments.first, arguments.count == 1 else { fail("Give one task in quotes.\n\n\(usage)", code: 2) }
+            return await runAgentTask(backend, service: service, message: message, thread: thread, workspace: workspace, allowCloud: allowCloud)
 
         case "memory":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()

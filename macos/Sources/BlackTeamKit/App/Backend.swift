@@ -46,6 +46,10 @@ public final class Backend: @unchecked Sendable {
     let now: @Sendable () -> Date
     let cloudRules: CloudRules
     let capabilities: CloudCapabilities
+    /// Starts Claude Code and Codex (`ProcessAgentLauncher` in the app; tests feed recorded output).
+    let agentLauncher: AgentLauncher
+    /// Copies of the workspace taken before each subscription-agent run, for rollback.
+    let snapshots: AgentSnapshots
     let home: String
     let harness: HarnessRuntimeAdapter
     let hub = ChangeHub()
@@ -83,10 +87,12 @@ public final class Backend: @unchecked Sendable {
                 discover: @escaping @Sendable () -> DiscoveryResult = { discoverInstalled() },
                 runtimeInstaller: RuntimeProviding? = nil, downloader: @escaping @Sendable () -> FileDownloading = { Downloader() },
                 terminal: @escaping TerminalOpener = openInTerminal, now: @escaping @Sendable () -> Date = { Date() }, home: String = NSHomeDirectory(),
-                keeperInterval: TimeInterval = 60, cloud: CloudRules = .standard) throws {
+                keeperInterval: TimeInterval = 60, cloud: CloudRules = .standard, agents: AgentLauncher = ProcessAgentLauncher()) throws {
         self.dataFolder = dataFolder
         self.version = version
         self.cloudRules = cloud
+        agentLauncher = agents
+        snapshots = AgentSnapshots(dataFolder: dataFolder)
         capabilities = CloudCapabilities(dataFolder: dataFolder)
         try privateDirectory(dataFolder)
         configStore = try ConfigStore(stateDir: dataFolder, cloud: cloud)
@@ -237,6 +243,8 @@ public final class Backend: @unchecked Sendable {
                                "kind": .string(thread["kind"]?.string.flatMap { $0.isEmpty ? nil : $0 } ?? "chat"), "messages": thread["messages"] ?? [],
                                "privacy": .string(thread["privacy"]?.string == "cloud" ? "cloud" : "local")]
         // Where a cloud conversation went, and what it has used. The host name only: no address, no key.
+        // Which subscription agent the conversation belongs to, so the interface can keep continuing it with that agent.
+        if let engine = thread["engine"]?.string, !engine.isEmpty { view = view.setting("engine", .string(engine)) }
         if thread["privacy"]?.string == "cloud" {
             view = view.setting("provider", thread["provider"] ?? "")
             if let usage = thread["usage"] { view = view.setting("usage", usage) }
@@ -306,6 +314,10 @@ public final class Backend: @unchecked Sendable {
         }
         let existing = threadId.flatMap { history.get($0) }
         if threadId != nil && existing == nil { throw BlackTeamError("Conversation not found.") }
+        // A conversation with a subscription agent continues only with that agent (`submitAgentTask`), never through this path.
+        if let existing, let agent = AgentService.forEngine(existing["engine"]?.string) {
+            throw BlackTeamError(agentConversationRefusal(agent))
+        }
         if let existing, (existing["kind"]?.string.flatMap { $0.isEmpty ? nil : $0 } ?? "chat") != kind {
             throw BlackTeamError("Start a new conversation to change between Chat and Agent work.")
         }

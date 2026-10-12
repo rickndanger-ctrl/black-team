@@ -67,11 +67,26 @@ memory, phones cannot start or convert one, harnesses are not launched against a
 (through an injected `CloudRules` in `BlackTeamCLI/main.swift`) so `Tests/CloudStub/stub.py`, a stand-in service, can be used
 without a real key; the app, built from `Backend()` with the default rules, neither contains that code nor the variable's name.
 
+Subscription agents (`Sources/BlackTeamKit/Agents/`, `App/BackendAgents.swift`): a task can be handed to the person's own Claude Code or
+Codex command-line app, which runs under that app's own saved login and subscription. Black Team never sees a key or token. The model
+menu offers "Claude Code · your subscription" and "Codex · your subscription" only when the tool is found on this Mac. The tool starts
+in the conversation's folder (the project's, or the workspace, or `--workspace`), its output and tool steps are saved as they arrive, and
+the conversation is kept by the tool's session id, so a follow-up resumes it. Each tool is started with its modest defaults: Claude Code
+with `--permission-mode acceptEdits`, Codex with `-s workspace-write`; nothing skips permissions. Provider keys
+(`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`) are removed from the tool's environment. A run
+stops after 30 minutes, and a reply is kept to 256 KiB. Before each run the project folder is archived with `/usr/bin/tar` to
+`<data>/agent-snapshots/<conversation>/<run>.tar` (private; `.git`, `node_modules`, `.build`, `build`, `dist` and `DerivedData` are left
+out; folders over 200 MB or 20,000 files are not archived, and the message says so). The newest five per conversation are kept, and
+"Roll back this task" restores the changed files (and removes files the task created) when no task is running. Subscription agents count
+as cloud: the conversation leaves this Mac, is marked with the provider (anthropic.com or openai.com), and follows the same rules as a
+cloud model (a private conversation must be sent first, a local-only project refuses, a phone never starts one, no memory is used).
+CLI: `agent claude|codex "<task>" [--workspace <folder>] [--thread <id>] [--allow-cloud]` and `agent rollback <thread id> <run id>`.
+
 Not built yet, and left off the screens until they work: Hermes and its plugins, dictation, DSH session listing. Not done for
 images: removing a conversation's picture files (no conversation delete yet), and keeping unsent drafts across app launches.
 
 `black-team-cli` runs the same backend from a terminal (`status`, `starter list`,
-`starter install <id>`, `chat`, `code`, `find`, `models`, `use`, `memory`, `phone status|enable|disable|link|reset`,
+`starter install <id>`, `chat`, `code`, `agent`, `find`, `models`, `use`, `memory`, `phone status|enable|disable|link|reset`,
 and `serve`, which keeps phone access answering until Ctrl-C; `--web <folder>` or `BLACK_TEAM_WEB` names the built web app), which is
 how the app is tested on a Mac with nobody at the screen. `BLACK_TEAM_DATA=<folder>`
 points the app or the CLI at a throwaway data folder.

@@ -27,10 +27,20 @@ struct ChatControls: View {
     var body: some View {
         let locked = model.sending || model.activeJob || model.pending != nil
         let models = model.status?.models ?? []
+        // Saved models first, then the subscription agents found on this Mac (`agent:<engine>`), chosen as the next message's agent.
+        let options = models.map { ($0.key, label($0)) } + model.agentMenu.map { ($0.key, $0.label) }
         HStack(spacing: 10) {
-            if models.count > 1 {
-                BTSelect(options: models.map { ($0.key, label($0)) },
-                         selection: Binding(get: { models.first(where: \.active)?.key ?? "" }, set: { key in Task { await model.switchModel(key) } }),
+            if options.count > 1 {
+                BTSelect(options: options,
+                         selection: Binding(get: { model.activeAgent.map { "agent:\($0.engine)" } ?? models.first(where: \.active)?.key ?? "" },
+                                            set: { key in
+                                                if key.hasPrefix("agent:") {
+                                                    model.chooseAgent(AgentService.allCases.first { "agent:\($0.engine)" == key })
+                                                } else {
+                                                    model.chooseAgent(nil)
+                                                    Task { await model.switchModel(key) }
+                                                }
+                                            }),
                          placeholder: model.modelName, browser: true)
                     .disabled(locked || model.busy)
                     .accessibilityLabel("Model")
@@ -79,7 +89,7 @@ struct ChatNotices: View {
     @Environment(\.btTheme) private var theme
 
     var body: some View {
-        if !model.setupComplete {
+        if !model.setupComplete, model.activeAgent == nil {
             notice("Connect a model to start.") { Button("Connect a model") { model.openCommand() }.buttonStyle(.btSecondary) }
         } else if model.status?.runtime.ready != true, !model.cloudSelected {
             let starting = model.status?.runtime.state == "starting"
@@ -255,7 +265,8 @@ struct ComposerBar: View {
         let kind = model.currentKind
         let text = drafts.draft(key).message
         let activeJob = model.activeJob
-        let available = model.setupComplete && !model.sending && (model.pending != nil || !activeJob)
+        // A subscription agent needs no local model, so the composer works without one.
+        let available = (model.setupComplete || model.activeAgent != nil) && !model.sending && (model.pending != nil || !activeJob)
         let hasImages = kind == .chat && !model.draftImages.isEmpty
         let canSend = available && !model.preparing && !(hasImages && model.visionNoticeShown)
             && (model.pending != nil || hasImages || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -319,7 +330,7 @@ struct ComposerBar: View {
                 .padding(.horizontal, 6).padding(.top, 4 + (13 * 1.7 - BTFont.natural(13)) / 2)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
-            ComposerField(text: binding, placeholder: placeholder, enabled: model.setupComplete && !model.sending && model.pending == nil,
+            ComposerField(text: binding, placeholder: placeholder, enabled: (model.setupComplete || model.activeAgent != nil) && !model.sending && model.pending == nil,
                           theme: theme, onSubmit: submit, onPasteImages: { model.addImages($0) })
         }
     }
