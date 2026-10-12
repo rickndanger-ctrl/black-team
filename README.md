@@ -291,8 +291,13 @@ npm run package:linux -- --runtime-zip /path/to/electron-v44.7.0-linux-x64.zip -
 The portable release is still an alpha: clean-machine installation, real model
 inference, Hermes tool execution, browser/desktop drivers, and physical phone
 flows need the live checks listed in [VERIFICATION.md](docs/VERIFICATION.md).
-Windows/macOS desktop packaging, GPU monitoring, automatic harness installation,
-and automatic task recovery across restarts are not included.
+Windows packaging, GPU monitoring, automatic harness installation, and automatic
+task recovery across restarts are not included.
+
+A native macOS version (Swift) is in [`macos/`](macos/README.md). It has Chat, Code,
+memory, projects, model finding and agent connections, and can download a starter
+model and the llama.cpp runtime on first run. It does not have the phone companion
+or Hermes yet.
 
 Black Team is free software under the [GNU Affero General Public License,
 version 3](LICENSE). You may use, study, change and share it; if you distribute a
