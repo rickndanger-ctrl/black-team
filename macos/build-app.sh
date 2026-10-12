@@ -10,8 +10,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 MODE="${1:-}"
-VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' ../package.json 2>/dev/null | head -1)"
-VERSION="${VERSION:-${BLACK_TEAM_VERSION:-0.1.0}}"
+# BLACK_TEAM_VERSION wins when set, so a release build cannot pick up a neighbouring checkout's version.
+VERSION="${BLACK_TEAM_VERSION:-$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' ../package.json 2>/dev/null | head -1)}"
+VERSION="${VERSION:-0.1.0}"
 ARCH="$(uname -m)"
 swift build -c release --product BlackTeam
 BIN="$(swift build -c release --show-bin-path)"

@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.14**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.15**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -301,6 +301,36 @@ note. One console error appeared on every load: the page's own inline theme
 script is blocked by its Content Security Policy (`script-src 'self'`), so the
 saved theme is applied a moment later by the app instead of before first paint.
 It does not affect function; a fix is to allow that script's hash.
+
+## Live follow-up — October 11, 2026 (alpha.15)
+
+One change after alpha.14, on macOS only: **cloud models you bring yourself**.
+A person can add an OpenAI-compatible cloud service by its HTTPS address, their
+own key and a model id (presets for OpenRouter, OpenAI, Anthropic and Google).
+Privacy is a rule the backend enforces: every conversation is local or cloud;
+a local one is never sent to a cloud model without a conversion that names the
+service; projects are local only unless switched; the memory vault is not used
+in cloud conversations; a phone cannot start or convert one. The picker can
+show only free models that can use tools. See `docs/PRIVACY.md`. The Linux code
+is unchanged; the Linux package differs from alpha.14 only in its version and
+documents.
+
+Automated suites at the build: 148 Node and 22 Python tests pass on Linux; 361
+Swift tests pass on macOS, 40 of them for cloud models. They assert on the
+request bodies themselves: no vault text, no memory tools, no llama.cpp-only
+fields.
+
+Checked on a Mac mini with a throwaway data folder against a stand-in server:
+Chat and Code turns from the command line, a file edited through the stand-in's
+tool calls, usage totals, and the retries that learn what a service rejects.
+The variable that lets tests use a stand-in address is read only by the
+command-line tool and is absent from the app binary.
+
+The owner then added a free OpenRouter model with his own key in the app on a
+second Mac mini and reported that it works. That is the only real cloud service
+tried. Not checked: OpenAI, Anthropic and Google directly; image attachments to
+a cloud model; Code against a real cloud service by anyone but the owner's own
+use. Known limits of the boundary are listed in `docs/PRIVACY.md`.
 
 ## Live follow-up — October 11, 2026 (alpha.14)
 
