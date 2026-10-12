@@ -101,4 +101,17 @@ test('a known harness connects in one step and launches pointed at the model in 
  const patch=JSON.parse(fs.readFileSync(path.join(stateDir,'harnesses','dsh','black-team.patch.json'),'utf8'));
  assert.deepEqual(patch.filter(entry=>entry.disabled).map(entry=>entry.id),['llm-deepseek','llm-deepseek-account','session-title-llm']);
  assert.throws(()=>applyPreset('nope',{},stateDir),/does not know/);
+ // DeepSeek Harness serves a page: it starts on a port Black Team picked, and the page opens once it answers.
+ store.save({harnesses:[...store.read().harnesses,{id:'dsh',name:'DeepSeek Harness',executable:exe,args:[],terminal:[exe,'-e'],preset:'dsh'}]});
+ let asked=0;const opened=new Promise(resolve=>{launchHarness({id:'dsh',store,config,runtime,stateDir,spawn,reservePort:async()=>4321,pageWaitMs:1,
+  fetch:async url=>{assert.equal(url,'http://127.0.0.1:4321/');if(++asked<3)throw new Error('refused');return {status:200,body:{cancel:async()=>{}}};},openPage:resolve});});
+ assert.equal(await opened,'http://127.0.0.1:4321/');assert.equal(asked,3);
+ // A harness that guards its page opens the browser itself, so Black Team does not open a second, refused tab.
+ let guarded=0,second=false;await new Promise(resolve=>launchHarness({id:'dsh',store,config,runtime,stateDir,spawn,reservePort:async()=>4322,pageWaitMs:1,
+  fetch:async()=>{guarded++;setTimeout(resolve,20);return {status:401,body:{cancel:async()=>{}}};},openPage:()=>{second=true;}}));
+ assert.equal(guarded,1);assert.equal(second,false);
+ const dsh=launched.at(-2);
+ assert.deepEqual(dsh.args.slice(2),['--profile','web','--patch',path.join(stateDir,'harnesses','dsh','black-team.patch.json'),'--port','4321']);
+ assert.equal(dsh.env.DSH_HOME,path.join(stateDir,'harnesses','dsh'));
+ assert.ok(!launched.slice(0,-2).some(item=>item.args.includes('--port')));
 });

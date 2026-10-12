@@ -186,7 +186,7 @@ public func shellQuote(_ value: String) -> String {
 ///
 /// A harness that serves a page instead of drawing in the terminal prints the page's address when it
 /// is ready. With `opensLocalPage` the script shows the harness's output as usual and opens the first
-/// address on this computer that it prints, once; nothing else is ever opened.
+/// address on this computer that it prints, once, unless the harness opens it itself; nothing else is ever opened.
 public func launchScript(workspace: String, environment: [String: String], executable: String, args: [String],
                          opensLocalPage: Bool = false) -> String {
     var lines = ["#!/bin/zsh", "rm -f -- \"$0\"", "cd -- \(shellQuote(workspace)) || exit 1"]
@@ -195,11 +195,18 @@ public func launchScript(workspace: String, environment: [String: String], execu
     }
     let command = ([executable] + args).map(shellQuote).joined(separator: " ")
     if opensLocalPage {
+        // Older DeepSeek Harness only prints its address. Newer versions print one carrying a one-time
+        // token and open the browser themselves, saying so on the next line. So the address is opened
+        // two seconds after it appears, unless the harness has said by then that it is opening it.
         lines += [
-            "opened=",
+            "seen=; own=\"${TMPDIR:-/tmp}/black-team-page.$$\"; rm -f -- \"$own\"",
             command + " 2>&1 | while IFS= read -r line; do",
             "  print -r -- \"$line\"",
-            "  if [[ -z $opened && $line =~ '(http://127\\.0\\.0\\.1:[0-9]+)' ]]; then opened=1; /usr/bin/open \"$match[1]\"; fi",
+            "  if [[ $line == *'opening the default browser'* ]]; then : > \"$own\"; fi",
+            "  if [[ -z $seen && $line =~ '(http://127\\.0\\.0\\.1:[0-9]+[^[:space:]]*)' ]]; then",
+            "    seen=1; page=$match[1]",
+            "    ( sleep 2; [[ -e $own ]] || /usr/bin/open \"$page\"; rm -f -- \"$own\" ) &!",
+            "  fi",
             "done",
         ]
     } else {

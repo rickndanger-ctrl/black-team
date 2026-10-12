@@ -83,7 +83,7 @@ using. Switch models in Black Team and the next Open uses the new one.
 | Codex (`codex`) | `-c` overrides that add a "Black Team" provider using the Responses API and select it, with web search off. |
 | Pi (`pi`) | A separate Pi profile folder inside Black Team's data folder, holding one provider and model. |
 | OpenCode (`opencode`) | An inline configuration with one OpenAI-compatible provider. |
-| DeepSeek Harness (`dsh`) | A separate profile folder and a patch that adds your model and switches its hosted providers off. |
+| DeepSeek Harness (`dsh`) | A separate profile folder and a patch that adds your model and switches its hosted providers off. It starts DeepSeek Harness's own browser interface (the `web` profile) and the page opens in your browser. |
 | Aider (`aider`) | `--openai-api-base` and `--model`. |
 | Hermes Terminal (`hermes`) | Opened as it is; it keeps its own profile settings. |
 
