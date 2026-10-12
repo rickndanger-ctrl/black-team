@@ -2,6 +2,13 @@ import XCTest
 @testable import BlackTeamKit
 
 final class AgentToolsTests: XCTestCase {
+    func testAServiceErrorInJSONIsShownAsItsSentence() {
+        let raw = #"{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'x' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."}}"#
+        XCTAssertEqual(AgentTurn.plain(raw), "The 'x' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.")
+        XCTAssertEqual(AgentTurn.plain("Codex stopped."), "Codex stopped.")
+        XCTAssertEqual(AgentTurn.plain(#"{"unrelated":true}"#), #"{"unrelated":true}"#)
+    }
+
     func testClaudeCodeArgumentsKeepTheModestDefaults() {
         let args = AgentTools.arguments(service: .claudeCode, task: "fix it", session: nil, workspace: "/w")
         XCTAssertEqual(args, ["-p", "fix it", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits", "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}"])
