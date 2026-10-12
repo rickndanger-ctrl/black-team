@@ -17,6 +17,8 @@ Usage: black-team-cli [--json] <command>
   chat "<message>" [--thread <id>] [--mode fast|balanced|deep|extended]
   code "<message>" [--workspace <folder>] [--thread <id>] [--mode ...] [--approve once|deny]
   memory core | list | search <query>
+  phone status | enable | disable | link | reset
+  serve [--web <folder>]              keep Black Team and phone access running until Ctrl-C
 """
 
 func fail(_ message: String, code: Int32 = 1) -> Never {
@@ -218,6 +220,47 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
             }
             return 0
 
+        case "phone":
+            let action = arguments.isEmpty ? "" : arguments.removeFirst()
+            switch action {
+            case "status":
+                let detected = await backend.phoneDetect()
+                let state = try await backend.phoneState(fresh: true)
+                if asJSON { printJSON(state); return 0 }
+                print("tailscale: \(detected.installed ? (detected.online ? "online as \(detected.owner) at \(detected.hostname)" : "installed, not signed in") : "not installed")")
+                print("phone access: \(state.enabled ? "on" : "off")")
+                print("route: \(state.routeReady ? "Black Team's private route is in place" : "not in place")")
+                print("local server: \(state.serverRunning ? "listening on 127.0.0.1:\(Phone.localPort)" : "not running in this process (black-team-cli serve, or the app, runs it)")")
+                if state.enabled { print("address: \(state.url)") }
+                if !state.routeReady, let problem = state.problem { print("problem: \(problem)") }
+            case "enable":
+                let state = try await backend.phoneEnable()
+                if asJSON { printJSON(state); return 0 }
+                print("Phone access is on. Route: \(state.url) (tailnet only).")
+                print("Run `black-team-cli serve` to answer phones, and `black-team-cli phone link` for the pairing link.")
+            case "disable":
+                let result = try await backend.phoneDisable()
+                if asJSON { printJSON(result); return 0 }
+                print("Phone access is off.")
+                if let warning = result.warning { print("warning: \(warning)") }
+            case "link":
+                // From a separate process the serving one is not asked: the route and the key decide.
+                let link = try await backend.phonePairingLink(requireServer: false)
+                if asJSON { printJSON(["link": link]) } else { print(link) }
+            case "reset":
+                try backend.phoneResetPairing()
+                print("Phone pairing reset. Every paired phone is unpaired; scan a new link to pair again.")
+            default: fail(usage, code: 2)
+            }
+            return 0
+
+        case "serve":
+            try await backend.startPhoneAccess()
+            let state = try await backend.phoneState(fresh: true)
+            print("Black Team is running. Phone access: \(state.enabled ? (state.serverRunning ? "listening on 127.0.0.1:\(Phone.localPort)" : "not started") : "off"). Press Ctrl-C to stop.")
+            fflush(stdout)
+            while true { try await Task.sleep(nanoseconds: 2_000_000_000); await backend.syncPhoneAccess() }
+
         case "help", "--help", "-h":
             print(usage)
             return 0
@@ -269,6 +312,10 @@ for number in [SIGINT, SIGTERM] {
     source.resume()
     interrupts.append(source)
 }
+
+var phoneOptions = PhoneOptions()
+if let web = option("--web") ?? ProcessInfo.processInfo.environment["BLACK_TEAM_WEB"] { phoneOptions.webRoot = web }
+backend.configurePhone(phoneOptions)
 
 let status = await run(backend)
 await backend.shutdown()

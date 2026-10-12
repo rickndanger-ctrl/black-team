@@ -36,4 +36,8 @@ else
   echo 'print("placeholder")' > "$stage/Sources/BlackTeamCLI/main.swift"
 fi
 rsync -a --delete --exclude .build --exclude build "$stage/" "$host:bt-build/$slot/"
+# The phone interface is the web app built by `npm run build`; the app bundle and the phone server's
+# tests read it from beside the package, as they do in the repository.
+if [ -d "$here/../dist" ]; then rsync -a --delete "$here/../dist/" "$host:bt-build/dist/"; fi
+[ -f "$here/../package.json" ] && rsync -a "$here/../package.json" "$here/../LICENSE" "$host:bt-build/"
 ssh -o BatchMode=yes "$host" "cd ~/bt-build/$slot && $*"

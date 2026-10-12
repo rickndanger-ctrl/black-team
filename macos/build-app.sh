@@ -48,6 +48,14 @@ for s in 16 32 128 256; do
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 cp ../LICENSE "$APP/Contents/Resources/LICENSE" 2>/dev/null || true
+# The phone interface: the web app from `npm run build` in the repository root.
+if [ -f ../dist/index.html ]; then
+  ditto ../dist "$APP/Contents/Resources/web"
+elif [[ $MODE == --release ]]; then
+  echo 'The web interface is missing: run "npm run build" in the repository root first.' >&2; exit 1
+else
+  echo 'Note: ../dist is missing, so this build has no phone interface.' >&2
+fi
 
 if [[ $MODE == --release ]]; then
   IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)}"

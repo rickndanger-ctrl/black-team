@@ -87,6 +87,19 @@ local chat does not require Tailscale. Phone content is visible to the person
 using that authorized device; browser/OS screenshots, downloads and backups have
 their own storage behavior.
 
+## Black Team for macOS
+
+The Mac app does the same steps from Camp, under **Servers & access**: **Enable private phone access**, then scan the
+QR code (drawn on the Mac) or **Copy pairing link**. **Reset phone pairing** replaces `phone.key` in the data folder
+(`~/Library/Application Support/Black Team`) and unpairs every phone at once; **Turn off phone access** stops the
+server and removes only Black Team's own route.
+
+Tailscale's command-line tool is not on the PATH for the App Store or standalone Tailscale app, so Black Team looks
+for `/Applications/Tailscale.app/Contents/MacOS/Tailscale` first, then `tailscale` in `/opt/homebrew/bin`,
+`/usr/local/bin` and the PATH. The ports, the route rule and the checks are the same as above. The Mac has no desktop
+browser session, so only a paired phone can reach the server. Keep the Mac awake. For headless use,
+`black-team-cli phone enable`, `black-team-cli serve` and `black-team-cli phone link` do the same.
+
 References: [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve),
 [iPhone Home Screen](https://support.apple.com/guide/iphone/turn-a-website-into-an-app-iph42ab2f3a7/ios),
 [Android Chrome web apps](https://support.google.com/chrome/answer/9658361?hl=en&co=GENIE.Platform%3DAndroid).

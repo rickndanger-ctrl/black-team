@@ -81,6 +81,7 @@ public final class AppModel: ObservableObject {
     let starter = StarterDownload()
     let finder = ModelFinder()
     let memory = MemoryModel()
+    let phone = PhoneModel()
     /// Set by the windows so the model can bring the other one forward.
     public var openCamp: () -> Void = {}
     public var openCommand: () -> Void = {}
@@ -128,6 +129,7 @@ public final class AppModel: ObservableObject {
     init(backend: Backend, live: Bool) {
         self.backend = backend
         self.version = backend.version
+        phone.autoRefresh = live
         if live { start() }
     }
 
@@ -144,6 +146,10 @@ public final class AppModel: ObservableObject {
 
     private func start() {
         let backend = self.backend
+        // Phone access listens from launch if it was left on. A port that is taken is shown on the Servers page.
+        loops.append(Task { [weak self] in
+            do { try await backend.startPhoneAccess() } catch { self?.phone.error = plainMessage(error) }
+        })
         loops.append(Task { [weak self] in
             await self?.refresh()
             for await _ in backend.changes() { await self?.changed() }
