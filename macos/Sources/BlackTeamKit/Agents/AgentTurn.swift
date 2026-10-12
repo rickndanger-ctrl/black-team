@@ -123,8 +123,26 @@ final class AgentTurn: @unchecked Sendable {
         }
     }
 
+    /// The tool's own sentence saying it must be updated before it can run, if it said one in words. Read the same way as `signedOut`.
+    var updateSentence: String? {
+        lock.lock(); defer { lock.unlock() }
+        let markers = ["requires a newer version", "please upgrade to the latest", "please update to the latest"]
+        for line in [failure].compactMap({ $0 }) + stderrTail where markers.contains(where: { line.lowercased().contains($0) }) {
+            return Self.plain(line)
+        }
+        return nil
+    }
+
     /// What the tool reported as the reason it failed, if it said one in words.
-    var failureMessage: String? { lock.lock(); defer { lock.unlock() }; return failure }
+    var failureMessage: String? { lock.lock(); defer { lock.unlock() }; return failure.map(Self.plain) }
+
+    /// A tool sometimes reports a failure as the service's raw JSON. The person is shown the sentence inside it.
+    static func plain(_ text: String) -> String {
+        guard text.hasPrefix("{"), let value = try? JSONValue.parse(text) else { return text }
+        let message = value["error"]?["message"]?.string ?? value["message"]?.string ?? value["error"]?.string
+        guard let message, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return text }
+        return message
+    }
 
     /// The last lines the tool printed to standard error, for an error the tool did not put in words.
     var lastError: String? { lock.lock(); defer { lock.unlock() }; return stderrTail.last }

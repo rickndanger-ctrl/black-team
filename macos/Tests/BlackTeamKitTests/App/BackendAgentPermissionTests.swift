@@ -275,4 +275,60 @@ final class BackendAgentPermissionTests: XCTestCase {
         XCTAssertTrue(text.contains("exec '/fake/bin/agent' 'auth' 'login'"), text)
         XCTAssertFalse(text.contains("ANTHROPIC_API_KEY"))
     }
+
+    func testUpdatePhrasesEndInAnUpdateErrorNotASignIn() async throws {
+        let sentence = "The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."
+        let cases: [(AgentStream, String)] = [
+            (.stdout, #"{"type":"turn.failed","error":{"message":"\#(sentence)"}}"#),
+            (.stderr, "ERROR: Please update to the latest version of Codex before continuing."),
+            (.stdout, #"{"type":"turn.failed","error":{"message":"Please upgrade to the latest CLI."}}"#),
+        ]
+        for line in cases {
+            let fixture = try BackendFixture(self)
+            let agents = FakeAgentLauncher(lines: [line], exit: AgentExit(status: 1))
+            let backend = try make(fixture, agents: agents)
+            let project = try openProject(backend)
+            let message = try reply(backend, try await run(backend, "hi", service: .codex, project: project.id))
+            XCTAssertEqual(message["state"], "error")
+            XCTAssertEqual(message["needsUpdate"], "codex")
+            XCTAssertNil(message["needsSignIn"])
+            XCTAssertTrue(message["error"]?.string?.hasPrefix("Codex needs updating before it can run this. Update it, then send your message once more.\n") ?? false, message["error"]?.string ?? "")
+        }
+    }
+
+    func testOrdinaryFailureIsNotAnUpdate() async throws {
+        let fixture = try BackendFixture(self)
+        let agents = FakeAgentLauncher(lines: [(.stdout, #"{"type":"turn.failed","error":{"message":"Rate limit reached."}}"#)], exit: AgentExit(status: 1))
+        let backend = try make(fixture, agents: agents)
+        let project = try openProject(backend)
+        let message = try reply(backend, try await run(backend, "hi", service: .codex, project: project.id))
+        XCTAssertNil(message["needsUpdate"])
+        XCTAssertNil(message["needsSignIn"])
+    }
+
+    func testUpdateCommandAndItsTerminalLaunch() async throws {
+        let fixture = try BackendFixture(self)
+        let agents = FakeAgentLauncher()
+        let opened = AskOpened()
+        let backend = try make(fixture, agents: agents) { app, script in opened.calls.append((app, script)) }
+        XCTAssertEqual(backend.agentUpdateCommand(service: .codex).executable, "/fake/bin/agent")
+        XCTAssertEqual(backend.agentUpdateCommand(service: .codex).arguments, ["update"])
+        XCTAssertEqual(backend.agentUpdateCommand(service: .claudeCode).arguments, ["update"])
+        try await backend.openAgentUpdate(service: .codex)
+        let call = try XCTUnwrap(opened.calls.first)
+        XCTAssertEqual(call.0, "Terminal")
+        let text = try String(contentsOfFile: call.1, encoding: .utf8)
+        XCTAssertTrue(text.contains("exec '/fake/bin/agent' 'update'"), text)
+        XCTAssertFalse(text.contains("ANTHROPIC_API_KEY"))
+    }
+
+    func testAToolThatIsNotInstalledIsNeverChecked() async throws {
+        let fixture = try BackendFixture(self)
+        let agents = FakeAgentLauncher()
+        agents.tool = nil
+        let backend = try make(fixture, agents: agents)
+        let status = await backend.agentUpdateStatus(service: .codex)
+        XCTAssertEqual(status, AgentUpdateStatus(installed: nil, latest: nil))
+        XCTAssertFalse(status.updateAvailable)
+    }
 }
