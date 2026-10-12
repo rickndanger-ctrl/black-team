@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.16**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.17**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -301,6 +301,45 @@ note. One console error appeared on every load: the page's own inline theme
 script is blocked by its Content Security Policy (`script-src 'self'`), so the
 saved theme is applied a moment later by the app instead of before first paint.
 It does not affect function; a fix is to allow that script's hash.
+
+## Live follow-up — October 11, 2026 (alpha.17)
+
+One change after alpha.16, on macOS only: a **permission level** for each
+subscription-agent conversation, and **signing in from Black Team**. The Linux
+code is unchanged.
+
+- Ask: Claude Code runs in its manual mode; what it is refused becomes an
+  approval card, and what is allowed is resumed with `--allowedTools` naming
+  exactly that command or file, for that resume only. Nothing outside the
+  project folder can be approved. Codex cannot ask from inside another program,
+  so Ask makes it read-only.
+- Edit (the default): Claude Code `acceptEdits`, which also runs simple file
+  commands such as `touch`; Codex `workspace-write`.
+- Auto: Claude Code's own `auto` mode; Codex `--approve-for-me`.
+- Neither tool is given a skip-permissions flag. Snapshot and roll back apply at
+  every level.
+- A signed-out tool is reported as such, with a button that opens the tool's own
+  sign-in in Terminal.
+
+Automated suites at the build: 148 Node and 22 Python tests pass on Linux; 427
+Swift tests pass on macOS.
+
+Checked live on a Mac mini with the real tools, run inside the logged-in
+Terminal from the command line: Claude Code in Ask created a file after
+approval; in Auto it ran the command; Codex in Auto created a file and a
+resumed follow-up created another; Codex in Ask could not write and said so.
+The owner then used the Permission select in the app; a completed Claude Code
+conversation with its level saved (Edit) was found in the app's data before
+this release.
+
+Not checked: Ask and Auto chosen from the app's own select (only Edit was seen
+there); the sign-in button and signed-out detection against a really expired
+login; compound commands in Ask.
+
+Subscription agents must not be tested by running Claude Code over SSH on a
+Mac: with the keychain locked it renews its login into a file and the keychain
+copy goes stale. That happened once during this work and the owner had to sign
+in again.
 
 ## Live follow-up — October 11, 2026 (alpha.16)
 
