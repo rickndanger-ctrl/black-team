@@ -161,7 +161,15 @@ final class PresetsTests: XCTestCase {
         XCTAssertEqual(try applyPreset("aider", values, stateDir: state).args, ["--openai-api-base", "http://127.0.0.1:1234/v1", "--model", "openai/m"])
         let patch = try JSONValue.parse(Data(contentsOf: URL(fileURLWithPath: state + "/harnesses/dsh/black-team.patch.json")))
         XCTAssertEqual(patch.array!.filter { $0["disabled"] == true }.map { $0["id"]!.string! }, ["llm-deepseek", "llm-deepseek-account", "session-title-llm"])
-        XCTAssertEqual(try applyPreset("dsh", values, stateDir: state).args.last, state + "/harnesses/dsh/black-team.patch.json")
+        let dsh = try applyPreset("dsh", values, stateDir: state)
+        XCTAssertEqual(dsh.args, ["--profile", "web", "--patch", state + "/harnesses/dsh/black-team.patch.json", "--port", "0"])
+        XCTAssertTrue(dsh.opensLocalPage)
+        // A harness that serves a page is not exec'd: its output is shown and the first local address opened once.
+        let script = launchScript(workspace: "/tmp/w", environment: ["A": "b"], executable: "/x/dsh", args: dsh.args, opensLocalPage: true)
+        XCTAssertFalse(script.contains("\nexec "))
+        XCTAssertTrue(script.contains("'/x/dsh' '--profile' 'web'"))
+        XCTAssertTrue(script.contains("/usr/bin/open \"$match[1]\""))
+        XCTAssertTrue(launchScript(workspace: "/tmp/w", environment: [:], executable: "/x/pi", args: []).contains("\nexec '/x/pi'"))
         let opencode = try JSONValue.parse(try applyPreset("opencode", values, stateDir: state).env["OPENCODE_CONFIG_CONTENT"]!)
         XCTAssertEqual(opencode["model"], "black-team/m")
         XCTAssertThrowsError(try applyPreset("nope", PresetValues(), stateDir: state)) { XCTAssertTrue("\($0)".contains("does not know")) }

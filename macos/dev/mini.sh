@@ -35,5 +35,5 @@ else
   mkdir -p "$stage/Sources/BlackTeamCLI"
   echo 'print("placeholder")' > "$stage/Sources/BlackTeamCLI/main.swift"
 fi
-rsync -a --delete --exclude .build "$stage/" "$host:bt-build/$slot/"
+rsync -a --delete --exclude .build --exclude build "$stage/" "$host:bt-build/$slot/"
 ssh -o BatchMode=yes "$host" "cd ~/bt-build/$slot && $*"
