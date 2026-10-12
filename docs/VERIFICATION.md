@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.10**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.11**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -301,6 +301,38 @@ note. One console error appeared on every load: the page's own inline theme
 script is blocked by its Content Security Policy (`script-src 'self'`), so the
 saved theme is applied a moment later by the app instead of before first paint.
 It does not affect function; a fix is to allow that script's hash.
+
+## Live follow-up — October 11, 2026 (alpha.11)
+
+Changes after alpha.10:
+
+- **DeepSeek Harness launch.** The preset started it with a profile named
+  `terminal`, which exists only where a separate add-on has been installed; an
+  ordinary install exited at once. It now starts the built-in `web` profile on a
+  port Black Team picks. Black Team opens the page when it answers, unless the
+  harness guards the page (it answers 401 or 403), in which case the harness
+  opens the browser itself.
+- **Logo.** The wordmark reads `/BLACK TEAM`.
+- **macOS.** A native Swift app is in `macos/`; see `macos/README.md`. It is
+  packaged separately from the Linux archive.
+
+Automated suites at the build: 148 Node and 22 Python tests pass.
+
+The alpha.11 package was checked as an update: in an empty home folder with a
+stripped environment, the alpha.10 package was installed first and the alpha.11
+installer run over it under the same prefix. It switched `current` to alpha.11
+and left `previous` on alpha.10. The installed app was driven through its real
+window on the same laptop, with DeepSeek Harness 0.2.0-rc.2 on the PATH: the
+first screen found the running llama.cpp server and one click added it; the
+agents list showed DeepSeek Harness and Connect turned into Open; Open started
+`dsh --profile web --patch … --port <n>` in a terminal, the app reported
+"DeepSeek Harness opened with" the model's name, the harness's plain address
+answered 401, and one browser window titled DeepSeek Harness opened, from the
+harness itself.
+
+Not checked in this pass: a task sent through the DeepSeek Harness page to the
+model, Chat and Code in the installed alpha.11 window (unchanged since
+alpha.10), and DeepSeek Harness versions older than 0.2 on Linux.
 
 ## Live follow-up — October 11, 2026 (alpha.10)
 
