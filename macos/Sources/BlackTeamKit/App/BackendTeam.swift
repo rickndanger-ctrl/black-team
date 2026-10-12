@@ -306,7 +306,13 @@ extension Backend {
         let first = TeamRun(id: runId, goal: preview.goal, leadId: lead.id, reviewerId: reviewer?.id, phase: .planning, current: nil, runs: 0, started: stamp,
                             updated: stamp, report: "", message: "", log: [])
         do {
-            _ = try roomMutate(projectId) { data in data.team = first }
+            _ = try roomMutate(projectId) { data in
+                // Tasks an earlier run added but never finished would sit in To do beside this run's tasks and read
+                // as work still planned. They are cleared; finished tasks and tasks the person added stay.
+                let stale = Set((data.team?.log ?? []).compactMap(\.taskId))
+                data.tasks.removeAll { stale.contains($0.id) && $0.status == .todo }
+                data.team = first
+            }
         } catch {
             locked { teamControl = nil }
             throw error
