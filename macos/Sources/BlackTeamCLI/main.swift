@@ -6,7 +6,15 @@ import BlackTeamTerminal
 // the subcommands (status, chat, code, agent, room, ...) drive the same engine one step at a time.
 // The data folder is the app's own (BLACK_TEAM_DATA overrides). Every run ends by shutting the model down.
 
-let programVersion = "0.1.0-alpha.1"
+/// The version of the app this program sits inside (its Info.plist), so the two never disagree; a bare build says "dev".
+let programVersion: String = {
+    let program = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
+    let plist = program.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Info.plist")
+    if let data = try? Data(contentsOf: plist),
+       let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+       let version = info["BlackTeamVersion"] as? String, !version.isEmpty { return version }
+    return ProcessInfo.processInfo.environment["BLACK_TEAM_VERSION"] ?? "0.1.0-dev"
+}()
 let rawArguments = Array(CommandLine.arguments.dropFirst())
 
 if rawArguments.contains("--version") || rawArguments.first == "version" {
