@@ -6,6 +6,12 @@ import BlackTeamKit
 struct CampMain: View {
     @ObservedObject var model: AppModel
     @Environment(\.btTheme) private var theme
+    @ObservedObject private var phone: PhoneModel
+
+    init(model: AppModel) { self.model = model; phone = model.phone }
+
+    /// The daily app's pill on Servers & access once a phone can reach this computer.
+    private var connectedPrivately: Bool { model.campPage == .servers && phone.state?.connected == true }
 
     var body: some View {
         if model.status == nil {
@@ -14,7 +20,7 @@ struct CampMain: View {
             PageScroll {
                 VStack(alignment: .leading, spacing: 0) {
                     header
-                    DailyPill(text: "On this computer", live: true, ink: theme.ok).padding(.bottom, 14)
+                    DailyPill(text: connectedPrivately ? "Connected privately" : "On this computer", live: true, ink: theme.ok).padding(.bottom, 14)
                     Banners(model: model, camp: true)
                     JobNotice(model: model)
                     if let approval = model.status?.job?.approval { DecisionCard(model: model, approval: approval) }
@@ -30,7 +36,7 @@ struct CampMain: View {
         case .memory: title("Memory", "The Black Team vault: what your local models remember. It never leaves this computer.")
         case .plugins: title("Tools & workspace", "Choose what Camp can use on your next agent turn.")
         case .dsh: title("Harness sessions", "Review recent work and reopen the full DeepSeek workspace.")
-        case .servers: title("Servers & access", "Start and stop your model servers.")
+        case .servers: title("Servers & access", "Control your model servers and connect privately.")
         }
     }
 

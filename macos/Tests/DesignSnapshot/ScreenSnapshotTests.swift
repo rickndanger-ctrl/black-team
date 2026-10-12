@@ -215,7 +215,62 @@ final class ScreenSnapshotTests: XCTestCase {
 
         let servers = try await dailyModel()
         servers.campPage = .servers
+        phoneReady(servers)
         try render("b4-servers-full", .camp, height: 2200, model: servers)
+    }
+
+    // MARK: Phone access (a made-up link and secret: nothing here is a real pairing link)
+
+    private let fakeLink = "https://my-mac.tail1234.ts.net:8449/#pair=" + String(repeating: "0f1e2d3c", count: 8)
+
+    private func phoneState(_ json: String) -> PhoneState { decode(PhoneState.self, json) }
+
+    private func phoneReady(_ model: AppModel) {
+        model.phone.autoRefresh = false
+        model.phone.state = phoneState("""
+        {"enabled":true,"connected":true,"routeReady":true,"serverRunning":true,"hostname":"my-mac.tail1234.ts.net","owner":"me@example.test","url":"https://my-mac.tail1234.ts.net:8449/","command":"tailscale serve"}
+        """)
+        model.phone.link = fakeLink
+    }
+
+    private func phoneOff(_ model: AppModel, installed: Bool = true, online: Bool = true) {
+        model.phone.autoRefresh = false
+        model.phone.state = phoneState("""
+        {"enabled":false,"connected":false,"routeReady":false,"serverRunning":false,"hostname":"","owner":"","url":"","command":"tailscale serve"}
+        """)
+        model.phone.detection = decode(PhoneDetection.self, "{\"installed\":\(installed),\"online\":\(online),\"hostname\":\"\",\"owner\":\"\"}")
+    }
+
+    func testPhoneStates() async throws {
+        func page(_ prepare: (AppModel) -> Void) async throws -> AppModel {
+            let model = try await dailyModel()
+            model.campPage = .servers
+            prepare(model)
+            return model
+        }
+        try render("x1-phone-off", .camp, height: 1300, model: try await page { phoneOff($0) })
+        try render("x2-phone-no-tailscale", .camp, height: 1300, model: try await page { phoneOff($0, installed: false, online: false) })
+        try render("x3-phone-signed-out", .camp, height: 1300, model: try await page { phoneOff($0, online: false) })
+        try render("x4-phone-public-route", .camp, height: 1300, model: try await page {
+            $0.phone.autoRefresh = false
+            $0.phone.state = phoneState("""
+            {"enabled":true,"connected":false,"routeReady":false,"serverRunning":true,"hostname":"my-mac.tail1234.ts.net","owner":"me@example.test","url":"https://my-mac.tail1234.ts.net:8449/","command":"x","problem":"Port 8449 is used by another or public route. Black Team will not overwrite it."}
+            """)
+        })
+        try render("x5-phone-error", .camp, height: 1300, model: try await page {
+            phoneOff($0)
+            $0.phone.error = "Install Tailscale on this computer and sign in, then try again."
+        })
+        try render("x6-phone-ready-notice", .camp, height: 1300, model: try await page {
+            phoneReady($0)
+            $0.phone.notice = "Private phone access is ready. Scan the QR code on your phone."
+        })
+        try render("x7-phone-port-busy", .camp, height: 1300, model: try await page {
+            $0.phone.autoRefresh = false
+            $0.phone.state = phoneState("""
+            {"enabled":true,"connected":false,"routeReady":true,"serverRunning":false,"hostname":"my-mac.tail1234.ts.net","owner":"me@example.test","url":"x","command":"x","problem":"Phone access is on, but its local server is not running. Turn it off and on again, or quit the program using port 18199."}
+            """)
+        })
     }
 
     // MARK: States the reference does not show

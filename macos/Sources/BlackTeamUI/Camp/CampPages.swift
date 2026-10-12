@@ -16,13 +16,14 @@ struct CampNotice: View {
 }
 
 /// A field-looking, read-only line (`input` in `.workspace-setting`).
-private struct FieldText: View {
+struct FieldText: View {
     let text: String
     var mono = false
+    var monoSize: CGFloat = 11
     var disabled = false
     @Environment(\.btTheme) private var theme
     var body: some View {
-        HStack { Text(text).font(mono ? BTFont.mono(11) : BTFont.body(12)).foregroundStyle(disabled ? theme.faint : theme.ink).lineLimit(1).truncationMode(.middle); Spacer(minLength: 0) }
+        HStack { Text(text).font(mono ? BTFont.mono(monoSize) : BTFont.body(12)).foregroundStyle(disabled ? theme.faint : theme.ink).lineLimit(1).minimumScaleFactor(mono ? 0.8 : 1).truncationMode(.middle); Spacer(minLength: 0) }
             .padding(.horizontal, 12).frame(height: 38)
             .background(RoundedRectangle(cornerRadius: Theme.radius).fill(theme.field))
             .overlay(RoundedRectangle(cornerRadius: Theme.radius).inset(by: 0.5).stroke(theme.line2, lineWidth: 1))
@@ -107,6 +108,7 @@ struct ServersPage: View {
     var body: some View {
         let runtime = model.status?.runtime
         VStack(alignment: .leading, spacing: 0) {
+            PhoneAccessCard(model: model, phone: model.phone)
             ForEach(model.status?.models ?? [], id: \.key) { item in
                 let ready = item.active && runtime?.ready == true
                 let starting = item.active && runtime?.state == "starting"
@@ -120,7 +122,15 @@ struct ServersPage: View {
                     .padding(.top, 4)
                 }
             }
+            PhoneAppCard()
         }
         .padding(.top, 16)
+        // Tailscale is asked when the page opens and every so often while it stays open.
+        .task {
+            while !Task.isCancelled && model.phone.autoRefresh {
+                await model.phone.refresh(model)
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+            }
+        }
     }
 }

@@ -65,6 +65,9 @@ public final class Backend: @unchecked Sendable {
     var serverPidAt: Date = .distantPast
     var keeperTask: Task<Void, Never>?
     var setupDownloads: [FileDownloading] = []
+    /// Phone access (Phone/PhoneService.swift): made on first use, so a Backend that never uses it opens no socket.
+    var phoneService: PhoneService?
+    var phoneOptions = PhoneOptions()
 
     private var keeperFile: String { dataFolder + "/keeper.json" }
     private var projectsFile: String { dataFolder + "/projects.json" }
@@ -701,6 +704,7 @@ public final class Backend: @unchecked Sendable {
     public func shutdown() async {
         let timer = locked { () -> Task<Void, Never>? in closing = true; setupDownloads.forEach { $0.cancel() }; return keeperTask }
         timer?.cancel()
+        stopPhoneAccess()
         installer.cancel()
         cancel()
         try? await runtime.dispose()

@@ -38,11 +38,19 @@ agent apps in Terminal, and the three themes. New on the Mac: first run can
 download the llama.cpp runtime (from its GitHub releases) and a starter model
 (from Hugging Face) into the data folder; `Download/StarterModels.swift` is the list.
 
-Not built yet, and left off the screens until they work: phone pairing,
-Hermes and its plugins, image attachments, dictation, DSH session listing.
+Phone pairing is built (`Sources/BlackTeamKit/Phone/`): on Camp's Servers & access page, "Enable private phone access"
+publishes a private Tailscale Serve route (HTTPS 8449 to 127.0.0.1:18199), a small HTTP server on Network.framework
+answers it while access is on, and the phone pairs with a QR code or link. Every check of `lib/server.cjs` and
+`lib/phone.cjs` is ported (loopback peer, Host, Origin, Tailscale account, paired cookie, route verified private).
+The Mac has no desktop browser session, so the local address grants nothing. The server serves the built web app from
+`Contents/Resources/web` (`npm run build`; `build-app.sh` copies it). Left out: phone notifications and Taildrop.
+
+Not built yet, and left off the screens until they work: Hermes and its plugins, image attachments, dictation,
+DSH session listing.
 
 `black-team-cli` runs the same backend from a terminal (`status`, `starter list`,
-`starter install <id>`, `chat`, `code`, `find`, `models`, `use`, `memory`), which is
+`starter install <id>`, `chat`, `code`, `find`, `models`, `use`, `memory`, `phone status|enable|disable|link|reset`,
+and `serve`, which keeps phone access answering until Ctrl-C; `--web <folder>` or `BLACK_TEAM_WEB` names the built web app), which is
 how the app is tested on a Mac with nobody at the screen. `BLACK_TEAM_DATA=<folder>`
 points the app or the CLI at a throwaway data folder.
 
