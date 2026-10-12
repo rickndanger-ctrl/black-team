@@ -44,6 +44,7 @@ struct CampSidebar: View {
                 .accessibilityLabel("New conversation")
                 lists
                 ThemePicker(stored: $storedTheme)
+                TextWeightPicker().padding(.top, 6)
                 Text(model.cloudSelected ? "Cloud \u{00B7} \(model.cloud.provider)" : "Private \u{00B7} On this computer").font(BTFont.mono(8)).tracking(1.12)
                     .foregroundStyle(model.cloudSelected ? theme.warn : theme.faint)
                     .lineSpacing(max(0, 8 * 1.7 - BTFont.natural(8, mono: true)))

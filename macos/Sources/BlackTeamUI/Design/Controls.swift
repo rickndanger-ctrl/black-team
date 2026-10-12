@@ -29,7 +29,8 @@ struct BTButtonStyle: ButtonStyle {
                         .font(BTFont.body(12, .medium))
                         .lineLimit(1).fixedSize()
                         .foregroundStyle(hover ? theme.ink : theme.ink2)
-                        .underline(hover, color: theme.ink)
+                        // Always underlined: a quiet button is a link, and has to read as one before the pointer is on it.
+                        .underline(true, color: hover ? theme.ink : theme.ink2)
                 } else {
                     configuration.label
                         .font(BTFont.body(12.5, .semibold)).tracking(0.125)
@@ -44,7 +45,13 @@ struct BTButtonStyle: ButtonStyle {
             .labelStyle(BTButtonLabelStyle())
             .opacity(enabled ? (pressed ? 0.8 : 1) : 0.45)
             .contentShape(Rectangle())
-            .onHover { hover = $0 && enabled }
+            .onHover { inside in
+                // The pointing hand, as on a web page: one more sign that this can be pressed. It is taken off
+                // only if this button put it on.
+                let over = inside && enabled
+                if over && !hover { NSCursor.pointingHand.push() } else if !over && hover { NSCursor.pop() }
+                hover = over
+            }
             .animation(.easeOut(duration: 0.15), value: hover)
         }
 

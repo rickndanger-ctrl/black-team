@@ -30,15 +30,21 @@ public enum Fonts {
 
 enum BTWeight { case regular, medium, semibold }
 
+/// The person can turn bold headings off. Stored in `@AppStorage(TextWeightSetting.storageKey)`.
+public enum TextWeightSetting {
+    public static let storageKey = "black-team-plain-headings"
+    static var plain: Bool { UserDefaults.standard.bool(forKey: storageKey) }
+}
+
 /// Font helpers: Adwaita Sans for text, JetBrains Mono for headings, status labels and code.
 enum BTFont {
     static func body(_ size: CGFloat = 13, _ weight: BTWeight = .regular) -> Font {
         Fonts.register()
-        return .custom(weight == .semibold ? "AdwaitaSans-SemiBold" : "AdwaitaSans-Regular", fixedSize: size)
+        return .custom(weight == .semibold && !TextWeightSetting.plain ? "AdwaitaSans-SemiBold" : "AdwaitaSans-Regular", fixedSize: size)
     }
     static func mono(_ size: CGFloat = 12, _ weight: BTWeight = .regular) -> Font {
         Fonts.register()
-        return .custom(weight == .semibold ? "JetBrainsMono-Bold" : "JetBrainsMono-Regular", fixedSize: size)
+        return .custom(weight == .semibold && !TextWeightSetting.plain ? "JetBrainsMono-Bold" : "JetBrainsMono-Regular", fixedSize: size)
     }
 }
 
