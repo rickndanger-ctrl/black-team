@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.17**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.18**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -301,6 +301,58 @@ note. One console error appeared on every load: the page's own inline theme
 script is blocked by its Content Security Policy (`script-src 'self'`), so the
 saved theme is applied a moment later by the app instead of before first paint.
 It does not affect function; a fix is to allow that script's hash.
+
+## Live follow-up — October 12, 2026 (alpha.18)
+
+Changes after alpha.17, all on macOS. The Linux code is unchanged.
+
+**The room.** A Room page per project: members (any saved model, or the
+subscription agents Claude Code and Codex, each with a role), a to-do list, and
+a log. In a **team run** the person gives one goal; the lead (Claude Code by
+default) plans at most six tasks and assigns them by role; members work one at
+a time, given the goal, their task and the team's results so far; an optional
+reviewer may send a task back once; the lead writes the report. Caps: six
+tasks, twenty member runs, sixty minutes. Sharing among members is agreed once
+before a run, in a text naming the members and which are cloud, bound by a
+digest. A run with a cloud member needs a project that allows cloud models,
+cannot be started from a phone, and keeps the memory vault out for every
+member, local ones included. Outside a team run nothing moves between members
+except a hand-off the person confirms after seeing its exact text.
+
+**Which copy of a tool runs.** Claude Code and Codex are now looked for in the
+folders the person's login shell searches, in its order. A Mac with an old copy
+under Homebrew and a current one in `~/.local/bin` had been running the old one.
+
+**Out of date.** A tool that says it requires a newer version is reported in
+plain words with a button that runs its own updater in Terminal. When a
+subscription agent is selected or run, at most every twelve hours, the
+installed version is compared with the one on the npm registry and a line is
+shown if a newer one exists. Nothing is updated without the person asking.
+
+**Interface.** Text-only buttons are outlined or underlined so they read as
+buttons, styled buttons show the pointing hand, and a Bold text / Plain text
+switch sits under the theme picker.
+
+Automated suites at the build: 148 Node and 22 Python tests pass on Linux; 483
+Swift tests pass on macOS. For a team with a cloud member they assert on every
+member's request body: no Core text, no recalled notes, no memory tools.
+
+Checked live on a Mac mini. From the command line, inside the logged-in
+Terminal: Claude Code (lead), a local Ornith 1.5 9B and a free OpenRouter model
+(reviewer) were given a bug to fix and a file to write; the agreement was
+shown, four tasks planned, one sent back by the reviewer, the local member ran
+the script, the lead reported; ten member runs. The owner then ran teams from
+the Room page with Claude Code, Codex and a free OpenRouter model. The first
+attempts failed at Codex (the old copy was being run); after the fix a run
+finished with eleven member runs and a report, seen in the app's data. The
+command-line tool started with a bare environment ran Codex on the model the
+old copy had been refused.
+
+Not checked: the Update button and the "is available" line in the app (both
+tools were current); the Plain text setting, underlines and pointing hand in
+the running app beyond the owner's own look; a team with more than three
+members; a team run stopped part-way from the page. The clearing of an earlier
+run's unfinished tasks has no test of its own.
 
 ## Live follow-up — October 11, 2026 (alpha.17)
 
