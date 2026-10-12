@@ -4,7 +4,7 @@ import BlackTeamKit
 
 /// The two windows: the Command center ("Black Team") and Camp ("Black Team Camp").
 public enum CommandPage: String { case overview, diagnostics }
-public enum CampPage: String { case chat, memory, plugins, dsh, servers }
+public enum CampPage: String { case chat, room, memory, plugins, dsh, servers }
 
 /// One line of "Recent activity": a launch or a model start or stop in this session.
 struct ActivityEvent: Equatable, Identifiable {
@@ -88,6 +88,7 @@ public final class AppModel: ObservableObject {
     let starter = StarterDownload()
     let finder = ModelFinder()
     let memory = MemoryModel()
+    let room = RoomModel()
     let phone = PhoneModel()
     /// Set by the windows so the model can bring the other one forward.
     public var openCamp: () -> Void = {}

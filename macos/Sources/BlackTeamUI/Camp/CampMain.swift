@@ -37,6 +37,7 @@ struct CampMain: View {
     @ViewBuilder private var header: some View {
         switch model.campPage {
         case .chat: PageMark(model: model).padding(.bottom, 20)
+        case .room: title("Room", "Give your team a goal. Agents plan it, do it, check it and report back.")
         case .memory: title("Memory", "The Black Team vault: what your local models remember. It never leaves this computer.")
         case .plugins: title("Tools & workspace", "Choose what Camp can use on your next agent turn.")
         case .dsh: title("Harness sessions", "Review recent work and reopen the full DeepSeek workspace.")
@@ -51,6 +52,7 @@ struct CampMain: View {
     @ViewBuilder private var page: some View {
         switch model.campPage {
         case .chat: ChatPage(model: model)
+        case .room: RoomPage(model: model, room: model.room)
         case .memory: MemoryPage(model: model)
         case .plugins: PluginsPage(model: model)
         case .dsh: SessionsPage(model: model)

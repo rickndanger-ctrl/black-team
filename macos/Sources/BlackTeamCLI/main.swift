@@ -26,6 +26,17 @@ Usage: black-team-cli [--json] <command>
   agent signin claude|codex           open the tool's sign-in in Terminal
                                       hand a task to your Claude Code or Codex subscription (it leaves this Mac)
   agent rollback <thread id> <run id> undo the files a task changed
+  room show <project>                 the team's task board
+  room member add <project> --name N --role R (--model <key> [--work chat|code] | --agent claude|codex [--permission ask|edit|auto])
+  room task add <project> "<title>" [--detail D] [--to <member>]
+  room start <project> <task>         run a task with its assignee and wait; <task> is its number or id
+  room accept <project> <task> | room sendback <project> <task> --note N
+  room handoff <project> <task> --to <member> [--title T] [--detail D] [--no-result] [--yes]
+                                      shows exactly what the member would be given and whether it leaves this Mac; --yes sends it
+  room team <project> "<goal>" [--lead <member>] [--reviewer <member>] [--yes]
+                                      the whole team works on one goal, one member at a time; without --yes it shows what would be
+                                      shared and stops; with it, it runs, prints each step as it happens, then the report
+  room team stop <project>            stop a team run in progress
   memory core | list | search <query>
   phone status | enable | disable | link | reset
   serve [--web <folder>]              keep Black Team and phone access running until Ctrl-C
@@ -224,6 +235,222 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
     return state == "done" ? 0 : 1
 }
 
+// MARK: Room
+
+@MainActor func roomProject(_ backend: Backend, _ given: String) -> String {
+    let all = backend.projectList()
+    if let hit = all.first(where: { $0.id == given }) ?? all.first(where: { $0.name.lowercased() == given.lowercased() }) { return hit.id }
+    let prefixed = all.filter { $0.id.hasPrefix(given.lowercased()) && given.count >= 4 }
+    if prefixed.count == 1 { return prefixed[0].id }
+    fail("No project \"\(given)\". Projects: \(all.map(\.name).joined(separator: ", "))")
+}
+
+@MainActor func roomTask(_ state: RoomState, _ given: String) -> RoomTask {
+    if let n = Int(given), n >= 1, n <= state.tasks.count { return state.tasks[n - 1] }
+    let hits = state.tasks.filter { $0.id == given || (given.count >= 4 && $0.id.hasPrefix(given.lowercased())) }
+    if hits.count == 1 { return hits[0] }
+    fail("No task \"\(given)\" (use its number from `room show`, or its id).")
+}
+
+@MainActor func roomMember(_ state: RoomState, _ given: String) -> RoomMemberView {
+    let hits = state.members.filter { $0.id == given || $0.name.lowercased() == given.lowercased() || (given.count >= 4 && $0.id.hasPrefix(given.lowercased())) }
+    if hits.count == 1 { return hits[0] }
+    fail("No member \"\(given)\"" + (hits.count > 1 ? " (more than one matches)." : "."))
+}
+
+@MainActor func printRoom(_ state: RoomState) {
+    if asJSON { printJSON(state); return }
+    print("Room for \(state.projectName)" + (state.cloudAllowed ? "" : " (local only)"))
+    print("Members:")
+    for m in state.members {
+        let who = m.agent ?? m.modelKey.map { "model \($0)" } ?? ""
+        print("  \(m.name)" + (m.role.isEmpty ? "" : " [\(m.role)]") + " - \(m.kind)" + (m.kind == "cloud" ? " (\(m.provider))" : "") + ", \(who)"
+              + (m.usable ? "" : " - cannot be used now: \(m.reason)") + "  id \(m.id)")
+    }
+    print("Tasks:")
+    for (n, t) in state.tasks.enumerated() {
+        let owner = state.members.first { $0.id == t.assignee }?.name ?? "unassigned"
+        print("  \(n + 1). [\(t.status.rawValue)] \(t.title) - \(owner)" + (t.changed.map { $0 > 0 ? ", \($0) file change(s)" : "" } ?? "") + "  id \(t.id)")
+        if t.status == .review, !t.result.isEmpty { print("     result: \(String(t.result.prefix(300)).replacingOccurrences(of: "\n", with: " "))") }
+        if t.status == .todo, !t.note.isEmpty { print("     \(t.failed ? "last run failed" : "sent back"): \(t.note)") }
+    }
+    if !state.notes.isEmpty {
+        print("Log:")
+        for n in state.notes.prefix(10) { print("  \(n.at)  \(n.text)") }
+    }
+}
+
+@MainActor func printTeamEntry(_ entry: TeamLogEntry) {
+    let who = entry.memberName.isEmpty ? "" : " \(entry.memberName)"
+    let text = String(entry.text.replacingOccurrences(of: "\n", with: " ").prefix(400))
+    print("[\(entry.kind)]\(who): \(text)")
+    fflush(stdout)
+}
+
+@MainActor func runRoomTeam(_ backend: Backend) async -> Int32 {
+    func projectArg() -> String {
+        guard !arguments.isEmpty else { fail("Name the project.\n\n\(usage)", code: 2) }
+        return roomProject(backend, arguments.removeFirst())
+    }
+    do {
+        if arguments.first == "stop" {
+            arguments.removeFirst()
+            let id = projectArg()
+            let before = try backend.room(projectId: id).team
+            let after = try backend.roomTeamStop(projectId: id).team
+            if asJSON { printJSON(after) }
+            else { print(before.map { $0.phase.finished ? "No team run is going." : "Stopping the team run." } ?? "No team run is going.") }
+            return 0
+        }
+        let lead = option("--lead"), reviewer = option("--reviewer")
+        let confirmed = arguments.contains("--yes")
+        arguments.removeAll { $0 == "--yes" }
+        let id = projectArg()
+        guard arguments.count == 1 else { fail("room team takes a project and a goal in quotes.\n\n\(usage)", code: 2) }
+        let current = try backend.room(projectId: id)
+        let preview = try backend.roomTeamPreview(projectId: id, goal: arguments[0], leadId: lead.map { roomMember(current, $0).id },
+                                                  reviewerId: reviewer.map { roomMember(current, $0).id })
+        if asJSON { printJSON(preview) } else {
+            print(preview.agreement + "\n")
+            for m in preview.members {
+                print("  \(m.name)" + (m.role.isEmpty ? "" : " [\(m.role)]") + " - \(m.kind)" + (m.kind == "cloud" ? " (\(m.provider))" : "")
+                      + (m.lead ? " - lead" : "") + (m.reviewer ? " - reviewer" : "") + (m.usable ? "" : " - cannot be used: \(m.reason)"))
+            }
+        }
+        guard confirmed else {
+            if !asJSON { print("\nNothing was started. Add --yes to run the team.") }
+            return 0
+        }
+        _ = try backend.roomTeamRun(projectId: id, goal: preview.goal, leadId: preview.leadId, reviewerId: preview.reviewerId, digest: preview.digest)
+        var seen: TeamLogEntry?
+        var printed = 0
+        while true {
+            let team = try backend.room(projectId: id).team
+            if let team {
+                // New entries are the ones after the last one printed (the log keeps only its newest 200).
+                var start = 0
+                if let seen, let at = team.log.lastIndex(of: seen) { start = at + 1 } else if seen != nil { start = team.log.count }
+                if !asJSON { for entry in team.log[start...] { printTeamEntry(entry); printed += 1 } }
+                seen = team.log.last ?? seen
+                if team.phase.finished { break }
+            }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+        await backend.roomTeamSettle()
+        guard let final = try backend.room(projectId: id).team else { return 1 }
+        if asJSON { printJSON(final) } else {
+            if !final.report.isEmpty { print("\nReport:\n\(final.report)") }
+            print("\nTeam run \(final.phase.rawValue)" + (final.message.isEmpty ? "" : ": \(final.message)") + " (\(final.runs) member runs).")
+        }
+        return final.phase == .done ? 0 : 1
+    } catch {
+        FileHandle.standardError.write(Data((describe(error) + "\n").utf8))
+        return 1
+    }
+}
+
+@MainActor func runRoom(_ backend: Backend) async -> Int32 {
+    let action = arguments.isEmpty ? "" : arguments.removeFirst()
+    func projectArg() -> String {
+        guard !arguments.isEmpty else { fail("Name the project.\n\n\(usage)", code: 2) }
+        return roomProject(backend, arguments.removeFirst())
+    }
+    do {
+        switch action {
+        case "show":
+            let id = projectArg()
+            printRoom(try backend.room(projectId: id))
+        case "member":
+            guard arguments.first == "add" else { fail("room member takes add.\n\n\(usage)", code: 2) }
+            arguments.removeFirst()
+            let name = option("--name"), role = option("--role") ?? "", model = option("--model"), agent = option("--agent")
+            let work = option("--work"), permission = option("--permission")
+            let id = projectArg()
+            guard let name else { fail("--name is required.", code: 2) }
+            var engine: String?
+            if let agent {
+                guard let service = AgentService.allCases.first(where: { $0.program == agent }) else { fail("--agent takes claude or codex.", code: 2) }
+                engine = service.engine
+            }
+            printRoom(try backend.roomAddMember(projectId: id, name: name, role: role, modelKey: model, agent: engine, permission: permission, work: work))
+        case "task":
+            guard arguments.first == "add" else { fail("room task takes add.\n\n\(usage)", code: 2) }
+            arguments.removeFirst()
+            let detail = option("--detail") ?? "", to = option("--to")
+            let id = projectArg()
+            guard let title = arguments.first, arguments.count == 1 else { fail("Give one title in quotes.\n\n\(usage)", code: 2) }
+            let current = try backend.room(projectId: id)
+            printRoom(try backend.roomAddTask(projectId: id, title: title, detail: detail, assignee: to.map { roomMember(current, $0).id }))
+        case "start":
+            let id = projectArg()
+            guard arguments.count == 1 else { fail("room start takes a project and a task.\n\n\(usage)", code: 2) }
+            let task = roomTask(try backend.room(projectId: id), arguments[0])
+            let started = try await backend.roomStart(projectId: id, taskId: task.id)
+            let threadId = started.tasks.first { $0.id == task.id }?.threadId
+            var printed = "", steps = 0
+            while backend.isBusy {
+                if let threadId, let reply = backend.thread(threadId)?["messages"]?.array?.last, !asJSON {
+                    let events = reply["events"]?.array ?? []
+                    while steps < events.count {
+                        let event = events[steps]; steps += 1
+                        if event["type"]?.string == "tool_use" { print("[\(event["name"]?.string ?? "")] \(String((event["output"]?.string ?? "").replacingOccurrences(of: "\n", with: " ").prefix(160)))") }
+                    }
+                    let content = reply["content"]?.string ?? ""
+                    if content.hasPrefix(printed), content.count > printed.count { print(String(content.dropFirst(printed.count)), terminator: ""); printed = content }
+                    fflush(stdout)
+                }
+                try? await Task.sleep(nanoseconds: 80_000_000)
+            }
+            await backend.waitForIdle()
+            await backend.roomSettle()
+            let final = try backend.room(projectId: id)
+            if !asJSON { print("\n") }
+            printRoom(final)
+            return final.tasks.first { $0.id == task.id }?.status == .review ? 0 : 1
+        case "accept":
+            let id = projectArg()
+            guard arguments.count == 1 else { fail("room accept takes a project and a task.\n\n\(usage)", code: 2) }
+            let task = roomTask(try backend.room(projectId: id), arguments[0])
+            printRoom(try backend.roomAccept(projectId: id, taskId: task.id))
+        case "sendback":
+            let note = option("--note")
+            let id = projectArg()
+            guard arguments.count == 1, let note else { fail("room sendback takes a project, a task and --note.\n\n\(usage)", code: 2) }
+            let task = roomTask(try backend.room(projectId: id), arguments[0])
+            printRoom(try backend.roomSendBack(projectId: id, taskId: task.id, note: note))
+        case "handoff":
+            let to = option("--to"), title = option("--title"), detail = option("--detail")
+            let includeResult = !arguments.contains("--no-result"), confirmed = arguments.contains("--yes")
+            arguments.removeAll { $0 == "--no-result" || $0 == "--yes" }
+            let id = projectArg()
+            guard arguments.count == 1, let to else { fail("room handoff takes a project, a task and --to.\n\n\(usage)", code: 2) }
+            let current = try backend.room(projectId: id)
+            let task = roomTask(current, arguments[0]), receiver = roomMember(current, to)
+            let preview = try backend.roomHandOffPreview(projectId: id, taskId: task.id, to: receiver.id, title: title, detail: detail, includeResult: includeResult)
+            if asJSON { printJSON(preview) } else {
+                print("This is exactly what \(preview.receiverName) would be given:\n")
+                print(preview.text)
+                print("\n" + (preview.leavesThisMac ? "This leaves this Mac: it goes to \(preview.provider)." : "This stays on this Mac."))
+            }
+            guard confirmed else {
+                if !asJSON { print("Nothing was sent. Add --yes to create the task.") }
+                return 0
+            }
+            let after = try backend.roomHandOff(projectId: id, taskId: task.id, to: receiver.id, title: preview.title, detail: preview.detail,
+                                                includeResult: includeResult, digest: preview.digest)
+            if !asJSON { print("Created a task for \(preview.receiverName). Start it with: room start \(id) \(after.tasks.count)") }
+        case "team":
+            return await runRoomTeam(backend)
+        default:
+            fail("room takes show, member add, task add, start, accept, sendback, handoff or team.\n\n\(usage)", code: 2)
+        }
+        return 0
+    } catch {
+        FileHandle.standardError.write(Data((describe(error) + "\n").utf8))
+        return 1
+    }
+}
+
 // MARK: Commands
 
 @MainActor func run(_ backend: Backend) async -> Int32 {
@@ -406,6 +633,9 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
             guard let message = arguments.first, arguments.count == 1 else { fail("Give one task in quotes.\n\n\(usage)", code: 2) }
             return await runAgentTask(backend, service: service, message: message, thread: thread, workspace: workspace, allowCloud: allowCloud,
                                       permission: permission, approve: approve)
+
+        case "room":
+            return await runRoom(backend)
 
         case "memory":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()

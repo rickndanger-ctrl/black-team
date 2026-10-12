@@ -27,6 +27,7 @@ struct CampSidebar: View {
                 Text("WORKSPACE").font(BTFont.mono(9)).tracking(1.44).foregroundStyle(theme.faint).frame(height: 13.5).padding(.horizontal, 12)
                 VStack(spacing: 2) {
                     NavRow(title: "Chat", selected: model.campPage == .chat) { model.showCamp(.chat) }
+                    NavRow(title: "Room", selected: model.campPage == .room) { model.showCamp(.room) }
                     NavRow(title: "Memory", selected: model.campPage == .memory) { model.showCamp(.memory) }
                     NavRow(title: "Plugins", selected: model.campPage == .plugins) { model.showCamp(.plugins) }
                     NavRow(title: "Servers & access", selected: model.campPage == .servers) { model.showCamp(.servers) }
