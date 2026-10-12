@@ -119,6 +119,8 @@ struct ChatMessage: Equatable, Identifiable {
     var rollbackReady = false
     var rolledBack = false
     var rollbackNote = ""
+    /// A subscription-agent reply that failed because the tool is signed out: "claude-code" or "codex".
+    var needsSignIn: String?
 
     var isUser: Bool { role == "user" }
     var changes: [FileChange] { events.compactMap(\.change) }
@@ -140,6 +142,7 @@ struct ChatMessage: Equatable, Identifiable {
             && a.context == b.context && a.events == b.events && a.artifacts == b.artifacts && a.note == b.note && a.error == b.error
             && a.finishReason == b.finishReason && a.meter == b.meter && a.images == b.images && a.recalled.map(\.title) == b.recalled.map(\.title)
             && a.run == b.run && a.rollbackReady == b.rollbackReady && a.rolledBack == b.rolledBack && a.rollbackNote == b.rollbackNote
+            && a.needsSignIn == b.needsSignIn
     }
 
     init(_ json: JSONValue, index: Int) {
@@ -171,6 +174,7 @@ struct ChatMessage: Equatable, Identifiable {
         rollbackReady = json["rollback"]?.bool == true
         rolledBack = json["rolledBack"]?.bool == true
         rollbackNote = json["rollbackNote"]?.string ?? ""
+        needsSignIn = json["needsSignIn"]?.string
     }
 
     static func messages(of thread: JSONValue?) -> [ChatMessage] {

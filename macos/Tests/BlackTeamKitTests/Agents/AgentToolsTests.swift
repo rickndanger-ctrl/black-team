@@ -55,4 +55,48 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertNil(AgentService.forEngine("black-team"))
         XCTAssertNil(AgentService.forEngine(nil))
     }
+
+    func testClaudeCodeLevelsPickTheToolsOwnModes() {
+        func mode(_ level: AgentPermission) -> String {
+            let args = AgentTools.arguments(service: .claudeCode, task: "t", session: nil, workspace: "/w", permission: level)
+            return args[args.firstIndex(of: "--permission-mode")! + 1]
+        }
+        XCTAssertEqual(mode(.ask), "manual"); XCTAssertEqual(mode(.edit), "acceptEdits"); XCTAssertEqual(mode(.auto), "auto")
+        let allowed = AgentTools.arguments(service: .claudeCode, task: "t", session: "s", workspace: "/w", permission: .ask,
+                                           allowedTools: ["Bash(touch a.txt)", "Edit(/w/b.txt)"])
+        XCTAssertEqual(Array(allowed.dropFirst(7)), ["--allowedTools", "Bash(touch a.txt)", "Edit(/w/b.txt)", "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}", "--resume", "s"])
+    }
+
+    func testCodexLevelsAndTheirResumeForms() {
+        func args(_ level: AgentPermission, _ session: String?) -> [String] {
+            AgentTools.arguments(service: .codex, task: "t", session: session, workspace: "/w", permission: level)
+        }
+        XCTAssertEqual(args(.ask, nil), ["exec", "--json", "--skip-git-repo-check", "-C", "/w", "-s", "read-only", "t"])
+        XCTAssertEqual(args(.edit, nil), ["exec", "--json", "--skip-git-repo-check", "-C", "/w", "-s", "workspace-write", "t"])
+        XCTAssertEqual(args(.auto, nil), ["exec", "--json", "--skip-git-repo-check", "-C", "/w", "--approve-for-me", "t"])
+        XCTAssertEqual(args(.ask, "x"), ["exec", "resume", "x", "--json", "--skip-git-repo-check", "-c", "sandbox_mode=\"read-only\"", "t"])
+        XCTAssertEqual(args(.edit, "x"), ["exec", "resume", "x", "--json", "--skip-git-repo-check", "-c", "sandbox_mode=\"workspace-write\"", "t"])
+        XCTAssertEqual(args(.auto, "x"), ["exec", "resume", "x", "--json", "--skip-git-repo-check", "-c", "sandbox_mode=\"workspace-write\"",
+                                          "-c", "approval_policy=\"on-request\"", "-c", "approvals_reviewer=\"auto_review\"", "t"])
+    }
+
+    func testNoLevelEverSkipsPermissions() {
+        for service in AgentService.allCases {
+            for level in AgentPermission.allCases {
+                for session in [nil, "x"] {
+                    let joined = AgentTools.arguments(service: service, task: "t", session: session, workspace: "/w", permission: level,
+                                                      allowedTools: ["Bash(ls)"]).joined(separator: " ")
+                    for banned in ["dangerously", "bypass", "skip-permissions", "danger-full-access", "dontAsk"] {
+                        XCTAssertFalse(joined.contains(banned), "\(banned) in \(joined)")
+                    }
+                }
+            }
+        }
+    }
+
+    func testAThreadWithoutALevelIsEdit() {
+        XCTAssertEqual(AgentPermission.of(thread: ["id": "a"]), .edit)
+        XCTAssertEqual(AgentPermission.of(thread: ["agentPermission": "auto"]), .auto)
+        XCTAssertEqual(AgentPermission.of(thread: ["agentPermission": "nonsense"]), .edit)
+    }
 }

@@ -29,47 +29,60 @@ struct ChatControls: View {
         let models = model.status?.models ?? []
         // Saved models first, then the subscription agents found on this Mac (`agent:<engine>`), chosen as the next message's agent.
         let options = models.map { ($0.key, label($0)) } + model.agentMenu.map { ($0.key, $0.label) }
-        HStack(spacing: 10) {
-            if options.count > 1 {
-                BTSelect(options: options,
-                         selection: Binding(get: { model.activeAgent.map { "agent:\($0.engine)" } ?? models.first(where: \.active)?.key ?? "" },
-                                            set: { key in
-                                                if key.hasPrefix("agent:") {
-                                                    model.chooseAgent(AgentService.allCases.first { "agent:\($0.engine)" == key })
-                                                } else {
-                                                    model.chooseAgent(nil)
-                                                    Task { await model.switchModel(key) }
-                                                }
-                                            }),
-                         placeholder: model.modelName, browser: true)
-                    .disabled(locked || model.busy)
-                    .accessibilityLabel("Model")
-            } else {
-                BTSelect(options: [("", models.first.map(label) ?? model.modelName)], selection: .constant(""), placeholder: model.modelName, browser: true)
-                    .accessibilityLabel("Model")
-            }
-            BTSelect(options: AppModel.paceWords.map { ($0.id, $0.id) },
-                     selection: Binding(get: { drafts.draft(model.draftKey).mode }, set: { drafts.set(model.draftKey, mode: $0) }), browser: true)
-                .disabled(locked)
-                .accessibilityLabel("Response depth")
-            if let project = model.activeProject {
-                HStack(spacing: 7) {
-                    IconView(.folder, size: 13).foregroundStyle(theme.accent)
-                    Text(project.name).font(BTFont.body(12)).foregroundStyle(theme.ink)
-                    if model.threadId == nil {
-                        Button { model.leaveProject() } label: {
-                            Text("\u{00D7}").font(BTFont.body(14)).foregroundStyle(theme.muted).frame(width: 18, height: 18)
-                        }
-                        .buttonStyle(.plain).help("Leave project").accessibilityLabel("Leave project")
-                    }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                if options.count > 1 {
+                    BTSelect(options: options,
+                             selection: Binding(get: { model.activeAgent.map { "agent:\($0.engine)" } ?? models.first(where: \.active)?.key ?? "" },
+                                                set: { key in
+                                                    if key.hasPrefix("agent:") {
+                                                        model.chooseAgent(AgentService.allCases.first { "agent:\($0.engine)" == key })
+                                                    } else {
+                                                        model.chooseAgent(nil)
+                                                        Task { await model.switchModel(key) }
+                                                    }
+                                                }),
+                             placeholder: model.modelName, browser: true)
+                        .disabled(locked || model.busy)
+                        .accessibilityLabel("Model")
+                } else {
+                    BTSelect(options: [("", models.first.map(label) ?? model.modelName)], selection: .constant(""), placeholder: model.modelName, browser: true)
+                        .accessibilityLabel("Model")
                 }
-                .padding(.leading, 12).padding(.trailing, 10).frame(height: 34)
-                .overlay(RoundedRectangle(cornerRadius: Theme.radius).inset(by: 0.5).stroke(theme.line2, lineWidth: 1))
+                if model.activeAgent != nil {
+                    // The pace menu has no effect on a subscription agent, so it is not shown for one.
+                    BTSelect(options: AgentPermission.allCases.map { ($0, permissionLabel($0)) },
+                             selection: Binding(get: { model.agentPermission }, set: { model.setAgentPermission($0) }), browser: true)
+                        .disabled(locked)
+                        .accessibilityLabel("Permission")
+                } else {
+                    BTSelect(options: AppModel.paceWords.map { ($0.id, $0.id) },
+                             selection: Binding(get: { drafts.draft(model.draftKey).mode }, set: { drafts.set(model.draftKey, mode: $0) }), browser: true)
+                        .disabled(locked)
+                        .accessibilityLabel("Response depth")
+                }
+                if let project = model.activeProject {
+                    HStack(spacing: 7) {
+                        IconView(.folder, size: 13).foregroundStyle(theme.accent)
+                        Text(project.name).font(BTFont.body(12)).foregroundStyle(theme.ink)
+                        if model.threadId == nil {
+                            Button { model.leaveProject() } label: {
+                                Text("\u{00D7}").font(BTFont.body(14)).foregroundStyle(theme.muted).frame(width: 18, height: 18)
+                            }
+                            .buttonStyle(.plain).help("Leave project").accessibilityLabel("Leave project")
+                        }
+                    }
+                    .padding(.leading, 12).padding(.trailing, 10).frame(height: 34)
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).inset(by: 0.5).stroke(theme.line2, lineWidth: 1))
+                }
+                let leaves = model.leavesThisMac
+                PrivacyTag(leaves: leaves.cloud, provider: leaves.provider)
+                Spacer(minLength: 0)
+                if let usage = model.usage { UsageLine(usage: usage) } else if let meter = model.meter { SpeedMeterView(meter: meter) }
             }
-            let leaves = model.leavesThisMac
-            PrivacyTag(leaves: leaves.cloud, provider: leaves.provider)
-            Spacer(minLength: 0)
-            if let usage = model.usage { UsageLine(usage: usage) } else if let meter = model.meter { SpeedMeterView(meter: meter) }
+            if let agent = model.activeAgent {
+                Text(permissionHint(agent, model.agentPermission)).btBody(11, 1.5, theme.muted)
+            }
         }
         .padding(.vertical, 15)
         .overlay(alignment: .top) { Rectangle().fill(theme.line).frame(height: 1) }
@@ -80,6 +93,26 @@ struct ChatControls: View {
     private func label(_ item: SavedModelSummary) -> String {
         if item.isCloud { return "\(item.name) \u{00B7} Cloud" }
         return Fmt.modelSize(item).map { "\(item.name) \u{00B7} \($0)" } ?? item.name
+    }
+
+    private func permissionLabel(_ permission: AgentPermission) -> String {
+        switch permission {
+        case .ask: return "Ask"
+        case .edit: return "Edit"
+        case .auto: return "Auto"
+        }
+    }
+
+    /// The line under the selects: what the chosen tool may do at this level.
+    private func permissionHint(_ agent: AgentService, _ permission: AgentPermission) -> String {
+        switch (agent, permission) {
+        case (.claudeCode, .ask): return "Claude Code asks before it changes or runs anything. You approve each step."
+        case (.claudeCode, .edit): return "Claude Code can read and edit files in this project and run simple file commands. Other commands are refused."
+        case (.claudeCode, .auto): return "Claude Code works on its own judgement inside this project. Roll back is still available."
+        case (.codex, .ask): return "Codex can only read here. It cannot ask for approval; switch to Edit or Auto to let it make changes."
+        case (.codex, .edit): return "Codex can read, edit and run commands inside its sandbox."
+        case (.codex, .auto): return "Codex works on its own inside its sandbox, with its automatic review. Roll back is still available."
+        }
     }
 }
 

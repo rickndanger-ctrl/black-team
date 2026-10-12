@@ -1,5 +1,18 @@
 import Foundation
 
+/// Something Claude Code wanted to do that needed an approval it cannot ask for under `-p`.
+public struct AgentDenial: Equatable, Sendable {
+    public var id: String
+    public var tool: String
+    /// The tool's own input (empty until the end-of-run list arrives).
+    public var input: JSONValue
+    /// The tool's own words about why it needs approval.
+    public var message: String
+    public init(id: String, tool: String, input: JSONValue = .null, message: String = "") {
+        self.id = id; self.tool = tool; self.input = input; self.message = message
+    }
+}
+
 /// One thing a subscription agent said or did, read from one line of its output.
 public enum AgentEvent: Equatable, Sendable {
     /// The tool's own session id, which a later message continues.
@@ -14,6 +27,8 @@ public enum AgentEvent: Equatable, Sendable {
     case finished(text: String, isError: Bool)
     /// The tool reported an error in its own words.
     case failed(String)
+    /// A step that needed approval and was not done.
+    case denied(AgentDenial)
     /// A line that is not needed (or not understood): skipped, never an error.
     case ignored
 }
@@ -37,6 +52,10 @@ public enum AgentEventParser {
         case "system":
             // The first event of a run: the session id a later run resumes.
             if json["subtype"]?.string == "init", let id = json["session_id"]?.string, !id.isEmpty { return [.session(id)] }
+            if json["subtype"]?.string == "permission_denied" {
+                return [.denied(AgentDenial(id: json["tool_use_id"]?.string ?? "", tool: json["tool_name"]?.string ?? "tool",
+                                            message: json["message"]?.string ?? ""))]
+            }
         case "assistant":
             var out: [AgentEvent] = []
             for block in json["message"]?["content"]?.array ?? [] {
@@ -59,6 +78,10 @@ public enum AgentEventParser {
         case "result":
             var out: [AgentEvent] = []
             if let id = json["session_id"]?.string, !id.isEmpty { out.append(.session(id)) }
+            for denial in json["permission_denials"]?.array ?? [] {
+                out.append(.denied(AgentDenial(id: denial["tool_use_id"]?.string ?? "", tool: denial["tool_name"]?.string ?? "tool",
+                                               input: denial["tool_input"] ?? .null)))
+            }
             let isError = json["is_error"]?.bool ?? false
             out.append(.finished(text: json["result"]?.string ?? "", isError: isError))
             return out

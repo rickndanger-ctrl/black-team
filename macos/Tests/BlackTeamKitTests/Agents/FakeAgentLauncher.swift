@@ -12,6 +12,9 @@ final class FakeAgentLauncher: AgentLauncher, @unchecked Sendable {
     var holdUntilStopped = false
     /// Runs when the tool "starts", to change files in the workspace as a real run would.
     var effect: (@Sendable (AgentCommand) -> Void)?
+    /// When not empty, run number N plays `scripts[N]` (the last one repeats) instead of `lines`.
+    var scripts: [[String]] = [] { didSet { scriptStart = commands.count } }
+    private var scriptStart = 0
 
     init(lines: [(AgentStream, String)] = [], exit: AgentExit = AgentExit(status: 0)) {
         self.lines = lines; self.exit = exit
@@ -27,7 +30,9 @@ final class FakeAgentLauncher: AgentLauncher, @unchecked Sendable {
              onLine: @escaping @Sendable (AgentStream, String) -> Void) async -> AgentExit {
         record(command)
         effect?(command)
-        for (stream, line) in lines {
+        var playing = lines
+        if !scripts.isEmpty { playing = scripts[min(commands.count - 1 - scriptStart, scripts.count - 1)].map { (.stdout, $0) } }
+        for (stream, line) in playing {
             if signal.isCancelled { return AgentExit(status: nil, cancelled: true) }
             onLine(stream, line)
         }

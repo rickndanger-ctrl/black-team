@@ -20,6 +20,7 @@ final class AgentTurn: @unchecked Sendable {
     private var sessionId: String?
     private var sessionChanged = false
     private var overflowFlag = false
+    private var deniedSteps: [AgentDenial] = []
 
     init(service: AgentService) { self.service = service }
 
@@ -53,6 +54,14 @@ final class AgentTurn: @unchecked Sendable {
             if isError { failure = failure ?? (finalText.isEmpty ? "\(service.displayName) reported an error." : finalText) }
         case .failed(let message):
             failure = failure ?? redactSecrets(message)
+        case .denied(let denial):
+            // The live line has the tool's message and the end-of-run list has the input: one step, both parts.
+            if let at = deniedSteps.firstIndex(where: { !$0.id.isEmpty && $0.id == denial.id }) {
+                if deniedSteps[at].input == .null { deniedSteps[at].input = denial.input }
+                if deniedSteps[at].message.isEmpty { deniedSteps[at].message = denial.message }
+            } else {
+                deniedSteps.append(denial)
+            }
         case .ignored:
             break
         }
@@ -91,6 +100,27 @@ final class AgentTurn: @unchecked Sendable {
     var fields: (content: String, events: [JSONValue]) {
         lock.lock(); defer { lock.unlock() }
         return (text.isEmpty ? finalText : text, events)
+    }
+
+    /// Steps that needed approval in this round, in the order they came. Cleared by `startRound`.
+    var denials: [AgentDenial] { lock.lock(); defer { lock.unlock() }; return deniedSteps }
+
+    /// Starts another round of the same reply (a resume after approvals): the text and steps stay, the denials and the end-of-run text go.
+    func startRound() { lock.lock(); deniedSteps = []; finalText = ""; lock.unlock() }
+
+    /// True when the tool said, in words, that the person's login has expired or is missing. Only the tool's own failure text
+    /// and its standard error are read, never the text it wrote as a reply.
+    var signedOut: Bool {
+        lock.lock(); defer { lock.unlock() }
+        let markers: [String]
+        switch service {
+        case .claudeCode: markers = ["oauth session expired", "failed to authenticate: oauth", "not logged in \u{b7} please run /login", "please run /login"]
+        case .codex: markers = ["not logged in", "log out and sign in again", "access token could not be refreshed", "codex login"]
+        }
+        return ([failure].compactMap { $0 } + stderrTail).contains { line in
+            let lower = line.lowercased()
+            return markers.contains { lower.contains($0) }
+        }
     }
 
     /// What the tool reported as the reason it failed, if it said one in words.

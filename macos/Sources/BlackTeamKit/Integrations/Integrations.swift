@@ -281,7 +281,7 @@ public func launchHarness(id: String, store: Integrations, config: Config, runti
 }
 
 /// Saves the script privately in `<data>/launch/`, first deleting the ones left by earlier launches.
-private func writeLaunchScript(_ text: String, stateDir: String) throws -> String {
+func writeLaunchScript(_ text: String, stateDir: String) throws -> String {
     let dir = stateDir + "/launch"
     try privateDirectory(dir)
     for name in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? [] where name.hasSuffix(".command") {
