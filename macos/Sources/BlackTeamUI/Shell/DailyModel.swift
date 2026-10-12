@@ -66,7 +66,7 @@ extension AppModel {
         case "codex": return "Coding agent and tools"
         case "pi": return "Lightweight coding agent"
         case "opencode": return "Open-source coding agent"
-        case "dsh": return "DSH in your terminal"
+        case "dsh": return "DSH in your browser"
         case "aider": return "Pair programming in your terminal"
         default: return "Opens in your terminal"
         }

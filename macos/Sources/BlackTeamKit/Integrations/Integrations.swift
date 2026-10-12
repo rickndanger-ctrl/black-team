@@ -183,12 +183,28 @@ public func shellQuote(_ value: String) -> String {
 
 /// The text of the `.command` script that opens a harness: go to the folder, set exactly the
 /// given environment, then replace the shell with the harness and its literal arguments.
-public func launchScript(workspace: String, environment: [String: String], executable: String, args: [String]) -> String {
+///
+/// A harness that serves a page instead of drawing in the terminal prints the page's address when it
+/// is ready. With `opensLocalPage` the script shows the harness's output as usual and opens the first
+/// address on this computer that it prints, once; nothing else is ever opened.
+public func launchScript(workspace: String, environment: [String: String], executable: String, args: [String],
+                         opensLocalPage: Bool = false) -> String {
     var lines = ["#!/bin/zsh", "rm -f -- \"$0\"", "cd -- \(shellQuote(workspace)) || exit 1"]
     for name in environment.keys.sorted() where name.range(of: "^[A-Za-z_][A-Za-z0-9_]*$", options: .regularExpression) != nil {
         lines.append("export \(name)=\(shellQuote(environment[name]!))")
     }
-    lines.append("exec " + ([executable] + args).map(shellQuote).joined(separator: " "))
+    let command = ([executable] + args).map(shellQuote).joined(separator: " ")
+    if opensLocalPage {
+        lines += [
+            "opened=",
+            command + " 2>&1 | while IFS= read -r line; do",
+            "  print -r -- \"$line\"",
+            "  if [[ -z $opened && $line =~ '(http://127\\.0\\.0\\.1:[0-9]+)' ]]; then opened=1; /usr/bin/open \"$match[1]\"; fi",
+            "done",
+        ]
+    } else {
+        lines.append("exec " + command)
+    }
     return lines.joined(separator: "\n") + "\n"
 }
 
@@ -246,7 +262,8 @@ public func launchHarness(id: String, store: Integrations, config: Config, runti
         }
         return out + arg[last...]
     }
-    let script = try writeLaunchScript(launchScript(workspace: workspace, environment: env, executable: item.executable, args: args), stateDir: stateDir)
+    let script = try writeLaunchScript(launchScript(workspace: workspace, environment: env, executable: item.executable, args: args,
+                                                    opensLocalPage: preset.opensLocalPage), stateDir: stateDir)
     do { try await open(item.terminal.first ?? "Terminal", script) }
     catch { try? FileManager.default.removeItem(atPath: script); throw error }
     return LaunchResult(launched: true, name: item.name)

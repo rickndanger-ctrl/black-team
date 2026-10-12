@@ -24,8 +24,10 @@ public struct PresetBuild: Sendable {
     public var env: [String: String]
     /// Settings files to write privately into `dir`, by file name.
     public var files: [(name: String, content: JSONValue)]
-    public init(args: [String] = [], env: [String: String] = [:], files: [(name: String, content: JSONValue)] = []) {
-        self.args = args; self.env = env; self.files = files
+    /// The harness serves a page on this computer and prints its address; the launcher opens it.
+    public var opensLocalPage: Bool
+    public init(args: [String] = [], env: [String: String] = [:], files: [(name: String, content: JSONValue)] = [], opensLocalPage: Bool = false) {
+        self.args = args; self.env = env; self.files = files; self.opensLocalPage = opensLocalPage
     }
 }
 
@@ -40,6 +42,10 @@ public struct HarnessPreset: Sendable {
 public struct AppliedPreset: Equatable, Sendable {
     public var args: [String]
     public var env: [String: String]
+    public var opensLocalPage: Bool
+    public init(args: [String], env: [String: String], opensLocalPage: Bool = false) {
+        self.args = args; self.env = env; self.opensLocalPage = opensLocalPage
+    }
 }
 
 private func maxTokens(_ context: Int) -> JSONValue { .number(Double(min(8192, context / 4))) }
@@ -102,8 +108,10 @@ public let PRESETS: [HarnessPreset] = [
             ["id": "agent-default-model", "config": ["provider": "black-team", "model": .string(v.model)]],
             ["id": "session-title-llm", "disabled": true],
         ]
-        return PresetBuild(args: ["--profile", "terminal", "--patch", v.dir + "/black-team.patch.json"],
-            env: ["DSH_HOME": v.dir], files: [("black-team.patch.json", patch)])
+        // "web" is the interface every DeepSeek Harness has. A terminal interface is a separate add-on
+        // (it needs pnpm and a matching version), so a profile named for it cannot be counted on.
+        return PresetBuild(args: ["--profile", "web", "--patch", v.dir + "/black-team.patch.json", "--port", "0"],
+            env: ["DSH_HOME": v.dir], files: [("black-team.patch.json", patch)], opensLocalPage: true)
     },
     HarnessPreset(id: "aider", name: "Aider", command: "aider") { v in
         PresetBuild(args: ["--openai-api-base", v.endpoint, "--model", "openai/\(v.model)"], env: [:])
@@ -129,5 +137,5 @@ public func applyPreset(_ id: String, _ values: PresetValues, stateDir: String) 
             try CoreFS.writeAtomic(file, data, temporary: "\(file).\(CoreFS.hex(10)).tmp")
         }
     }
-    return AppliedPreset(args: built.args, env: built.env)
+    return AppliedPreset(args: built.args, env: built.env, opensLocalPage: built.opensLocalPage)
 }
