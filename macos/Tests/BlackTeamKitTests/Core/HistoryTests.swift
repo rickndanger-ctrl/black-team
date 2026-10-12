@@ -29,7 +29,8 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(read.request(request["id"]!.string!)?["threadId"]?.string, id)
         XCTAssertEqual(read.request(request["id"]!.string!)?["state"]?.string, "done")
         let summary = try JSONValue.parse(JSONEncoder().encode(read.list()[0]))
-        XCTAssertEqual(Set(summary.object!.keys), ["id", "kind", "title", "updated"])
+        // privacy and provider (a host name, never an address) are how the app says where a conversation may go.
+        XCTAssertEqual(Set(summary.object!.keys), ["id", "kind", "title", "updated", "privacy", "provider"])
     }
 
     func testRestartInterruptsRunningWork() throws {

@@ -16,14 +16,15 @@ private func json(_ model: ModelConfig) -> JSONValue {
 
 /// Two saved entries are the same model when they point at the same file, or the same model on the same server.
 public func keyOf(_ model: ModelConfig) -> String {
-    let identity: JSONValue = model.source == "server" ? [.string("server"), .string(model.endpoint), .string(model.id)] : [.string("gguf"), .string(model.file)]
+    let identity: JSONValue = model.source == "cloud" ? [.string("cloud"), .string(model.endpoint), .string(model.id)]
+        : model.source == "server" ? [.string("server"), .string(model.endpoint), .string(model.id)] : [.string("gguf"), .string(model.file)]
     let digest = SHA256.hash(data: Data(identity.text().utf8))
     return digest.map { String(format: "%02x", $0) }.joined().prefix(16).description
 }
 
 /// A saved entry only when every field has the right type and size; anything else is not a model.
-func cleanModel(_ entry: JSONValue?) -> ModelConfig? {
-    guard let object = entry?.object, let source = object["source"]?.string, ["gguf", "server"].contains(source) else { return nil }
+func cleanModel(_ entry: JSONValue?, cloud: CloudRules = .standard) -> ModelConfig? {
+    guard let object = entry?.object, let source = object["source"]?.string, ["gguf", "server", "cloud"].contains(source) else { return nil }
     var text: [String: String] = [:]
     for key in textKeys {
         let value = object[key] ?? .null
@@ -40,11 +41,16 @@ func cleanModel(_ entry: JSONValue?) -> ModelConfig? {
                             file: text["file"]!, runtime: text["runtime"]!, context: numbers["context"]!, gpuLayers: numbers["gpuLayers"]!,
                             threads: numbers["threads"]!, mmproj: text["mmproj"]!, draft: text["draft"]!)
     if model.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return nil }
+    if model.source == "cloud" {
+        // A cloud entry is kept only with a checked https address, a model id and its key; anything else is not usable.
+        guard (try? cloud(model.endpoint)) != nil, !model.id.isEmpty, !model.apiKey.isEmpty else { return nil }
+        return model
+    }
     if model.source == "server" ? (model.endpoint.isEmpty || model.id.isEmpty) : model.file.isEmpty { return nil }
     return model
 }
 
-func cleanModel(_ model: ModelConfig) -> ModelConfig? { cleanModel(json(model)) }
+func cleanModel(_ model: ModelConfig, cloud: CloudRules = .standard) -> ModelConfig? { cleanModel(json(model), cloud: cloud) }
 
 /// What the interface may see of a saved model: never the server key. `location` is `where` in JSON.
 public struct SavedModelSummary: Codable, Equatable, Sendable {
@@ -54,18 +60,39 @@ public struct SavedModelSummary: Codable, Equatable, Sendable {
     public var context: Int
     public var active: Bool
     public var location: String
-    enum CodingKeys: String, CodingKey { case key, name, source, context, active, location = "where" }
+    /// "local" or "cloud". A cloud model sends what it is given to its service.
+    public var kind: String
+    /// For a cloud model, the service's host name; empty for a local one.
+    public var provider: String
+    enum CodingKeys: String, CodingKey { case key, name, source, context, active, location = "where", kind, provider }
+
+    public init(key: String, name: String, source: String, context: Int, active: Bool, location: String, kind: String? = nil, provider: String = "") {
+        self.key = key; self.name = name; self.source = source; self.context = context; self.active = active; self.location = location
+        self.kind = kind ?? (source == "cloud" ? "cloud" : "local"); self.provider = provider
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decode(String.self, forKey: .key); name = try c.decode(String.self, forKey: .name); source = try c.decode(String.self, forKey: .source)
+        context = try c.decode(Int.self, forKey: .context); active = try c.decode(Bool.self, forKey: .active); location = try c.decode(String.self, forKey: .location)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? (source == "cloud" ? "cloud" : "local")
+        provider = try c.decodeIfPresent(String.self, forKey: .provider) ?? ""
+    }
+
+    public var isCloud: Bool { kind == "cloud" }
 }
 
 public final class SavedModels: @unchecked Sendable {
     public let stateDir: String
     private let filename: String
     private let lock = NSLock()
+    private let cloud: CloudRules
 
-    public init(stateDir: String) throws {
+    public init(stateDir: String, cloud: CloudRules = .standard) throws {
         guard stateDir.hasPrefix("/") else { throw BlackTeamError("State directory must be an absolute path.") }
         self.stateDir = stateDir
         self.filename = stateDir + "/saved-models.json"
+        self.cloud = cloud
     }
 
     // The list is a convenience: a missing or damaged file means an empty list, never a failed start.
@@ -77,7 +104,7 @@ public final class SavedModels: @unchecked Sendable {
         var seen = Set<String>()
         var models: [ModelConfig] = []
         for entry in saved["models"]?.array ?? [] {
-            guard let model = cleanModel(entry), seen.insert(keyOf(model)).inserted else { continue }
+            guard let model = cleanModel(entry, cloud: cloud), seen.insert(keyOf(model)).inserted else { continue }
             models.append(model)
             if models.count == limit { break }
         }
@@ -93,14 +120,14 @@ public final class SavedModels: @unchecked Sendable {
     private func write(_ models: [ModelConfig], _ keep: [String]) throws {
         try FileManager.default.createDirectory(atPath: stateDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let body: JSONValue = ["version": 1, "models": .array(models.map(json)), "ignored": .array(keep.map { .string($0) })]
-        // Entries can hold a local server key, so the file is private like config.json.
+        // Entries can hold a server or cloud key, so the file is private like config.json.
         try CoreFS.writeAtomic(filename, Data((body.text(pretty: true) + "\n").utf8), temporary: "\(stateDir)/.saved-models-\(CoreFS.hex(12)).tmp")
     }
 
     @discardableResult
     public func remember(_ input: ModelConfig) throws -> String {
         lock.lock(); defer { lock.unlock() }
-        guard let model = cleanModel(input) else { throw BlackTeamError("This model cannot be saved to your list.") }
+        guard let model = cleanModel(input, cloud: cloud) else { throw BlackTeamError("This model cannot be saved to your list.") }
         let key = keyOf(model)
         let stored = load()
         let others = stored.models.filter { keyOf($0) != key }
@@ -131,14 +158,17 @@ public final class SavedModels: @unchecked Sendable {
     }
 
     public func list(active: ModelConfig? = nil) -> [SavedModelSummary] {
-        let current = active.flatMap(cleanModel).map(keyOf) ?? ""
+        let current = active.flatMap { cleanModel($0, cloud: cloud) }.map(keyOf) ?? ""
         return read().map { model in
             var place = (model.file as NSString).lastPathComponent
             if model.source == "server" {
                 place = model.endpoint.replacingOccurrences(of: "^https?://", with: "", options: .regularExpression)
                     .replacingOccurrences(of: #"/v1/?$"#, with: "", options: .regularExpression)
             }
-            return SavedModelSummary(key: keyOf(model), name: model.name, source: model.source, context: model.context, active: keyOf(model) == current, location: place)
+            let host = model.source == "cloud" ? cloudHost(model.endpoint, rules: cloud) : ""
+            if model.source == "cloud" { place = host }
+            return SavedModelSummary(key: keyOf(model), name: model.name, source: model.source, context: model.context, active: keyOf(model) == current, location: place,
+                                     kind: model.source == "cloud" ? "cloud" : "local", provider: host)
         }
     }
 }
@@ -151,7 +181,7 @@ public struct SwitchResult: Equatable, Sendable { public var switched: Bool; pub
 public func switchModel(key: String, saved: SavedModels, configStore: ConfigStore, stop: () async throws -> Void, busy: () -> Bool) async throws -> SwitchResult {
     if busy() { throw BlackTeamError("Wait for the current response before switching models.") }
     guard let model = saved.find(key) else { throw BlackTeamError("That model is not in your list.") }
-    do { _ = try validateModelFiles(model) }
+    do { _ = try validateModelFiles(model, cloud: configStore.cloud) }
     catch { throw BlackTeamError("\(model.name) cannot be used right now: \(messageOf(error))") }
     try await stop()
     if busy() { throw BlackTeamError("Wait for the current response before switching models.") }
@@ -192,20 +222,20 @@ public func addModels(items: [JSONValue], saved: SavedModels, configStore: Confi
                                     runtime: item["runtime"]?.string ?? "", context: context, gpuLayers: 0, threads: threads,
                                     mmproj: item["mmproj"]?.string ?? "", draft: item["draft"]?.string ?? "")
             }
-            _ = try validateModelFiles(model)
+            _ = try validateModelFiles(model, cloud: configStore.cloud)
             try saved.remember(model)
             added.append(model)
         } catch { skipped.append("\(title): \(messageOf(error))") }
     }
     if added.isEmpty { throw BlackTeamError("No model could be added. \(skipped.first ?? "")") }
     var ready = false
-    if let current = cleanModel(base) { ready = current.source == "server" ? !current.id.isEmpty : !current.runtime.isEmpty }
+    if let current = cleanModel(base, cloud: configStore.cloud) { ready = current.source == "gguf" ? !current.runtime.isEmpty : true }
     if !ready { try configStore.save(["model": json(added[0])]) }
     return AddModelsResult(added: added.map(\.name), skipped: skipped, inUse: ready ? base.name : added[0].name)
 }
 
 public func forgetModel(key: String, saved: SavedModels, configStore: ConfigStore) throws {
-    let active = cleanModel(try configStore.read().model)
+    let active = cleanModel(try configStore.read().model, cloud: configStore.cloud)
     if let active, keyOf(active) == key { throw BlackTeamError("This model is in use. Switch to another model before removing it.") }
     try saved.forget(key)
 }

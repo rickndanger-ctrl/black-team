@@ -44,6 +44,8 @@ public final class Backend: @unchecked Sendable {
     let makeDownloader: @Sendable () -> FileDownloading
     let terminal: TerminalOpener
     let now: @Sendable () -> Date
+    let cloudRules: CloudRules
+    let capabilities: CloudCapabilities
     let home: String
     let harness: HarnessRuntimeAdapter
     let hub = ChangeHub()
@@ -81,15 +83,18 @@ public final class Backend: @unchecked Sendable {
                 discover: @escaping @Sendable () -> DiscoveryResult = { discoverInstalled() },
                 runtimeInstaller: RuntimeProviding? = nil, downloader: @escaping @Sendable () -> FileDownloading = { Downloader() },
                 terminal: @escaping TerminalOpener = openInTerminal, now: @escaping @Sendable () -> Date = { Date() }, home: String = NSHomeDirectory(),
-                keeperInterval: TimeInterval = 60) throws {
+                keeperInterval: TimeInterval = 60, cloud: CloudRules = .standard) throws {
         self.dataFolder = dataFolder
         self.version = version
+        self.cloudRules = cloud
+        capabilities = CloudCapabilities(dataFolder: dataFolder)
         try privateDirectory(dataFolder)
-        configStore = try ConfigStore(stateDir: dataFolder)
-        savedModels = try SavedModels(stateDir: dataFolder)
+        configStore = try ConfigStore(stateDir: dataFolder, cloud: cloud)
+        savedModels = try SavedModels(stateDir: dataFolder, cloud: cloud)
         // Someone who set up a model before the list existed sees it there from the start.
         if let current = try? configStore.read().model, savedModels.read().isEmpty,
-           (current.source == "server" ? !current.id.isEmpty : (!current.file.isEmpty && !current.runtime.isEmpty)) {
+           (current.source == "cloud" ? !current.id.isEmpty && !current.apiKey.isEmpty
+            : current.source == "server" ? !current.id.isEmpty : (!current.file.isEmpty && !current.runtime.isEmpty)) {
             _ = try? savedModels.remember(current)
         }
         integrations = Integrations(stateDir: dataFolder)
@@ -101,7 +106,7 @@ public final class Backend: @unchecked Sendable {
         discovery = cache
         let backendRuntime = customRuntime ?? ModelRuntime(configStore: configStore)
         runtime = backendRuntime
-        engine = try customEngine ?? Engine(stateDir: dataFolder, vault: memory, fetch: stream, graph: { cache.get().graph })
+        engine = try customEngine ?? Engine(stateDir: dataFolder, vault: memory, fetch: stream, graph: { cache.get().graph }, cloud: cloud)
         self.fetch = fetch
         self.stream = stream
         planner = contextPlanner ?? { messages, context, mode, endpoint, headers, signal in
@@ -165,7 +170,11 @@ public final class Backend: @unchecked Sendable {
     }
 
     func setupComplete(_ config: Config) -> Bool {
-        config.model.source == "server" ? !config.model.id.isEmpty && !config.model.endpoint.isEmpty : !config.model.file.isEmpty && !config.model.runtime.isEmpty
+        switch config.model.source {
+        case "cloud": return !config.model.id.isEmpty && !config.model.endpoint.isEmpty && !config.model.apiKey.isEmpty
+        case "server": return !config.model.id.isEmpty && !config.model.endpoint.isEmpty
+        default: return !config.model.file.isEmpty && !config.model.runtime.isEmpty
+        }
     }
 
     /// The same information `status('desktop')` returned.
@@ -193,17 +202,27 @@ public final class Backend: @unchecked Sendable {
             locked { hardwareCache = hardware; hardwareAt = Date() }
         }
         let model = config.model
+        let cloudModel = model.source == "cloud"
+        let host = cloudModel ? cloudHost(model.endpoint, rules: cloudRules) : ""
+        // A cloud model has no process of its own: it is "ready" when it is set up, and busy while a reply is being written.
+        let runtimeSummary = cloudModel
+            ? RuntimeSummary(state: setupComplete(config) ? "ready" : "off", ready: setupComplete(config), busy: snapshot?.state == "running" && snapshot?.kind != "memory", name: model.name, error: nil, features: [], kind: "cloud", provider: host)
+            : RuntimeSummary(state: state.state.rawValue, ready: state.ready, busy: state.busy, name: model.name, error: state.error, features: state.features)
+        let listed = savedModels.list(active: model)
+        let localAlternative = listed.first { !$0.isCloud }
         return BackendStatus(
             version: version, setupComplete: setupComplete(config),
-            runtime: RuntimeSummary(state: state.state.rawValue, ready: state.ready, busy: state.busy, name: model.name, error: state.error, features: state.features),
+            runtime: runtimeSummary,
             threads: history.list(), job: snapshot.map(JobSummary.init), agentEnabled: true,
             projects: projectRows.map(summary), memory: true, codeMap: !discovery.get().graph.isEmpty, performance: performance,
             config: PublicConfig(schemaVersion: config.schemaVersion, model: PublicModelConfig(
                 source: model.source, endpoint: model.endpoint, id: model.id, name: model.name, file: model.file, runtime: model.runtime,
-                context: model.context, gpuLayers: model.gpuLayers, threads: model.threads, mmproj: model.mmproj, draft: model.draft), workspace: config.workspace),
-            models: savedModels.list(active: model), serverKeyConfigured: !model.apiKey.isEmpty,
+                context: model.context, gpuLayers: model.gpuLayers, threads: model.threads, mmproj: model.mmproj, draft: model.draft,
+                kind: cloudModel ? "cloud" : "local", provider: host), workspace: config.workspace),
+            models: listed, serverKeyConfigured: !model.apiKey.isEmpty,
             integrations: try? integrations.read(), hardware: hardware, downloadedRuntime: installer.installedRuntime(),
-            vision: visionStatus(config.model))
+            vision: visionStatus(config.model),
+            cloud: CloudStatus(selected: cloudModel, provider: host, modelName: cloudModel ? model.name : "", localModelName: localAlternative?.name ?? "", localModelKey: localAlternative?.key ?? ""))
     }
 
     // MARK: Conversations
@@ -214,8 +233,15 @@ public final class Backend: @unchecked Sendable {
         var found: JSONValue?
         if let live, live.value["id"]?.string == id { found = live.value } else { found = history.get(id) }
         guard let thread = found else { return nil }
-        return ["id": thread["id"] ?? .null, "title": thread["title"] ?? .null, "updated": thread["updated"] ?? .null,
-                "kind": .string(thread["kind"]?.string.flatMap { $0.isEmpty ? nil : $0 } ?? "chat"), "messages": thread["messages"] ?? []]
+        var view: JSONValue = ["id": thread["id"] ?? .null, "title": thread["title"] ?? .null, "updated": thread["updated"] ?? .null,
+                               "kind": .string(thread["kind"]?.string.flatMap { $0.isEmpty ? nil : $0 } ?? "chat"), "messages": thread["messages"] ?? [],
+                               "privacy": .string(thread["privacy"]?.string == "cloud" ? "cloud" : "local")]
+        // Where a cloud conversation went, and what it has used. The host name only: no address, no key.
+        if thread["privacy"]?.string == "cloud" {
+            view = view.setting("provider", thread["provider"] ?? "")
+            if let usage = thread["usage"] { view = view.setting("usage", usage) }
+        }
+        return view
     }
 
     public func threads() -> [ThreadSummary] { history.list() }
@@ -249,7 +275,7 @@ public final class Backend: @unchecked Sendable {
     @discardableResult
     public func submit(message rawMessage: String, kind: String = "chat", mode: String = "balanced", requestId: String,
                        threadId givenThread: String? = nil, project givenProject: String? = nil,
-                       workspace workspaceOverride: String? = nil, images uploads: [ImageUpload] = []) throws -> SubmitResult {
+                       workspace workspaceOverride: String? = nil, images uploads: [ImageUpload] = [], from origin: SubmitOrigin = .mac) throws -> SubmitResult {
         if locked({ closing }) { throw BlackTeamError("Black Team is closing.") }
         // Images are Chat only, and an empty message with images asks for a description, as the daily app does.
         let kinds = try ImageRules.validate(uploads)
@@ -275,7 +301,7 @@ public final class Backend: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         if active != nil { throw BlackTeamError("A response is already running. Wait or stop it before sending another.") }
         let config = try configStore.read()
-        if config.model.source == "server" ? config.model.id.isEmpty : (config.model.file.isEmpty || config.model.runtime.isEmpty) {
+        if !setupComplete(config) {
             throw BlackTeamError("Complete model setup in the desktop app first.")
         }
         let existing = threadId.flatMap { history.get($0) }
@@ -287,6 +313,11 @@ public final class Backend: @unchecked Sendable {
         let wanted = existing != nil ? existing?["project"]?.string : givenProject
         let project = projects.first { $0.id == wanted }
         if existing == nil, givenProject != nil, project == nil { throw BlackTeamError("That project no longer exists.") }
+        // Privacy travels with the work: a private conversation is never sent to a cloud model, a project that is local only
+        // never uses one, and a phone never starts a cloud conversation. Decided here, whatever the interface did first.
+        let privacy = privacyDecision(config: config, existing: existing, project: project, kind: kind, viaPhone: origin == .phone)
+        if let refusal = privacy.refusal { throw BlackTeamError(refusal) }
+        let cloudModel = config.model.source == "cloud"
         // Code runs on Black Team's own engine. Hermes conversations are not available on the Mac.
         var agentEngine: String?
         if kind == "agent" {
@@ -296,9 +327,14 @@ public final class Backend: @unchecked Sendable {
             }
             if engine == nil { throw BlackTeamError("Code is unavailable in this build.") }
         }
-        if !uploads.isEmpty, config.model.source != "server", config.model.mmproj.isEmpty { throw BlackTeamError(ImageRules.needsVisionFile) }
+        if !uploads.isEmpty, config.model.source == "gguf", config.model.mmproj.isEmpty { throw BlackTeamError(ImageRules.needsVisionFile) }
         var thread = existing ?? history.create(message)
         thread = thread.setting("kind", .string(kind))
+        // The conversation's level is fixed by the model it is started with, and shown for as long as it exists.
+        if existing == nil {
+            thread = thread.setting("privacy", .string(cloudModel ? "cloud" : "local"))
+            if cloudModel { thread = thread.setting("provider", .string(cloudHost(config.model.endpoint, rules: cloudRules))) }
+        }
         if let agentEngine { thread = thread.setting("engine", .string(agentEngine)) }
         if existing == nil, let project { thread = thread.setting("project", .string(project.id)) }
         // A folder given for this one turn (the command-line tool's --workspace) wins over the project and the setting.
@@ -322,7 +358,8 @@ public final class Backend: @unchecked Sendable {
         do { try history.save(thread) } catch { images.remove(refs, threadId: thread["id"]?.string ?? ""); throw error }
         history.remember(&thread, request)
 
-        let current = JobState(id: requestId, threadId: thread["id"]?.string, kind: kind, state: "running", progress: "Preparing local model\u{2026}")
+        let current = JobState(id: requestId, threadId: thread["id"]?.string, kind: kind, state: "running",
+                               progress: cloudModel ? "Contacting \(cloudHost(config.model.endpoint, rules: cloudRules))\u{2026}" : "Preparing local model\u{2026}")
         _ = current.observe { [hub] _ in hub.notify() }
         let signal = CancelSignal()
         let ref = ThreadRef(thread)
@@ -340,12 +377,21 @@ public final class Backend: @unchecked Sendable {
         var outcomeText = kind == "agent" ? "Agent task complete" : "Response complete"
         var failure: String?
         func check() throws { if signal.isCancelled { throw CancellationError() } }
+        let cloudModel = config.model.source == "cloud"
         do {
             try check()
-            let endpoint = try await runtime.start()
-            try check()
-            try await runtime.setBusy(true)
-            let headers = try await runtime.requestHeaders()
+            let endpoint: String
+            let headers: [String: String]
+            if cloudModel {
+                // A cloud model has no process to start. The address is checked again here, so the key goes only to its own host.
+                endpoint = try cloudRules(config.model.endpoint).base
+                headers = try cloudHeaders(config.model.apiKey)
+            } else {
+                endpoint = try await runtime.start()
+                try check()
+                try await runtime.setBusy(true)
+                headers = try await runtime.requestHeaders()
+            }
             if kind == "agent" {
                 job.progress = "Starting Black Team Code\u{2026}"
                 guard let engine else { throw BlackTeamError("Code is unavailable in this build.") }
@@ -358,11 +404,12 @@ public final class Backend: @unchecked Sendable {
         } catch {
             let cancelled = signal.isCancelled
             outcomeState = cancelled ? "interrupted" : "error"
-            let text = messageOf(error)
-            failure = cancelled ? "Response stopped." : (text.isEmpty ? "The local response failed." : text)
+            // Whatever a service wrote back into an error, the key is not shown.
+            let text = redactSecrets(messageOf(error), keys: [config.model.apiKey])
+            failure = cancelled ? "Response stopped." : (text.isEmpty ? (cloudModel ? "The cloud response failed." : "The local response failed.") : text)
             outcomeText = failure!
         }
-        try? await runtime.setBusy(false)
+        if !cloudModel { try? await runtime.setBusy(false) }
         // The terminal state is announced only after the conversation is saved, so a reader that reacts to it sees the final text.
         var thread = ref.value
         var saved: JSONValue = request
@@ -390,13 +437,19 @@ public final class Backend: @unchecked Sendable {
     private func chatTurn(job: JobState, signal: CancelSignal, ref: ThreadRef, config: Config, mode: String, project: Project?,
                           endpoint: String, headers: [String: String]) async throws {
         func check() throws { if signal.isCancelled { throw CancellationError() } }
+        if config.model.source == "cloud" {
+            try await cloudChatTurn(job: job, signal: signal, ref: ref, config: config, mode: mode)
+            return
+        }
+        // A conversation that went to a cloud service never gets the vault, even when a local model answers it now.
+        let memoryAllowed = ref.value["privacy"]?.string != "cloud"
         // Core memory is fixed when the conversation starts, and what was recalled for a message stays attached to it,
         // so earlier turns are sent the same way every time and the model server's prompt cache keeps working.
         var thread = ref.value
-        if thread["core"] == nil { thread = thread.setting("core", .string(memory.core())) }
+        if memoryAllowed, thread["core"] == nil { thread = thread.setting("core", .string(memory.core())) }
         var messages = thread["messages"]?.array ?? []
         let askedAt = messages.count - 2
-        if askedAt >= 0, messages[askedAt]["recalled"] == nil {
+        if memoryAllowed, askedAt >= 0, messages[askedAt]["recalled"] == nil {
             let asked = messages[askedAt]["content"]?.string ?? ""
             let hits = (try? await memory.lookup(asked, project?.workspace)) ?? []
             messages[askedAt] = messages[askedAt].setting("recalled", JSONValue.encoded(hits))
@@ -404,7 +457,7 @@ public final class Backend: @unchecked Sendable {
         thread = thread.setting("messages", .array(messages))
         ref.value = thread
         job.progress = "Reading conversation context\u{2026}"
-        let chatMessages = ChatStream.messagesFor(thread)
+        let chatMessages = ChatStream.messagesFor(thread, cloud: !memoryAllowed)
         let prepared: PreparedContext
         if config.model.source == "server" {
             prepared = try prepareServerContext(messages: chatMessages, context: config.model.context, mode: mode, endpoint: endpoint)
@@ -431,6 +484,13 @@ public final class Backend: @unchecked Sendable {
             let sawImages = (thread["messages"]?.array ?? []).contains { !($0["images"]?.array ?? []).isEmpty }
             throw BlackTeamError("Local model request failed (\(response.statusCode)). " + (sawImages ? ImageRules.visionRequired : "Check your model and context settings."))
         }
+        try await readReply(lines, job: job, signal: signal, ref: ref, prepared: prepared, cloudHost: nil)
+    }
+
+    /// Reads a streamed reply into the conversation. `cloudHost` is set for a cloud service: its token usage is recorded
+    /// (and no reading speed, which only means something for a local model).
+    func readReply(_ lines: HTTPLines, job: JobState, signal: CancelSignal, ref: ThreadRef, prepared: PreparedContext, cloudHost: String?) async throws {
+        func check() throws { if signal.isCancelled { throw CancellationError() } }
         var assistant = ref.value["messages"]?.array?.last?.object ?? [:]
         var content = assistant["content"]?.string ?? ""
         var contentLength = EText.length(content)
@@ -455,12 +515,22 @@ public final class Backend: @unchecked Sendable {
                 } else if filled(reasoning) || filled(delta["reasoning"]) { job.progress = "Thinking\u{2026}" }
                 if Date().timeIntervalSince(lastPublish) > 0.1 { publish() }
                 if Date().timeIntervalSince(lastFlush) > 0.75 { publish(); try self.persist(ref.value); lastFlush = Date() }
-            }, signal: signal)
+            }, signal: signal, subject: cloudHost.map { "service (\($0))" } ?? "local model")
         } catch {
             publish()
             throw error
         }
         assistant["finishReason"] = result.finishReason.map { JSONValue.string($0) } ?? JSONValue.null
+        if cloudHost != nil {
+            // What the service says this reply used. Added to the conversation's running total; no speed meter for a cloud model.
+            let used = CloudUsage(api: result.usage)
+            assistant["usage"] = used.json
+            ref.addUsage(used)
+            publish()
+            try check()
+            if EText.trim(content).isEmpty { throw BlackTeamError("The model returned no visible answer. Try a larger response budget or a different model.") }
+            return
+        }
         // Measured speed for the gauge. llama.cpp reports it; for other servers the clock gives the writing speed.
         let timed = result.timings, written = result.usage?["completion_tokens"]?.double ?? 0
         let predicted = timed?["predicted_per_second"]?.double ?? 0
@@ -529,7 +599,7 @@ public final class Backend: @unchecked Sendable {
 
     func summary(_ project: Project) -> ProjectSummary {
         ProjectSummary(id: project.id, name: project.name, workspace: project.workspace, exists: CoreFS.exists(project.workspace),
-                       notes: "Projects/\((project.workspace as NSString).lastPathComponent)")
+                       notes: "Projects/\((project.workspace as NSString).lastPathComponent)", cloudAllowed: project.cloudAllowed)
     }
 
     public func projectList() -> [ProjectSummary] { lock.lock(); defer { lock.unlock() }; return projects.map(summary) }
@@ -633,6 +703,8 @@ public final class Backend: @unchecked Sendable {
     func condenseMemory(again: Bool = false) async -> String? {
         if locked({ active != nil || closing }) { return nil }
         guard !memory.usage().oversized.isEmpty else { return nil }
+        // The notes would be sent to the model to be rewritten. They are never sent to a cloud service.
+        if (try? configStore.read().model.source) == "cloud" { return "Memory is tidied with a local model, so nothing from it goes to a cloud service. Select a local model to condense notes." }
         let state = await runtime.status()
         if !state.ready || state.busy { return "Start your model, then tidy memory again to condense the notes that are over their limit." }
         return await startCondense(again: again)

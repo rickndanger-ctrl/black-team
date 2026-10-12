@@ -108,8 +108,10 @@ struct DailyTelemetry: View {
             cell(.activity, "Memory", meter: total > 0 ? Double(used) / Double(total) : 0) {
                 (Text(gb(used)).font(BTFont.mono(20)).foregroundStyle(theme.ink) + Text(" / \(gb(total)) GB").font(BTFont.body(11)).foregroundStyle(theme.muted)).tracking(-0.8)
             }
-            cell(.globe, "Connection", meter: nil, tag: "PRIVATE", valueHeight: 22, top: 4) {
-                Text("On this computer").font(BTFont.body(12.5, .semibold)).foregroundStyle(theme.ink).padding(.top, 4).offset(y: -1.5)
+            // Honest about the model in use: a cloud model is not "on this computer".
+            let cloud = model.status?.cloud ?? CloudStatus()
+            cell(.globe, "Connection", meter: nil, tag: cloud.selected ? "CLOUD" : "PRIVATE", tagWarn: cloud.selected, valueHeight: 22, top: 4) {
+                Text(cloud.selected ? "Cloud \u{00B7} \(cloud.provider)" : "On this computer").font(BTFont.body(12.5, .semibold)).foregroundStyle(theme.ink).padding(.top, 4).offset(y: -1.5)
             }
         }
         .background(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).fill(theme.surface))
@@ -120,7 +122,7 @@ struct DailyTelemetry: View {
         .accessibilityLabel("This computer")
     }
 
-    private func cell<Value: View>(_ icon: BTIcon, _ label: String, meter: Double?, tag: String? = nil, valueHeight: CGFloat = 30, top: CGFloat = 5, @ViewBuilder value: () -> Value) -> some View {
+    private func cell<Value: View>(_ icon: BTIcon, _ label: String, meter: Double?, tag: String? = nil, tagWarn: Bool = false, valueHeight: CGFloat = 30, top: CGFloat = 5, @ViewBuilder value: () -> Value) -> some View {
         let padding: CGFloat = metrics.compact ? 12 : 20
         return HStack(alignment: .center, spacing: 14) {
             IconView(icon, size: 17).foregroundStyle(theme.muted).frame(width: 17)
@@ -130,9 +132,10 @@ struct DailyTelemetry: View {
             }
             Spacer(minLength: 0)
             if let tag {
-                Text(tag).font(BTFont.mono(8)).tracking(0.8).foregroundStyle(theme.muted)
+                Text(tag).font(BTFont.mono(8)).tracking(0.8).foregroundStyle(tagWarn ? theme.warn : theme.muted)
                     .padding(.horizontal, 7).padding(.vertical, 5)
-                    .overlay(RoundedRectangle(cornerRadius: 3).inset(by: 0.5).stroke(theme.line2, lineWidth: 1))
+                    .background(RoundedRectangle(cornerRadius: 3).fill(tagWarn ? theme.warnBg : .clear))
+                    .overlay(RoundedRectangle(cornerRadius: 3).inset(by: 0.5).stroke(tagWarn ? theme.warnLine : theme.line2, lineWidth: 1))
             }
         }
         .padding(.leading, padding).padding(.trailing, padding).padding(.top, 18).padding(.bottom, 21)
@@ -196,11 +199,15 @@ struct ModelCard: View {
                 }
                 .lineLimit(1)
                 Spacer(minLength: 0)
-                Text(card.state == "ready" ? "Ready" : card.state == "starting" ? "Starting" : card.state == "error" ? "Error" : "Off")
-                    .font(BTFont.mono(9)).tracking(0.54).foregroundStyle(card.state == "ready" ? theme.ok : theme.muted)
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 3).fill(card.state == "ready" ? theme.okBg : .clear))
-                    .overlay(RoundedRectangle(cornerRadius: 3).inset(by: 0.5).stroke(card.state == "ready" ? theme.okLine : theme.line2, lineWidth: 1))
+                if card.cloud {
+                    CloudTag()
+                } else {
+                    Text(card.state == "ready" ? "Ready" : card.state == "starting" ? "Starting" : card.state == "error" ? "Error" : "Off")
+                        .font(BTFont.mono(9)).tracking(0.54).foregroundStyle(card.state == "ready" ? theme.ok : theme.muted)
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 3).fill(card.state == "ready" ? theme.okBg : .clear))
+                        .overlay(RoundedRectangle(cornerRadius: 3).inset(by: 0.5).stroke(card.state == "ready" ? theme.okLine : theme.line2, lineWidth: 1))
+                }
                 ZStack {
                     Circle().fill(chosen ? theme.accent : .clear)
                     Circle().inset(by: 0.5).stroke(chosen ? theme.accent : theme.line2, lineWidth: 1)
@@ -217,7 +224,7 @@ struct ModelCard: View {
         }
         .buttonStyle(.plain)
         .disabled(model.busy)
-        .accessibilityLabel("\(card.name), \(card.detail)")
+        .accessibilityLabel("\(card.name), \(card.detail)\(card.cloud ? ", cloud model" : "")")
         .accessibilityAddTraits(chosen ? [.isButton, .isSelected] : .isButton)
     }
 }
@@ -228,7 +235,8 @@ struct ServerRow: View {
     @Environment(\.btTheme) private var theme
 
     var body: some View {
-        if let card = model.activeCard {
+        // A cloud model has no server on this Mac, so there is no switch for it.
+        if let card = model.activeCard, !card.cloud {
             let on = card.state == "ready" || card.state == "starting"
             let busy = model.status?.runtime.busy == true
             let text = card.state == "ready" ? (busy ? "Working on a request" : "Online and ready for requests")
@@ -358,6 +366,8 @@ struct LaunchBar: View {
     var body: some View {
         let card = model.selectedHarnessCard
         let needsModel = model.activeCard == nil
+        // Agent apps are pointed at the local model; none is launched against a cloud one for now.
+        let cloudRefused = model.cloudSelected && !card.builtIn
         HStack(alignment: .center, spacing: 18) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 11) {
@@ -368,8 +378,9 @@ struct LaunchBar: View {
                             .lineLimit(1).frame(height: 18, alignment: .leading).padding(.top, 4)
                     }
                 }
-                Text(card.builtIn ? "Depth applies to new conversations. Existing chats keep their setting." : "Opens in a dedicated terminal window.")
-                    .font(BTFont.body(10)).foregroundStyle(theme.faint).frame(height: 15, alignment: .leading).padding(.top, 10)
+                Text(cloudRefused ? "Agent apps use your local model. Select a local model to launch one."
+                        : card.builtIn ? "Depth applies to new conversations. Existing chats keep their setting." : "Opens in a dedicated terminal window.")
+                    .font(BTFont.body(10)).foregroundStyle(cloudRefused ? theme.warn : theme.faint).frame(height: 15, alignment: .leading).padding(.top, 10)
             }
             Spacer(minLength: 0)
             Button { Task { await model.launchSelected() } } label: {
@@ -380,7 +391,7 @@ struct LaunchBar: View {
                 }
             }
             .buttonStyle(.btPrimary).environment(\.btControlHeight, 42)
-            .disabled(model.launching || model.busy || (needsModel && !card.builtIn))
+            .disabled(model.launching || model.busy || (needsModel && !card.builtIn) || cloudRefused)
         }
         .padding(.top, 22)
         .overlay(alignment: .top) { Rectangle().fill(theme.line).frame(height: 1) }

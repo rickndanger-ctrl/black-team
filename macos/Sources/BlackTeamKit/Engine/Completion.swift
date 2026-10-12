@@ -18,6 +18,11 @@ public struct CompletionTimings: Equatable, Sendable {
 public struct CompletionUsage: Equatable, Sendable {
     public var promptTokens: Int
     public var completionTokens: Int
+    /// Prompt tokens the service served from its cache, when it says so.
+    public var cachedTokens: Int = 0
+    public init(promptTokens: Int, completionTokens: Int, cachedTokens: Int = 0) {
+        self.promptTokens = promptTokens; self.completionTokens = completionTokens; self.cachedTokens = cachedTokens
+    }
 }
 
 public struct Completion: Equatable, Sendable {
@@ -33,6 +38,9 @@ public struct ModelRequestError: Error, LocalizedError, Equatable, Sendable {
     public let message: String
     public let status: Int
     public let overflow: Bool
+    /// The service's full error text and the field it named, so a cloud 400 can be learned from.
+    public var detail: String = ""
+    public var param: String = ""
     public var errorDescription: String? { message }
 }
 
@@ -111,10 +119,12 @@ extension Engine {
         guard (200..<300).contains(response.statusCode) else {
             var raw = ""
             do { for try await line in lines { raw += line + "\n"; if raw.utf8.count > 1 << 20 { break } } } catch {}
-            let detail = (try? JSONValue.parse(raw))?["error"]?["message"]?.string ?? ""
+            let found = cloudErrorDetail(raw)
+            let detail = (try? JSONValue.parse(raw)) == nil ? "" : found.message
             let lowered = detail.lowercased()
-            let overflow = lowered.contains("exceed") || lowered.contains("context length") || lowered.contains("too long")
-            throw ModelRequestError(message: EText.trim("The model returned HTTP \(response.statusCode). \(EText.prefix(detail, 200))"), status: response.statusCode, overflow: overflow)
+            let overflow = lowered.contains("exceed") || lowered.contains("context length") || lowered.contains("too long") || lowered.contains("maximum context")
+            throw ModelRequestError(message: EText.trim("The model returned HTTP \(response.statusCode). \(EText.prefix(detail, 200))"), status: response.statusCode, overflow: overflow,
+                                    detail: detail, param: found.param)
         }
         struct Slot { var id = "", name = "", arguments = "" }
         var slots: [Int: Slot] = [:]
@@ -131,7 +141,8 @@ extension Engine {
                 throw BlackTeamError(message.isEmpty ? "The model stream failed." : message)
             }
             if let item = data["usage"], item.object != nil {
-                usage = CompletionUsage(promptTokens: Int(number(item["prompt_tokens"])), completionTokens: Int(number(item["completion_tokens"])))
+                usage = CompletionUsage(promptTokens: Int(number(item["prompt_tokens"])), completionTokens: Int(number(item["completion_tokens"])),
+                                        cachedTokens: Int(number(item["prompt_tokens_details"]?["cached_tokens"])))
             }
             if let item = data["timings"], item.object != nil {
                 timings = CompletionTimings(promptN: number(item["prompt_n"]), promptPerSecond: number(item["prompt_per_second"]),

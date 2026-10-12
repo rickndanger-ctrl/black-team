@@ -107,6 +107,9 @@ final class BackendFixture {
     var downloader: FileDownloading?
     var fetch: HTTPFetch = { _ in throw URLError(.cannotConnectToHost) }
     var backends: [Backend] = []
+    /// The real Code engine instead of the stub, for tests that look at what Code would send.
+    var realEngine: CodeEngine?
+    var cloud: CloudRules = .standard
 
     init(_ test: XCTestCase, server: Bool = false) throws {
         self.test = test
@@ -122,9 +125,11 @@ final class BackendFixture {
     var stateDir: String { files.stateDir }
 
     func make(keeperInterval: TimeInterval = 3600) throws -> Backend {
-        let requests = self.requests, reply = self.reply, planned = self.planned
+        let requests = self.requests, planned = self.planned
+        // `reply` is looked up for every request, so a test can change what the fake server says after the backend exists.
+        let reply: HTTPStreamFetch = { [unowned self] request in try await self.reply(request) }
         let backend = try Backend(
-            dataFolder: stateDir, version: "0.1.0-test", runtime: runtime, engine: engine, memory: memory,
+            dataFolder: stateDir, version: "0.1.0-test", runtime: runtime, engine: realEngine ?? engine, memory: memory,
             fetch: fetch,
             stream: { request in requests.add(request); return try await reply(request) },
             contextPlanner: { messages, context, mode, endpoint, headers, _ in
@@ -133,7 +138,7 @@ final class BackendFixture {
                     measuredInputTokens: 30, context: context, maxTokens: 512, omittedMessages: 0, method: "fixture", inputBudget: 3000, safetyMargin: 64, decision: "keep"))
             },
             discover: { noTools }, runtimeInstaller: installer, downloader: { [downloader] in downloader ?? Downloader() },
-            terminal: { _, _ in }, home: files.dir + "/home", keeperInterval: keeperInterval)
+            terminal: { _, _ in }, home: files.dir + "/home", keeperInterval: keeperInterval, cloud: cloud)
         backends.append(backend)
         test.addTeardownBlock { await backend.shutdown() }
         return backend

@@ -36,12 +36,12 @@ struct CommandSidebar: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Circle().fill(theme.ok).frame(width: 6, height: 6)
-                Text("LOCAL WORKSPACE").font(BTFont.mono(9)).tracking(1.26).foregroundStyle(theme.ink2)
+                Circle().fill(model.cloudSelected ? theme.warn : theme.ok).frame(width: 6, height: 6)
+                Text(model.cloudSelected ? "CLOUD MODEL" : "LOCAL WORKSPACE").font(BTFont.mono(9)).tracking(1.26).foregroundStyle(theme.ink2)
             }
             .frame(height: 14.4)
-            Text("Connected to this computer.").btBody(11, 1.5, theme.muted).padding(.vertical, 6)
-            Text("Private \u{00B7} Local-first").font(BTFont.mono(9)).tracking(0.36).foregroundStyle(theme.faint).frame(height: 14.4)
+            Text(model.cloudSelected ? "Your next conversation leaves this Mac." : "Connected to this computer.").btBody(11, 1.5, theme.muted).padding(.vertical, 6)
+            Text(model.cloudSelected ? "Cloud \u{00B7} \(model.cloud.provider)" : "Private \u{00B7} Local-first").font(BTFont.mono(9)).tracking(0.36).foregroundStyle(theme.faint).frame(height: 14.4)
         }
         .padding(.top, 14).padding(.horizontal, 8)
         .frame(maxWidth: .infinity, alignment: .leading)

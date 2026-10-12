@@ -5,6 +5,9 @@ import Foundation
 public enum ChatStream {
     public static let SYSTEM = "You are Black Team, a helpful private AI assistant running on the user\u{2019}s computer. This conversation has no tools: do not claim to read files, browse, run commands, or complete external actions. Ask for needed information and be clear about uncertainty."
 
+    /// The same instructions for a conversation with a cloud service: it must not claim to be local or to know the vault.
+    public static let CLOUD_SYSTEM = "You are Black Team, a helpful AI assistant. This conversation has no tools: do not claim to read files, browse, run commands, or complete external actions. Ask for needed information and be clear about uncertainty."
+
     /// What was recalled for a message stays attached to it, so earlier turns are sent the same way
     /// every time and the model server's prompt cache keeps working.
     static func withMemory(_ message: JSONValue) -> String {
@@ -15,17 +18,19 @@ public enum ChatStream {
     }
 
     /// A user message as it is sent: its text with memory, and the references of its images (the bytes are added when the request is made).
-    static func userMessage(_ message: JSONValue) -> JSONValue {
-        var value: JSONValue = ["role": "user", "content": .string(withMemory(message))]
+    static func userMessage(_ message: JSONValue, memory: Bool = true) -> JSONValue {
+        var value: JSONValue = ["role": "user", "content": .string(memory ? withMemory(message) : (message["content"]?.string ?? ""))]
         let refs = (message["images"]?.array ?? []).compactMap { ImageRef($0) }
         if !refs.isEmpty { value = value.setting("images", .array(refs.map(\.json))) }
         return value
     }
 
     /// The system message, every finished earlier pair, then the newest request.
-    public static func messagesFor(_ thread: JSONValue) -> [JSONValue] {
-        let core = thread["core"]?.string ?? ""
-        let system = core.isEmpty ? SYSTEM : "\(SYSTEM)\n\nWhat you know about the user:\n\(core)"
+    /// For a cloud conversation (`cloud: true`) the vault has no part in it: no Core, and no recalled notes.
+    public static func messagesFor(_ thread: JSONValue, cloud: Bool = false) -> [JSONValue] {
+        let core = cloud ? "" : thread["core"]?.string ?? ""
+        let base = cloud ? CLOUD_SYSTEM : SYSTEM
+        let system = core.isEmpty ? base : "\(base)\n\nWhat you know about the user:\n\(core)"
         var result: [JSONValue] = [["role": "system", "content": .string(system)]]
         let messages = thread["messages"]?.array ?? []
         var index = 0
@@ -33,13 +38,13 @@ public enum ChatStream {
             let user = messages[index], assistant = messages[index + 1]
             if user["role"]?.string == "user", assistant["role"]?.string == "assistant", assistant["state"]?.string == "done",
                let reply = assistant["content"]?.string, !reply.isEmpty {
-                result.append(userMessage(user))
+                result.append(userMessage(user, memory: !cloud))
                 result.append(["role": "assistant", "content": .string(reply)])
                 index += 1
             }
             index += 1
         }
-        if messages.count >= 2 { result.append(userMessage(messages[messages.count - 2])) }
+        if messages.count >= 2 { result.append(userMessage(messages[messages.count - 2], memory: !cloud)) }
         return result
     }
 
@@ -50,7 +55,7 @@ public enum ChatStream {
     }
 
     /// Reads a server-sent-events reply. `onDelta` gets each choice's `delta` object.
-    public static func readStream(_ lines: HTTPLines, onDelta: (JSONValue) throws -> Void, signal: CancelSignal? = nil) async throws -> Result {
+    public static func readStream(_ lines: HTTPLines, onDelta: (JSONValue) throws -> Void, signal: CancelSignal? = nil, subject: String = "local model") async throws -> Result {
         var finished = false
         var result = Result()
         func process(_ raw: String) throws {
@@ -59,9 +64,9 @@ public enum ChatStream {
             let data = EText.trim(String(line.dropFirst(5)))
             if data.isEmpty { return }
             if data == "[DONE]" { finished = true; return }
-            guard let item = try? JSONValue.parse(data) else { throw BlackTeamError("The local model returned an invalid stream.") }
+            guard let item = try? JSONValue.parse(data) else { throw BlackTeamError("The \(subject) returned an invalid stream.") }
             if let error = item["error"], error != .null, error != .bool(false) {
-                throw BlackTeamError("The local model could not complete the response. Check the model and context settings.")
+                throw BlackTeamError("The \(subject) could not complete the response. Check the model and context settings.")
             }
             if let timings = item["timings"], timings.object != nil { result.timings = timings }
             if let usage = item["usage"], usage.object != nil { result.usage = usage }
@@ -71,11 +76,11 @@ public enum ChatStream {
         }
         for try await line in lines {
             if signal?.isCancelled == true || Task.isCancelled { throw CancellationError() }
-            if EText.length(line) > 1024 * 1024 { throw BlackTeamError("The local model returned an oversized stream frame.") }
+            if EText.length(line) > 1024 * 1024 { throw BlackTeamError("The \(subject) returned an oversized stream frame.") }
             try process(line)
         }
         if signal?.isCancelled == true || Task.isCancelled { throw CancellationError() }
-        if !finished { throw BlackTeamError("Connection to the local model ended before the response finished.") }
+        if !finished { throw BlackTeamError("Connection to the \(subject) ended before the response finished.") }
         return result
     }
 }

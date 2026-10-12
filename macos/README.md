@@ -58,6 +58,15 @@ interface's "Download vision file" button fetches, sets as `model.mmproj` and lo
 (Qwen3 14B, other files) is told so. The phone's web app has no image support: a thread reaches it without image references.
 CLI: `chat "..." --image <path>`, `vision status|install`.
 
+Cloud models (Mac only): "Available configurations" can add an OpenAI-compatible service with the person's own key
+(`Core/Cloud.swift`: address rule, redaction, request body, what each model refused, token usage; `App/BackendCloud.swift`:
+conversation levels, refusals, conversion, project switch). Privacy travels with the work: every conversation is `local` or
+`cloud`, a local one is never silently sent to a cloud model, projects are local only until allowed, cloud conversations get no
+memory, phones cannot start or convert one, harnesses are not launched against a cloud model. See `docs/PRIVACY.md` and
+`docs/MODELS.md`. `black-team-cli cloud add|models` and `--allow-cloud`. The CLI alone honours `BLACK_TEAM_CLOUD_TEST_HOST=127.0.0.1:<port>`
+(through an injected `CloudRules` in `BlackTeamCLI/main.swift`) so `Tests/CloudStub/stub.py`, a stand-in service, can be used
+without a real key; the app, built from `Backend()` with the default rules, neither contains that code nor the variable's name.
+
 Not built yet, and left off the screens until they work: Hermes and its plugins, dictation, DSH session listing. Not done for
 images: removing a conversation's picture files (no conversation delete yet), and keeping unsent drafts across app launches.
 

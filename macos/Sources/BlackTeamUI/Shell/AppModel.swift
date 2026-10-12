@@ -21,6 +21,9 @@ struct ModelCardInfo: Equatable, Identifiable {
     var active: Bool
     /// ready, starting, error or off
     var state: String
+    /// A cloud model: the card says "Cloud" where a local one says Ready or Off.
+    var cloud = false
+    var provider = ""
 }
 
 /// A card in "Choose your harness".
@@ -114,6 +117,10 @@ public final class AppModel: ObservableObject {
     /// Pictures are being prepared, or the vision file is being fetched.
     @Published var preparing = false
     @Published var visionInstall = VisionInstall()
+    /// What would happen if the open conversation (or the new one) were sent from here: the notice before a first cloud send.
+    @Published var privacyNow = PrivacyCheck()
+    /// Set when a send was refused for privacy; the screen shows it with its choices where errors appear.
+    @Published var refusal: PrivacyCheck?
     let imageCache = NSCache<NSString, NSImage>()
 
     private var lastRuntimeError = ""
@@ -193,9 +200,18 @@ public final class AppModel: ObservableObject {
     }
 
     private func updateThread() {
+        updatePrivacy()
         guard let id = threadId else { return }
         let next = backend.thread(id)
         if next != thread { thread = next }
+    }
+
+    /// Asks the Backend what a send from here would do. The Backend decides again when a message is really sent.
+    func updatePrivacy() {
+        guard status != nil else { return }
+        let next = backend.privacyCheck(threadId: threadId, project: threadId == nil ? projectId : nil, kind: currentKind.rawValue)
+        if next != privacyNow { privacyNow = next }
+        if refusal != nil, !next.refused { refusal = nil }
     }
 
     func refresh() async {
@@ -225,6 +241,24 @@ public final class AppModel: ObservableObject {
     var activeProject: ProjectSummary? { projects.first { $0.id == projectId } }
     var messages: [ChatMessage] { ChatMessage.messages(of: thread) }
     var activeJob: Bool { status?.job?.state == "running" }
+
+    // MARK: Where words go
+
+    var cloud: CloudStatus { status?.cloud ?? CloudStatus() }
+    var cloudSelected: Bool { cloud.selected }
+
+    /// Whether the open conversation (or, for a new one, the model that would start it) leaves this Mac, and for where.
+    var leavesThisMac: (cloud: Bool, provider: String) {
+        if let thread, thread["privacy"]?.string == "cloud" { return (true, thread["provider"]?.string ?? "") }
+        if thread != nil { return (false, "") }
+        return (cloudSelected, cloud.provider)
+    }
+
+    /// Tokens used so far in the open cloud conversation.
+    var usage: CloudUsage? {
+        guard thread?["privacy"]?.string == "cloud", let saved = thread?["usage"] else { return nil }
+        return CloudUsage(json: saved)
+    }
     var locked: Bool { sending || pending != nil }
 
     var currentKind: ChatKind {
@@ -271,6 +305,8 @@ public final class AppModel: ObservableObject {
         thread = id.flatMap { backend.thread($0) }
         campPage = .chat
         error = nil
+        refusal = nil
+        updatePrivacy()
         chatKey += 1
     }
 
@@ -348,7 +384,9 @@ public final class AppModel: ObservableObject {
 
     func switchModel(_ key: String) async {
         if let result = await action({ try await backend.switchTo(key: key) }) {
-            notice = "Now using \(result.name). Your next message starts it."
+            updatePrivacy()
+            let cloudNow = status?.cloud.selected == true
+            notice = cloudNow ? "Now using \(result.name). Conversations with it leave this Mac." : "Now using \(result.name). Your next message starts it."
             record("Switched to \(result.name)")
         }
     }
@@ -455,6 +493,13 @@ public final class AppModel: ObservableObject {
         defer { sending = false }
         let images = given ?? pending?.images ?? drafts.draft(draftKey).images
         if currentKind == .agent, !images.isEmpty { error = ImageRules.codeRefusal; return false }
+        // A private conversation is not sent to a cloud model, and a local-only project does not use one. The Backend refuses it too;
+        // asking first lets the screen offer the choices instead of an error.
+        if pending == nil {
+            let check = backend.privacyCheck(threadId: threadId, project: threadId == nil ? projectId : nil, kind: currentKind.rawValue)
+            if check.refused { refusal = check; return false }
+        }
+        refusal = nil
         let payload = pending ?? PendingRequest(id: UUID().uuidString.lowercased(), message: text, mode: mode, kind: currentKind,
                                                 threadId: threadId, project: threadId == nil ? projectId : nil, images: images)
         pending = payload
@@ -479,6 +524,8 @@ public final class AppModel: ObservableObject {
                 return true
             }
             if error is BlackTeamError { pending = nil }
+            let check = backend.privacyCheck(threadId: payload.threadId, project: payload.project, kind: payload.kind.rawValue)
+            if check.refused { refusal = check; return false }
             self.error = error is BlackTeamError ? plainMessage(error) : "The message could not be sent. Retry it to recover the same response."
             return false
         }
@@ -557,11 +604,55 @@ extension AppModel {
 /// The standard About panel, with the version and the runtime in the credits.
 enum AboutPanel {
     @MainActor static func show(version: String, runtime: String?) {
-        let credits = NSAttributedString(string: "Private AI. Total control.\nEverything runs on this Mac." + (runtime.map { "\nllama.cpp build \($0)" } ?? ""),
+        let credits = NSAttributedString(string: "Private AI. Total control.\nLocal by default. A cloud model is used only when you choose one." + (runtime.map { "\nllama.cpp build \($0)" } ?? ""),
                                          attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
             .applicationName: "Black Team", .applicationVersion: version, .version: "", .credits: credits,
         ])
         NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+}
+
+// MARK: Choices after a privacy refusal
+
+extension AppModel {
+    /// "Start a new cloud conversation": the words stay in the box and go to a fresh conversation, which the pre-send notice describes.
+    func startNewCloudConversation() {
+        let old = drafts.draft(draftKey)
+        refusal = nil
+        startChat(currentKind)
+        drafts.set(draftKey, message: old.message)
+        drafts.set(draftKey, mode: old.mode)
+        updatePrivacy()
+    }
+
+    /// "Switch back to <local model>": the model changes, the words stay in the box.
+    func switchBackToLocal(_ check: PrivacyCheck) async {
+        guard !check.localModelKey.isEmpty else { return }
+        await switchModel(check.localModelKey)
+        refusal = nil
+    }
+
+    /// "Send this conversation to <service>", after the person has read the confirmation that names the service. The whole conversation
+    /// so far goes with the next message, which is sent right away.
+    func sendToCloud(_ check: PrivacyCheck) {
+        guard let id = threadId else { return }
+        do {
+            try backend.convertToCloud(threadId: id, confirmingProvider: check.provider)
+            thread = backend.thread(id)
+            refusal = nil
+            updatePrivacy()
+            let draft = drafts.draft(draftKey)
+            send(draft.message.trimmingCharacters(in: .whitespacesAndNewlines), mode: draft.mode)
+        } catch { self.error = plainMessage(error) }
+    }
+
+    /// A project row's menu: cloud models are refused in a project until it is allowed here, once, on purpose.
+    func setProjectCloud(_ project: ProjectSummary, allowed: Bool) async {
+        await action(success: allowed ? "\(project.name) may now use cloud models. Conversations in it that use one leave this Mac."
+                                       : "\(project.name) is local only again.") {
+            _ = try backend.setProjectCloud(project.id, allowed: allowed, confirmed: allowed)
+        }
+        updatePrivacy()
     }
 }

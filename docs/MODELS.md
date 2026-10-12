@@ -1,6 +1,7 @@
 # Model connections
 
-Black Team accepts model choices from the user. It loads GGUF with an owned
+Black Team accepts model choices from the user (the Mac app can also use a cloud service, see
+below; Linux is local only). It loads GGUF with an owned
 llama.cpp runtime, or connects to an existing local OpenAI-compatible server.
 A model's architecture, file format, quantization and hardware requirements are
 handled by the inference engine. Black Team cannot directly load every weight
@@ -29,6 +30,37 @@ A model startup failure can indicate unsupported architecture, missing shared
 libraries, insufficient RAM/VRAM, or incompatible runtime endpoints. The alpha's
 runtime startup deadline is two minutes. Large or slow models may need a
 separately started server instead.
+
+## Cloud models (macOS app only)
+
+In the Mac app, **Available configurations → Cloud model** adds a hosted model. Choose a service
+(each preset only fills in the address) or **Another service**, paste your API key (a secure field; it
+is not shown again), choose **Find models** (`GET <address>/models` with your key) or type a model id,
+then set a name and the model's context window (up to 2,000,000 tokens).
+
+| Preset | Address | Models route |
+| --- | --- | --- |
+| OpenRouter | `https://openrouter.ai/api/v1` | `GET /models` (Bearer key) |
+| OpenAI | `https://api.openai.com/v1` | `GET /models` (Bearer key) |
+| Anthropic (OpenAI-compatible) | `https://api.anthropic.com/v1` | native `GET /v1/models` takes `x-api-key` and `anthropic-version`; both are sent |
+| Google Gemini (OpenAI-compatible) | `https://generativelanguage.googleapis.com/v1beta/openai` | `GET /models` (Bearer key) |
+
+These were checked against each provider's documentation on 2026-10-11. Find models is a convenience;
+the model id field always works. Code and Chat use streaming `/chat/completions` with the standard
+fields only: `model`, `messages`, `stream`, `stream_options.include_usage`, `max_tokens`,
+`temperature`, `tools`, `tool_choice` and, unless the pace is Fast, `reasoning_effort`. Services differ
+(some want `max_completion_tokens`, some refuse `temperature` or `reasoning_effort`); Black Team does
+not hard-code that. On a 400 that names a field it leaves the field out (or renames the token field) and
+retries, and remembers the lesson per service and model in `cloud-capabilities.json`.
+
+Budgets: Code does not ration by measured reading speed for a cloud model. Its working budget is 60% of
+the configured window, and one tool result may be larger in proportion. Step and time limits are the
+same. See [PRIVACY.md](PRIVACY.md) for what leaves the Mac.
+
+Command line: `black-team-cli cloud add --url https://api.openai.com/v1 --key-env OPENAI_API_KEY
+--model <id> [--name ..] [--context N]` (the key is read from the named environment variable, never the
+command line), `cloud models`, and `chat`/`code ... --allow-cloud` to answer the question asked before a
+private conversation is sent to a service.
 
 ## Existing servers
 

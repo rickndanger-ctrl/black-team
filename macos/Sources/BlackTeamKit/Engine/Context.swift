@@ -243,3 +243,32 @@ public func prepareServerContext(messages: [JSONValue], context: Int, mode: Stri
         decision: parts.originalLength == selected.count ? "keep" : "select_recent",
         imageReserveTokens: ImageCost.reserve(selected)))
 }
+
+/// The context of a Chat turn with a cloud model: a size estimate, since a service has no tokenizer route to ask. Labelled as an
+/// estimate in the interface. The window is the configured one; the reply budgets are larger because services count thinking in them.
+public func prepareCloudContext(messages: [JSONValue], context: Int, mode: String = "balanced") throws -> PreparedContext {
+    if context < 512 || context > 2_000_000 { throw BlackTeamError("Choose a context size from 512 to 2,000,000.") }
+    let budgets = ["fast": 1024, "balanced": 2048, "deep": 4096, "extended": 8192]
+    guard let outputBudget = budgets[mode] else { throw BlackTeamError("Choose a supported response mode.") }
+    let parts = try ContextPlanner.conversationParts(messages)
+    let maxTokens = max(64, min(outputBudget, context / 4))
+    let inputBudget = context - maxTokens - ContextPlanner.safetyMargin
+    var recent = Array(parts.turns.suffix(ContextPlanner.maxHistoryTurns))
+    func estimate(_ selected: [JSONValue]) -> Int {
+        128 + selected.reduce(0) { $0 + ($1["content"]?.string ?? "").utf8.count / 3 + 12 + ImageCost.count(in: $1) * ImageCost.tokensPerImage }
+    }
+    func select() -> [JSONValue] { parts.system + recent.flatMap { $0 } + parts.latest }
+    var selected = select()
+    while estimate(selected) > inputBudget && !recent.isEmpty {
+        recent.removeFirst()
+        selected = select()
+    }
+    let tokens = estimate(selected)
+    if tokens > inputBudget {
+        throw BlackTeamError("Your latest request and system instructions exceed the estimated input budget. Shorten the request or raise the context size in Available configurations.")
+    }
+    return PreparedContext(messages: selected, maxTokens: maxTokens, report: ContextReport(
+        measuredInputTokens: tokens, context: context, maxTokens: maxTokens, omittedMessages: parts.originalLength - selected.count,
+        method: "estimated-bytes", inputBudget: inputBudget, safetyMargin: ContextPlanner.safetyMargin,
+        decision: parts.originalLength == selected.count ? "keep" : "select_recent", imageReserveTokens: ImageCost.reserve(selected)))
+}

@@ -105,6 +105,21 @@ public struct ThreadSummary: Codable, Equatable, Sendable {
     public var updated: String
     public var kind: String
     public var project: String?
+    /// "local" (nothing in it may leave this Mac) or "cloud" (it has been sent to `provider`).
+    public var privacy: String = "local"
+    public var provider: String = ""
+
+    public init(id: String, title: String, updated: String, kind: String, project: String? = nil, privacy: String = "local", provider: String = "") {
+        self.id = id; self.title = title; self.updated = updated; self.kind = kind; self.project = project; self.privacy = privacy; self.provider = provider
+    }
+
+    enum CodingKeys: String, CodingKey { case id, title, updated, kind, project, privacy, provider }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id); title = try c.decode(String.self, forKey: .title); updated = try c.decode(String.self, forKey: .updated)
+        kind = try c.decode(String.self, forKey: .kind); project = try c.decodeIfPresent(String.self, forKey: .project)
+        privacy = try c.decodeIfPresent(String.self, forKey: .privacy) ?? "local"; provider = try c.decodeIfPresent(String.self, forKey: .provider) ?? ""
+    }
 }
 
 /// Saved conversations. A conversation is loose JSON (`JSONValue`) because messages carry
@@ -162,7 +177,8 @@ public final class History: @unchecked Sendable {
         return rows.values.map { thread in
             ThreadSummary(id: thread["id"]?.string ?? "", title: thread["title"]?.string ?? "", updated: thread["updated"]?.string ?? "",
                           kind: { let kind = thread["kind"]?.string ?? ""; return kind.isEmpty ? "chat" : kind }(),
-                          project: { let project = thread["project"]?.string ?? ""; return project.isEmpty ? nil : project }())
+                          project: { let project = thread["project"]?.string ?? ""; return project.isEmpty ? nil : project }(),
+                          privacy: thread["privacy"]?.string == "cloud" ? "cloud" : "local", provider: thread["provider"]?.string ?? "")
         }.sorted { $0.updated > $1.updated }
     }
 

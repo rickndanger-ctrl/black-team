@@ -20,7 +20,11 @@ struct CampMain: View {
             PageScroll {
                 VStack(alignment: .leading, spacing: 0) {
                     header
-                    DailyPill(text: connectedPrivately ? "Connected privately" : "On this computer", live: true, ink: theme.ok).padding(.bottom, 14)
+                    if model.cloudSelected {
+                        DailyPill(text: "Cloud \u{00B7} \(model.cloud.provider)", live: true, ink: theme.warn).padding(.bottom, 14)
+                    } else {
+                        DailyPill(text: connectedPrivately ? "Connected privately" : "On this computer", live: true, ink: theme.ok).padding(.bottom, 14)
+                    }
                     Banners(model: model, camp: true)
                     JobNotice(model: model)
                     if let approval = model.status?.job?.approval { DecisionCard(model: model, approval: approval) }

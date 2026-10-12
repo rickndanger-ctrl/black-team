@@ -208,7 +208,8 @@ final class BackendPhone: PhoneBackend, @unchecked Sendable {
 
     var isBusy: Bool { backend.isBusy }
     func submit(message: String, kind: String, mode: String, requestId: String, threadId: String?, project: String?) throws -> SubmitResult {
-        try backend.submit(message: message, kind: kind, mode: mode, requestId: requestId, threadId: threadId, project: project)
+        // From a phone: it may continue conversations, but never starts or converts one to cloud, and the same refusals apply.
+        try backend.submit(message: message, kind: kind, mode: mode, requestId: requestId, threadId: threadId, project: project, from: .phone)
     }
     /// The phone's web app has no image support and would draw a broken picture, so a conversation reaches it without its
     /// image references: it shows the text of the message. No image data is ever in a conversation, and none is served.

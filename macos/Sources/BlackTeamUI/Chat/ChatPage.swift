@@ -10,6 +10,7 @@ struct ChatPage: View {
         VStack(alignment: .leading, spacing: 0) {
             ChatControls(model: model, drafts: model.drafts)
             ChatNotices(model: model)
+            PrivacyNotices(model: model)
             ConversationLog(model: model)
             ChatFooter(model: model, drafts: model.drafts)
         }
@@ -55,8 +56,10 @@ struct ChatControls: View {
                 .padding(.leading, 12).padding(.trailing, 10).frame(height: 34)
                 .overlay(RoundedRectangle(cornerRadius: Theme.radius).inset(by: 0.5).stroke(theme.line2, lineWidth: 1))
             }
+            let leaves = model.leavesThisMac
+            PrivacyTag(leaves: leaves.cloud, provider: leaves.provider)
             Spacer(minLength: 0)
-            if let meter = model.meter { SpeedMeterView(meter: meter) }
+            if let usage = model.usage { UsageLine(usage: usage) } else if let meter = model.meter { SpeedMeterView(meter: meter) }
         }
         .padding(.vertical, 15)
         .overlay(alignment: .top) { Rectangle().fill(theme.line).frame(height: 1) }
@@ -65,7 +68,8 @@ struct ChatControls: View {
     }
 
     private func label(_ item: SavedModelSummary) -> String {
-        Fmt.modelSize(item).map { "\(item.name) \u{00B7} \($0)" } ?? item.name
+        if item.isCloud { return "\(item.name) \u{00B7} Cloud" }
+        return Fmt.modelSize(item).map { "\(item.name) \u{00B7} \($0)" } ?? item.name
     }
 }
 
@@ -77,7 +81,7 @@ struct ChatNotices: View {
     var body: some View {
         if !model.setupComplete {
             notice("Connect a model to start.") { Button("Connect a model") { model.openCommand() }.buttonStyle(.btSecondary) }
-        } else if model.status?.runtime.ready != true {
+        } else if model.status?.runtime.ready != true, !model.cloudSelected {
             let starting = model.status?.runtime.state == "starting"
             let server = model.status?.config.model.source == "server"
             notice(starting ? (server ? "Connecting to your local server. It will be ready when the connection finishes." : "Your model is starting. It will be ready when it finishes loading.")
@@ -138,7 +142,8 @@ struct ConversationLog: View {
                     let live = activity.map { $0.messageId == nil ? index == messages.count - 1 : $0.messageId == message.id } ?? false
                     MessageView(message: message, fallbackModel: model.modelName, glowing: live && activity?.glowing == true,
                                 liveLabel: live && activity?.messageId == message.id ? activity?.label : nil, busy: busy,
-                                canRemember: model.status?.memory == true, canRetry: index == messages.count - 1 && !busy, model: model, threadId: model.threadId)
+                                canRemember: model.status?.memory == true && !(model.thread?["privacy"]?.string == "cloud"), canRetry: index == messages.count - 1 && !busy,
+                                cloud: model.thread?["privacy"]?.string == "cloud", model: model, threadId: model.threadId)
                         .equatable()
                         .padding(.vertical, 6)
                 }
@@ -178,7 +183,8 @@ struct ChatEmpty: View {
             VStack(spacing: 0) {
                 Text(code ? "Describe a task. Your agent can edit files, run commands, and deliver the result."
                           : "Choose a model and send a message. Switch to Code for hands-on work.").btBody(12.5, 1.8, theme.muted)
-                Text("Your conversations stay on this computer.").btBody(12.5, 1.8, theme.muted)
+                Text(model.leavesThisMac.cloud ? "This conversation is sent to \(model.leavesThisMac.provider). Memory is not used." : "Your conversations stay on this computer.")
+                    .btBody(12.5, 1.8, theme.muted)
             }
             .multilineTextAlignment(.center).padding(.vertical, 12)
         }
@@ -258,7 +264,7 @@ struct ComposerBar: View {
             if kind == .chat { filesButton }
             composerField(key: key, kind: kind)
                 .frame(height: 64)
-                .accessibilityLabel(kind == .agent ? "Describe a task for Code" : "Message your local model")
+                .accessibilityLabel(kind == .agent ? "Describe a task for Code" : model.cloudSelected ? "Message your cloud model" : "Message your local model")
             if activeJob && model.pending == nil {
                 Button(model.status?.job?.kind == "memory" ? "Stop upkeep" : "Stop") { model.cancel() }
                     .buttonStyle(.btSecondary).disabled(model.sending)
@@ -305,7 +311,7 @@ struct ComposerBar: View {
 
     /// An image render cannot draw the AppKit text view, so it gets the same text drawn by SwiftUI.
     @ViewBuilder private func composerField(key: String, kind: ChatKind) -> some View {
-        let placeholder = kind == .agent ? "Describe what you want built, checked or delivered..." : "Message your local model..."
+        let placeholder = kind == .agent ? "Describe what you want built, checked or delivered..." : model.cloudSelected ? "Message your cloud model..." : "Message your local model..."
         let binding = Binding(get: { model.pending?.message ?? drafts.draft(key).message }, set: { drafts.set(key, message: $0) })
         if flatLayout {
             let text = binding.wrappedValue
@@ -374,5 +380,19 @@ struct DropTarget: ViewModifier {
 
     @ViewBuilder func body(content: Content) -> some View {
         if enabled { content.onDrop(of: [.fileURL], isTargeted: $dropping, perform: perform) } else { content }
+    }
+}
+
+
+/// The refusal with its choices, or, before the first send of a new cloud conversation, what will leave this Mac.
+struct PrivacyNotices: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        if let refusal = model.refusal {
+            PrivacyRefusalView(model: model, check: refusal)
+        } else if model.threadId == nil, model.privacyNow.outcome == .startsCloud, model.pending == nil {
+            CloudSendNotice(check: model.privacyNow)
+        }
     }
 }

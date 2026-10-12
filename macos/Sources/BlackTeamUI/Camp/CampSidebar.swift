@@ -13,6 +13,8 @@ struct CampSidebar: View {
     @State private var naming: String?
     @State private var renaming: String?
     @State private var renameText = ""
+    /// The project the person is being asked about: allowing cloud models is confirmed once, on purpose.
+    @State private var allowing: ProjectSummary?
 
     private var loose: [ThreadSummary] {
         model.threads.filter { item in item.project == nil || !model.projects.contains { $0.id == item.project } }
@@ -41,7 +43,8 @@ struct CampSidebar: View {
                 .accessibilityLabel("New conversation")
                 lists
                 ThemePicker(stored: $storedTheme)
-                Text("Private \u{00B7} On this computer").font(BTFont.mono(8)).tracking(1.12).foregroundStyle(theme.faint)
+                Text(model.cloudSelected ? "Cloud \u{00B7} \(model.cloud.provider)" : "Private \u{00B7} On this computer").font(BTFont.mono(8)).tracking(1.12)
+                    .foregroundStyle(model.cloudSelected ? theme.warn : theme.faint)
                     .lineSpacing(max(0, 8 * 1.7 - BTFont.natural(8, mono: true)))
                     .padding(.horizontal, 8).padding(.top, 14).frame(maxWidth: .infinity, alignment: .leading).btRule()
             }
@@ -53,6 +56,12 @@ struct CampSidebar: View {
         .frame(width: metrics.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background(theme.sidebar.ignoresSafeArea())
+        .confirmationDialog("Allow cloud models in \(allowing?.name ?? "this project")?", isPresented: Binding(get: { allowing != nil }, set: { if !$0 { allowing = nil } }), titleVisibility: .visible) {
+            Button("Allow cloud models") { if let project = allowing { Task { await model.setProjectCloud(project, allowed: true) } }; allowing = nil }
+            Button("Keep it local only", role: .cancel) { allowing = nil }
+        } message: {
+            Text("Conversations in this project may then use a cloud model. What you type, and in Code the files the agent reads and the output of its commands, are sent to that service. Conversations that use a local model still stay on this Mac.")
+        }
     }
 
     /// `nav button.launch`: a hairline above, the grid icon, the name and an arrow.
@@ -131,6 +140,7 @@ struct CampSidebar: View {
                     IconView(.folder, size: 14).foregroundStyle(open ? theme.accent : theme.muted)
                     Text(project.name).font(BTFont.body(12, .medium)).lineLimit(1).truncationMode(.tail)
                     Spacer(minLength: 0)
+                    if project.cloudAllowed { IconView(.globe, size: 12).foregroundStyle(theme.warn).help("Cloud models allowed in this project") }
                     if !mine.isEmpty { Text("\(mine.count)").font(BTFont.mono(10)).foregroundStyle(theme.faint) }
                 }
                 .foregroundStyle(open ? theme.ink : theme.ink2)
@@ -143,6 +153,11 @@ struct CampSidebar: View {
             .disabled(!project.exists || model.locked)
             .contextMenu {
                 Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: project.workspace)]) }.disabled(!project.exists)
+                if project.cloudAllowed {
+                    Button("Make local only") { Task { await model.setProjectCloud(project, allowed: false) } }.disabled(model.busy)
+                } else {
+                    Button("Allow cloud models\u{2026}") { allowing = project }.disabled(model.busy)
+                }
             }
             .accessibilityLabel(project.name)
             .accessibilityValue(open ? "expanded" : "collapsed")
@@ -166,7 +181,7 @@ struct CampSidebar: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text(title).font(BTFont.body(12)).lineSpacing(max(0, 12 * 1.45 - BTFont.natural(12)))
                             .fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading)
-                        Text("\(model.activeCard?.name ?? model.modelName) \u{00B7} \(item.kind == "agent" ? "Code" : "Chat")")
+                        Text("\(item.privacy == "cloud" ? "Cloud \u{00B7} \(item.provider)" : model.cloudSelected ? "On this Mac" : model.activeCard?.name ?? model.modelName) \u{00B7} \(item.kind == "agent" ? "Code" : "Chat")")
                             .font(BTFont.mono(9)).tracking(0.72).foregroundStyle(theme.faint).padding(.top, 5)
                     }
                     .foregroundStyle(selected ? theme.ink : theme.ink2)

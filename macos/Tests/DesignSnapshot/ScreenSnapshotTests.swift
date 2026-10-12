@@ -339,6 +339,130 @@ final class ScreenSnapshotTests: XCTestCase {
         })
     }
 
+    // MARK: Cloud models (not in the daily app: the same panels, tags and notices, with the amber "leaves this Mac" colour)
+
+    /// The same model with a cloud model saved beside the local one and chosen: Claude through its OpenAI-compatible address.
+    private func cloudModel(_ model: AppModel, active: Bool = true) {
+        model.status?.models = decode([SavedModelSummary].self, """
+        [{"key":"ornith","name":"Ornith 1.5","source":"gguf","context":65536,"active":\(!active),"where":"Ornith-1.5-35B-A3B-Q4_K_M.gguf"},
+         {"key":"claude","name":"Claude Sonnet","source":"cloud","context":200000,"active":\(active),"where":"api.anthropic.com","kind":"cloud","provider":"api.anthropic.com"}]
+        """)
+        guard active else { return }
+        model.status?.config.model.name = "Claude Sonnet"
+        model.status?.config.model.source = "cloud"
+        model.status?.config.model.kind = "cloud"
+        model.status?.config.model.provider = "api.anthropic.com"
+        model.status?.config.model.context = 200_000
+        model.status?.runtime.name = "Claude Sonnet"
+        model.status?.runtime.kind = "cloud"
+        model.status?.runtime.provider = "api.anthropic.com"
+        model.status?.runtime.ready = true
+        model.status?.runtime.state = "ready"
+        model.status?.cloud = CloudStatus(selected: true, provider: "api.anthropic.com", modelName: "Claude Sonnet", localModelName: "Ornith 1.5", localModelKey: "ornith")
+    }
+
+    private func renderView(_ name: String, width: CGFloat, height: CGFloat, theme: ThemeSetting = .covert, @ViewBuilder _ content: () -> some View) throws {
+        Fonts.register()
+        let view = content()
+            .environment(\.btFlatLayout, true)
+            .frame(width: width)
+            .frame(height: height, alignment: .top)
+            .blackTeamTheme(forcing: theme)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+              let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return XCTFail("render failed: \(name)") }
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("bt-screen-\(name).png")
+        try png.write(to: url)
+        print("SNAPSHOT \(url.path)")
+    }
+
+    func testCloudModelForm() async throws {
+        let model = try await dailyModel(running: false)
+        cloudModel(model)
+        try renderView("y1-cloud-model-form", width: 860, height: 1700) {
+            VStack(alignment: .leading, spacing: 0) {
+                ModelListPanel(model: model)
+                ModelSetupForm(model: model, settings: true, previewCloud: true)
+            }
+            .padding(28)
+            .background(Theme.covert.bg)
+        }
+    }
+
+    func testCommandCenterWithACloudModelSelected() async throws {
+        let model = try await dailyModel(running: false)
+        cloudModel(model)
+        model.commandPage = .overview
+        try render("y2-command-center-cloud", .command, height: 1500, model: model)
+        // A harness with the cloud model selected is refused, in words, on the launch bar.
+        model.selectedHarness = "claude"
+        try render("y3-command-center-cloud-harness", .command, height: 1500, model: model)
+    }
+
+    func testACloudConversationWithItsHeaderUsageAndNoMemory() async throws {
+        let model = try await dailyModel(running: false)
+        cloudModel(model)
+        model.status?.threads = decode([ThreadSummary].self, """
+        [{"id":"\(chatId)","title":"Summarise the quarterly notes","updated":"2026-10-11T22:50:00.000Z","kind":"chat","privacy":"cloud","provider":"api.anthropic.com"},
+         {"id":"t2","title":"Hello","updated":"2026-10-11T22:49:00.000Z","kind":"chat"}]
+        """)
+        var thread: [String: JSONValue] = ["id": .string(chatId), "title": "t", "kind": "chat", "privacy": "cloud", "provider": "api.anthropic.com",
+                                           "usage": ["prompt": 12480, "completion": 1930, "cached": 2000],
+                                           "messages": .array([user("Summarise the quarterly notes in three bullets.", "u1"),
+                                                               reply("- Revenue grew 12% on the quarter.\n- Costs were flat.\n- Hiring resumes in November.", "a1", extra: ["model": "Claude Sonnet", "usage": ["prompt": 12480, "completion": 1930, "cached": 2000]])])]
+        model.threadId = chatId
+        model.thread = .object(thread)
+        thread["id"] = nil
+        model.newKind = .chat
+        model.campPage = .chat
+        model.updatePrivacy()
+        try render("y4-cloud-conversation", .camp, height: 1000, model: model)
+    }
+
+    func testThePreSendNoticeAndTheRefusalWithItsChoices() async throws {
+        // A new conversation with a cloud model: what leaves this Mac, before the first send.
+        let fresh = try await dailyModel(running: false)
+        cloudModel(fresh)
+        fresh.campPage = .chat
+        fresh.privacyNow = PrivacyCheck(outcome: .startsCloud,
+            message: "This conversation leaves this Mac.", provider: "api.anthropic.com", modelName: "Claude Sonnet",
+            willLeave: ["your messages, and any pictures you attach"], localModelName: "Ornith 1.5", localModelKey: "ornith")
+        try render("y5-presend-notice-chat", .camp, height: 800, model: fresh)
+
+        let code = try await dailyModel(running: false)
+        cloudModel(code)
+        code.newKind = .agent
+        code.campPage = .chat
+        code.privacyNow = PrivacyCheck(outcome: .startsCloud,
+            message: "This conversation leaves this Mac.", provider: "api.anthropic.com", modelName: "Claude Sonnet",
+            willLeave: ["your messages", "the contents of any file the agent reads and the output of any command it runs", "the path of your workspace folder"],
+            localModelName: "Ornith 1.5", localModelKey: "ornith")
+        try render("y6-presend-notice-code", .camp, height: 800, model: code)
+
+        // A local conversation, a cloud model chosen, and a message that was not sent.
+        let refused = try await dailyModel(running: false)
+        cloudModel(refused)
+        open(refused, thread: "t10", kind: "chat", messages: [user("Reply exactly: Companion ready.", "u1"), reply("Companion ready.", "a1")])
+        refused.drafts.set(refused.draftKey, message: "And what did I say before that?")
+        refused.refusal = PrivacyCheck(outcome: .needsChoice,
+            message: "This conversation is private to this Mac, and Claude Sonnet is a cloud model that would send it to api.anthropic.com. Nothing in a private conversation is sent off this Mac without your say-so. Start a new cloud conversation, switch back to Ornith 1.5, or send this conversation to api.anthropic.com.",
+            provider: "api.anthropic.com", modelName: "Claude Sonnet", localModelName: "Ornith 1.5", localModelKey: "ornith",
+            convertWarning: "Send this conversation to api.anthropic.com? Everything in it so far will be sent to api.anthropic.com with your next message: all your messages and the replies. The conversation stays marked as having left this Mac, even if you later continue it with a local model.")
+        try render("y7-refusal-choices", .camp, height: 1000, model: refused)
+
+        let project = try await dailyModel(running: false)
+        cloudModel(project)
+        project.status?.projects = [ProjectSummary(id: "p1", name: "Quarterly books", workspace: "/Users/me/Black Team/quarterly-books", exists: true, notes: "Projects/quarterly-books"),
+                                    ProjectSummary(id: "p2", name: "Open source", workspace: "/Users/me/Black Team/open-source", exists: true, notes: "Projects/open-source", cloudAllowed: true)]
+        project.projectId = "p1"
+        project.campPage = .chat
+        project.refusal = PrivacyCheck(outcome: .projectLocalOnly,
+            message: "The project Quarterly books is local only, so the cloud model Claude Sonnet is not used for conversations in it. To change that, choose \u{201C}Allow cloud models\u{201D} in the project\u{2019}s menu, or select a local model.",
+            provider: "api.anthropic.com", modelName: "Claude Sonnet", localModelName: "Ornith 1.5", localModelKey: "ornith")
+        try render("y8-refusal-project", .camp, height: 900, model: project)
+    }
+
     // MARK: States the reference does not show
 
     func testNewMac() async throws {
