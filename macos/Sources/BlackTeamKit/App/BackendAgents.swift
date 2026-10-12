@@ -87,6 +87,8 @@ extension Backend {
         guard agentLauncher.executable(for: service) != nil else {
             throw BlackTeamError("\(service.displayName) is not installed on this Mac. Install it, then sign in with your subscription.")
         }
+        // The version check runs in the background, never delaying the run; its answer is kept for the model menu.
+        Task.detached { [self] in _ = await self.agentUpdateStatus(service: service) }
         let workspace = try workspaceOverride.map { try ensureWorkspace($0) } ?? project?.workspace ?? config.workspace
         // A new session is told the conversation so far (only its text, through agentTaskText); a resumed one gets the new message.
         let session = existing?["agentSession"]?.string.flatMap { $0.isEmpty ? nil : $0 }
@@ -210,6 +212,7 @@ extension Backend {
         var state = "done"
         var failure: String?
         var needsSignIn = false
+        var needsUpdate: String?
         if signal.isCancelled {
             state = "interrupted"; failure = "Response stopped."
         } else if exit.timedOut {
@@ -217,6 +220,9 @@ extension Backend {
         } else if turn.signedOut {
             state = "error"; needsSignIn = true
             failure = "\(service.displayName) is signed out. Sign in again, then send your message once more."
+        } else if let sentence = turn.updateSentence {
+            state = "error"; needsUpdate = service.engine
+            failure = "\(service.displayName) needs updating before it can run this. Update it, then send your message once more.\n\(sentence)"
         } else if turn.overflowed {
             state = "error"; failure = "Response reached the storage limit. Ask for a shorter answer."
         } else if let reason = turn.failureMessage {
@@ -252,6 +258,7 @@ extension Backend {
             last["content"] = .string(content)
             last["events"] = .array(fields.events)
             if needsSignIn { last["needsSignIn"] = .string(service.engine) }
+            if let needsUpdate { last["needsUpdate"] = .string(needsUpdate) }
             if let failure { last["error"] = .string(redactSecrets(failure, keys: [])) }
             messages[messages.count - 1] = .object(last)
         }
@@ -286,6 +293,34 @@ extension Backend {
         let script = try writeLaunchScript(text, stateDir: dataFolder)
         do { try await terminal("Terminal", script) }
         catch { try? FileManager.default.removeItem(atPath: script); throw BlackTeamError("Terminal could not be opened to sign in to \(service.displayName).") }
+    }
+
+    /// The command that updates the tool: its own `update`, by its full path (Claude Code `claude update`, Codex `codex update`).
+    public func agentUpdateCommand(service: AgentService) -> (executable: String, arguments: [String]) {
+        (agentLauncher.executable(for: service) ?? service.program, ["update"])
+    }
+
+    /// Opens the update command in the person's own Terminal. Black Team starts it and captures nothing from it.
+    public func openAgentUpdate(service: AgentService) async throws {
+        guard agentLauncher.executable(for: service) != nil else {
+            throw BlackTeamError("\(service.displayName) is not installed on this Mac. Install it, then sign in with your subscription.")
+        }
+        let command = agentUpdateCommand(service: service)
+        let text = launchScript(workspace: home, environment: AgentTools.environment(), executable: command.executable, args: command.arguments)
+        let script = try writeLaunchScript(text, stateDir: dataFolder)
+        do { try await terminal("Terminal", script) }
+        catch { try? FileManager.default.removeItem(atPath: script); throw BlackTeamError("Terminal could not be opened to update \(service.displayName).") }
+    }
+
+    /// The installed and latest versions of a subscription agent. Checked only for a tool that is installed; the latest version
+    /// is kept for 12 hours. Nothing is updated.
+    public func agentUpdateStatus(service: AgentService) async -> AgentUpdateStatus {
+        guard let executable = agentLauncher.executable(for: service) else { return AgentUpdateStatus(installed: nil, latest: nil) }
+        guard let installed = await AgentVersions.installedVersion(service: service, executable: executable) else {
+            return AgentUpdateStatus(installed: nil, latest: nil)
+        }
+        let latest = await AgentVersionStores.store(dataFolder: dataFolder).latest(service: service, now: now(), fetch: fetch)
+        return AgentUpdateStatus(installed: installed, latest: latest)
     }
 
     /// Puts the files a subscription-agent task changed back as they were before it ran. Refused while any task is running,

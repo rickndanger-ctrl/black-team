@@ -2,6 +2,21 @@ import XCTest
 @testable import BlackTeamKit
 
 final class AgentToolsTests: XCTestCase {
+    func testTheCopyThePersonsShellFindsFirstIsUsed() throws {
+        let root = NSTemporaryDirectory() + "bt-locate-" + UUID().uuidString
+        let brew = root + "/homebrew/bin", own = root + "/local/bin"
+        for folder in [brew, own] {
+            try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: folder + "/codex", contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+        }
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        // The usual places list Homebrew before ~/.local/bin; the person's shell lists their own folder first.
+        let folders = AgentTools.orderedFolders(shellPath: own + ":" + brew + ":relative:" + own, others: [brew, own, "/usr/bin"])
+        XCTAssertEqual(folders, [own, brew, "/usr/bin"])
+        XCTAssertEqual(AgentTools.locate("codex", search: folders), own + "/codex")
+        XCTAssertEqual(AgentTools.locate("codex", search: [brew, own]), brew + "/codex")
+    }
+
     func testAServiceErrorInJSONIsShownAsItsSentence() {
         let raw = #"{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'x' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."}}"#
         XCTAssertEqual(AgentTurn.plain(raw), "The 'x' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.")

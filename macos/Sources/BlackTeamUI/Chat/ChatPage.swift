@@ -82,6 +82,9 @@ struct ChatControls: View {
             }
             if let agent = model.activeAgent {
                 Text(permissionHint(agent, model.agentPermission)).btBody(11, 1.5, theme.muted)
+                if let status = model.agentUpdates[agent], status.updateAvailable, let installed = status.installed, let latest = status.latest {
+                    AgentUpdateLine(model: model, agent: agent, installed: installed, latest: latest)
+                }
             }
         }
         .padding(.vertical, 15)
@@ -112,6 +115,30 @@ struct ChatControls: View {
         case (.codex, .ask): return "Codex can only read here. It cannot ask for approval; switch to Edit or Auto to let it make changes."
         case (.codex, .edit): return "Codex can read, edit and run commands inside its sandbox."
         case (.codex, .auto): return "Codex works on its own inside its sandbox, with its automatic review. Roll back is still available."
+        }
+    }
+}
+
+/// "Codex 0.163.0 is available (you have 0.162.1)." with a quiet button that opens the update in Terminal.
+private struct AgentUpdateLine: View {
+    let model: AppModel
+    let agent: AgentService
+    let installed: String
+    let latest: String
+    @Environment(\.btTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("\(agent.displayName) \(latest) is available (you have \(installed)).").btBody(11, 1.5, theme.muted)
+            Button("Update") { update() }
+                .buttonStyle(.btQuiet)
+                .accessibilityLabel("Update \(agent.displayName)")
+        }
+    }
+
+    private func update() {
+        Task {
+            do { try await model.openAgentUpdate(agent) } catch { model.error = plainMessage(error) }
         }
     }
 }

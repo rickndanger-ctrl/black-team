@@ -288,7 +288,14 @@ public final class AppModel: ObservableObject {
     func chooseAgent(_ agent: AgentService?) {
         agentChoice = agent
         updatePrivacy()
+        // Checked once when the person selects the tool; the answer is kept for 12 hours by the kit.
+        if let agent {
+            Task { agentUpdates[agent] = await backend.agentUpdateStatus(service: agent) }
+        }
     }
+
+    /// Whether each subscription agent's version check found a newer one, once it has been selected.
+    @Published var agentUpdates: [AgentService: AgentUpdateStatus] = [:]
 
     /// The permission level each subscription agent starts a new conversation with; Edit until changed.
     @Published var agentDefaultPermission: [AgentService: AgentPermission] = [:]
@@ -310,6 +317,11 @@ public final class AppModel: ObservableObject {
     /// Opens the subscription agent's own sign-in in Terminal (`Backend.openAgentSignIn`).
     func openAgentSignIn(_ agent: AgentService) async throws {
         try await backend.openAgentSignIn(service: agent)
+    }
+
+    /// Opens the subscription agent's own update in Terminal (`Backend.openAgentUpdate`).
+    func openAgentUpdate(_ agent: AgentService) async throws {
+        try await backend.openAgentUpdate(service: agent)
     }
 
     var currentKind: ChatKind {

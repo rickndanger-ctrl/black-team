@@ -108,6 +108,9 @@ struct MessageView: View, Equatable {
         if !message.isUser, let engine = message.needsSignIn, let agent = AgentService.forEngine(engine) {
             SignInControl(model: model, agent: agent).padding(.top, 10)
         }
+        if !message.isUser, let engine = message.needsUpdate, let agent = AgentService.forEngine(engine) {
+            UpdateControl(model: model, agent: agent).padding(.top, 10)
+        }
         if canRetry, ["error", "interrupted"].contains(message.state) {
             Button("Retry") { model.retryLast() }.buttonStyle(.btSecondary).disabled(busy).padding(.top, 10)
         }
@@ -166,6 +169,36 @@ private struct SignInControl: View {
         Task {
             do {
                 try await model.openAgentSignIn(agent)
+                opened = true
+            } catch {
+                model.error = plainMessage(error)
+            }
+        }
+    }
+}
+
+/// "Update Codex" under a reply that failed because the tool must be updated first. It opens the tool's own update in Terminal.
+private struct UpdateControl: View {
+    let model: AppModel
+    let agent: AgentService
+    @State private var opened = false
+    @Environment(\.btTheme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button("Update \(agent.displayName)") { update() }
+                .buttonStyle(.btSecondary)
+                .accessibilityLabel("Update \(agent.displayName)")
+            if opened {
+                Text("Finish updating in Terminal, then send your message again.").btBody(11, 1.5, theme.muted)
+            }
+        }
+    }
+
+    private func update() {
+        Task {
+            do {
+                try await model.openAgentUpdate(agent)
                 opened = true
             } catch {
                 model.error = plainMessage(error)

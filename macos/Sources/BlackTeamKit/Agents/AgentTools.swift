@@ -33,9 +33,34 @@ public enum AgentTools {
     /// The most text one reply keeps, as for a Chat reply.
     public static let replyLimit = 256 * 1024
 
-    /// The program in the first folder of the harness search path that has it, as an absolute path.
+    /// The folders the person's own Terminal searches, in its order, asked once from their login shell. A Mac can
+    /// hold several copies of a tool (one from Homebrew, a newer one in ~/.local/bin); the copy the person uses and
+    /// keeps updated is the one their shell finds first, and that is the copy Black Team must run.
+    static let shellFolders: [String] = {
+        let shell = ProcessInfo.processInfo.environment["SHELL"].flatMap { ["/bin/zsh", "/bin/bash"].contains($0) ? $0 : nil } ?? "/bin/zsh"
+        let process = Process(), out = Pipe()
+        process.executableURL = URL(fileURLWithPath: shell)
+        process.arguments = ["-lc", "printf '%s' \"$PATH\""]
+        process.standardOutput = out; process.standardError = FileHandle.nullDevice; process.standardInput = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return [] }
+        let limit = DispatchWorkItem { if process.isRunning { process.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 5, execute: limit)
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit(); limit.cancel()
+        guard process.terminationStatus == 0 else { return [] }
+        return orderedFolders(shellPath: String(decoding: data.prefix(16384), as: UTF8.self), others: [])
+    }()
+
+    /// The shell's folders first, in its order, then the others; absolute paths only, each once.
+    static func orderedFolders(shellPath: String, others: [String]) -> [String] {
+        var seen = Set<String>()
+        return (shellPath.split(separator: ":").map(String.init) + others).filter { $0.hasPrefix("/") && seen.insert($0).inserted }
+    }
+
+    /// The program in the first folder that has it, as an absolute path: the person's own shell order first,
+    /// then the usual places.
     public static func locate(_ name: String, search: [String]? = nil) -> String? {
-        for folder in search ?? harnessSearchPaths() {
+        for folder in search ?? orderedFolders(shellPath: shellFolders.joined(separator: ":"), others: harnessSearchPaths()) {
             let path = folder + "/" + name
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue, access(path, X_OK) == 0 {
@@ -49,7 +74,8 @@ public enum AgentTools {
     public static func environment(source: [String: String] = ProcessInfo.processInfo.environment, search: [String]? = nil) -> [String: String] {
         var env = localEnvironment(source)
         for key in keysRemoved { env[key] = nil }
-        var folders = (search ?? harnessSearchPaths(env: source)) + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        var folders = (search ?? orderedFolders(shellPath: shellFolders.joined(separator: ":"), others: harnessSearchPaths(env: source)))
+            + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         var seen = Set<String>()
         folders = folders.filter { seen.insert($0).inserted }
         env["PATH"] = folders.joined(separator: ":")

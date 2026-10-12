@@ -123,6 +123,16 @@ final class AgentTurn: @unchecked Sendable {
         }
     }
 
+    /// The tool's own sentence saying it must be updated before it can run, if it said one in words. Read the same way as `signedOut`.
+    var updateSentence: String? {
+        lock.lock(); defer { lock.unlock() }
+        let markers = ["requires a newer version", "please upgrade to the latest", "please update to the latest"]
+        for line in [failure].compactMap({ $0 }) + stderrTail where markers.contains(where: { line.lowercased().contains($0) }) {
+            return Self.plain(line)
+        }
+        return nil
+    }
+
     /// What the tool reported as the reason it failed, if it said one in words.
     var failureMessage: String? { lock.lock(); defer { lock.unlock() }; return failure.map(Self.plain) }
 
