@@ -23,11 +23,7 @@ struct RuntimeFixture {
         var header = [UInt8](repeating: 0, count: 64)
         header[0...3] = [0x47, 0x47, 0x55, 0x46]; header[4] = 3
         FileManager.default.createFile(atPath: model, contents: Data(header))
-        var exe = [UInt8](repeating: 0, count: 64)
-        exe[0...3] = [0xcf, 0xfa, 0xed, 0xfe]
-        let cpu = MachOCPU.current
-        for index in 0..<4 { exe[4 + index] = UInt8((cpu >> (8 * UInt32(index))) & 0xff) }
-        exe[12] = 2
+        let exe = nativeProgramHeader()
         FileManager.default.createFile(atPath: runtime, contents: Data(exe), attributes: [.posixPermissions: 0o700])
         store = try ConfigStore(stateDir: stateDir)
         config = Config(model: ModelConfig(name: "Test model", file: model, runtime: runtime), workspace: dir)
@@ -60,4 +56,21 @@ func waitUntil(_ seconds: Double = 3, _ condition: () async -> Bool) async -> Bo
     let end = Date().addingTimeInterval(seconds)
     while Date() < end { if await condition() { return true }; try? await Task.sleep(nanoseconds: 10_000_000) }
     return await condition()
+}
+
+/// The 64 header bytes of a llama-server that the runtime check accepts on this platform:
+/// a thin Mach-O executable on the Mac, a 64-bit ELF executable on Linux.
+func nativeProgramHeader() -> [UInt8] {
+    var exe = [UInt8](repeating: 0, count: 64)
+    #if os(Linux)
+    exe[0...3] = [0x7f, 0x45, 0x4c, 0x46]
+    exe[4] = 2; exe[5] = 1; exe[16] = 2
+    exe[18] = UInt8(ELFMachine.current & 0xff); exe[19] = UInt8(ELFMachine.current >> 8)
+    #else
+    exe[0...3] = [0xcf, 0xfa, 0xed, 0xfe]
+    let cpu = MachOCPU.current
+    for index in 0..<4 { exe[4 + index] = UInt8((cpu >> (8 * UInt32(index))) & 0xff) }
+    exe[12] = 2
+    #endif
+    return exe
 }

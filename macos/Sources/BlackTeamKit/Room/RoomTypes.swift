@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 // A room: the local and cloud agents working on ONE project as a team, with the person as the lead.
 // A task board per project. Nothing moves one member's output to another except the lead's hand-off (BackendRoom.swift).

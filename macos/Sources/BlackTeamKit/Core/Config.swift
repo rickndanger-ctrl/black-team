@@ -166,6 +166,35 @@ public enum MachOCPU {
     public static func name(_ type: UInt32) -> String { type == arm64 ? "arm64" : "x86_64" }
 }
 
+#if os(Linux)
+/// The ELF machine number and the name used in messages for this computer (`process.arch` in the Node app).
+public enum ELFMachine {
+    #if arch(arm64)
+    public static let current: UInt16 = 183
+    public static let name = "arm64"
+    #else
+    public static let current: UInt16 = 62
+    public static let name = "x64"
+    #endif
+}
+
+/// Accepts a 64-bit little-endian ELF executable (or position-independent executable) built for this computer.
+/// `cpuType` is only used on the Mac.
+public func inspectRuntime(_ filename: String, cpuType: UInt32 = MachOCPU.current) throws -> RuntimeFileInfo {
+    if filename.isEmpty || !filename.hasPrefix("/") || (filename as NSString).lastPathComponent != "llama-server" {
+        throw BlackTeamError("Choose the llama-server executable from an extracted Linux llama.cpp release.")
+    }
+    let info = try readHeader(filename, length: 64, label: "llama-server", access: R_OK | X_OK)
+    let h = info.bytes
+    let type = UInt16(h[16]) | UInt16(h[17]) << 8
+    let machine = UInt16(h[18]) | UInt16(h[19]) << 8
+    // 0x7f "ELF", 64-bit (2), little-endian (1), ET_EXEC (2) or ET_DYN (3), the right machine.
+    guard h[0] == 0x7f, h[1] == 0x45, h[2] == 0x4c, h[3] == 0x46, h[4] == 2, h[5] == 1, type == 2 || type == 3, machine == ELFMachine.current else {
+        throw BlackTeamError("llama-server must be a native Linux \(ELFMachine.name) executable. Keep it alongside its release libraries.")
+    }
+    return RuntimeFileInfo(bytes: info.size, realPath: info.realPath)
+}
+#else
 /// Accepts a thin 64-bit Mach-O executable of this Mac's architecture, or a universal binary containing one.
 public func inspectRuntime(_ filename: String, cpuType: UInt32 = MachOCPU.current) throws -> RuntimeFileInfo {
     if filename.isEmpty || !filename.hasPrefix("/") || (filename as NSString).lastPathComponent != "llama-server" {
@@ -191,6 +220,7 @@ public func inspectRuntime(_ filename: String, cpuType: UInt32 = MachOCPU.curren
     }
     return RuntimeFileInfo(bytes: info.size, realPath: info.realPath)
 }
+#endif
 
 public struct MemoryEstimate: Equatable, Sendable {
     public var modelBytes: Int

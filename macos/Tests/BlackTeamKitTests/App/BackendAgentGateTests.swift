@@ -3,7 +3,7 @@ import XCTest
 
 // The gate for subscription agents (Claude Code, Codex): the same outcomes as for a cloud model, whatever model is selected.
 final class BackendAgentGateTests: XCTestCase {
-    let cloudTests = BackendCloudTests()
+    let cloudTests = BackendCloudTests.helper()
 
     func make(_ fixture: BackendFixture) async throws -> Backend { try await cloudTests.make(fixture) }
 
@@ -52,7 +52,7 @@ final class BackendAgentGateTests: XCTestCase {
         XCTAssertNotNil(backend.history.get(local.threadId)?["core"])
         try backend.convertToCloud(threadId: local.threadId, confirmingProvider: "anthropic.com", agent: .claudeCode)
         let converted = try XCTUnwrap(backend.history.get(local.threadId))
-        XCTAssertEqual(converted["privacy"], "cloud"); XCTAssertEqual(converted["provider"], .string("anthropic.com"))
+        XCTAssertEqual(converted["privacy"], "cloud"); XCTAssertEqual(converted["provider"], JSONValue.string("anthropic.com"))
         XCTAssertNil(converted["core"]); XCTAssertFalse(converted.text().contains("Vault-Secret"))
         // Now the same agent may continue, also via the phone; the other agent may not.
         XCTAssertEqual(backend.agentPrivacyCheck(service: .claudeCode, threadId: local.threadId, project: nil, viaPhone: true).outcome, .allowed)

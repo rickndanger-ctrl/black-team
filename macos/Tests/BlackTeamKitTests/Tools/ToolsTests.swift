@@ -256,6 +256,7 @@ final class ToolsTests: XCTestCase {
         XCTAssertEqual(try calls().filter { $0.hasPrefix("extract") }.count, 3)
         try FileManager.default.removeItem(atPath: graphDir)
         try "#!/bin/sh\nif [ \"$1\" = extract ]; then echo \"boom: unsupported\"; exit 1; fi\n".write(toFile: fake, atomically: true, encoding: .utf8)
+        chmod(fake, 0o755)   // an atomic rewrite keeps the mode on macOS but not on Linux
         let failed = await t.call("map", ["question": "x", "refresh": true])
         XCTAssertTrue(failed.error); assertMatch(failed.output, "could not be built: boom: unsupported")
     }

@@ -1,5 +1,4 @@
 import XCTest
-import CryptoKit
 @testable import BlackTeamKit
 
 // Ports of the chat tests in tests/server.test.cjs, over the Backend instead of HTTP.

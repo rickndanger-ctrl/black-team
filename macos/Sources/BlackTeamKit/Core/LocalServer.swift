@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// The one way the app talks HTTP, so tests can replace the network. Later areas (runtime,
 /// engine, model finder) take these as parameters with the real ones as defaults.
@@ -31,6 +34,27 @@ public enum LocalHTTP {
         return (data, try checked(response))
     }
 
+    #if os(Linux)
+    // URLSession.bytes does not exist in swift-corelibs-foundation: a data delegate yields lines as data arrives.
+    public static let stream: HTTPStreamFetch = { request in
+        let relay = LineRelay()
+        let streamSession = URLSession(configuration: .ephemeral, delegate: relay, delegateQueue: nil)
+        let lines = HTTPLines { continuation in
+            relay.attach(continuation)
+            continuation.onTermination = { _ in relay.cancel() }
+        }
+        let task = streamSession.dataTask(with: request)
+        relay.task = task
+        let response: URLResponse = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (head: CheckedContinuation<URLResponse, Error>) in
+                relay.awaitHead(head)
+                task.resume()
+            }
+        } onCancel: { relay.cancel() }
+        defer { if Task.isCancelled { relay.cancel() } }
+        return (try checked(response), lines)
+    }
+    #else
     public static let stream: HTTPStreamFetch = { request in
         let (bytes, response) = try await session.bytes(for: request, delegate: refuse)
         let http = try checked(response)
@@ -53,7 +77,88 @@ public enum LocalHTTP {
         }
         return (http, lines)
     }
+    #endif
 }
+
+#if os(Linux)
+/// Receives one streamed reply on Linux: the response head first, then body bytes cut into lines
+/// (empty lines kept, a trailing CR removed). Redirects are refused, as on the Mac.
+final class LineRelay: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: HTTPLines.Continuation?
+    private var head: CheckedContinuation<URLResponse, Error>?
+    private var pending: Result<URLResponse, Error>?
+    private var line = [UInt8]()
+    private var cancelled = false
+    var task: URLSessionTask?
+
+    func attach(_ value: HTTPLines.Continuation) {
+        lock.lock(); continuation = value; lock.unlock()
+    }
+
+    func awaitHead(_ value: CheckedContinuation<URLResponse, Error>) {
+        lock.lock()
+        if let pending { self.pending = nil; lock.unlock(); value.resume(with: pending); return }
+        if cancelled { lock.unlock(); value.resume(throwing: CancellationError()); return }
+        head = value; lock.unlock()
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let waiting = head; head = nil
+        let sink = continuation
+        lock.unlock()
+        task?.cancel()
+        waiting?.resume(throwing: CancellationError())
+        sink?.finish(throwing: CancellationError())
+    }
+
+    private func deliverHead(_ result: Result<URLResponse, Error>) {
+        lock.lock()
+        if let waiting = head { head = nil; lock.unlock(); waiting.resume(with: result); return }
+        pending = result; lock.unlock()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        deliverHead(.success(response))
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        lock.lock()
+        let sink = continuation
+        var out = [String]()
+        for byte in data {
+            if byte == 10 {
+                if line.last == 13 { line.removeLast() }
+                out.append(String(decoding: line, as: UTF8.self)); line.removeAll(keepingCapacity: true)
+            } else { line.append(byte) }
+        }
+        lock.unlock()
+        for text in out { sink?.yield(text) }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        let sink = continuation
+        var last: String?
+        if !line.isEmpty { if line.last == 13 { line.removeLast() }; last = String(decoding: line, as: UTF8.self); line.removeAll() }
+        lock.unlock()
+        if let error { deliverHead(.failure(error)) }
+        else { deliverHead(.failure(URLError(.badServerResponse))) }
+        if let last { sink?.yield(last) }
+        if let error { sink?.finish(throwing: error) } else { sink?.finish() }
+        session.finishTasksAndInvalidate()
+    }
+}
+#endif
 
 /// Accepts only a loopback HTTP address with a port and `/v1`, so keys never leave this Mac.
 public func localEndpoint(_ value: String) throws -> String {

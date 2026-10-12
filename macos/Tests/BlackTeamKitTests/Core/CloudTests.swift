@@ -134,11 +134,13 @@ final class CloudTests: XCTestCase {
         }
         _ = try await discoverCloudModels(endpoint: "https://openrouter.ai/api/v1", apiKey: "k", fetch: fetch)
         _ = try await discoverCloudModels(endpoint: "https://api.anthropic.com/v1", apiKey: "k", fetch: fetch)
-        XCTAssertNil(seen.headers["openrouter.ai"]?["x-api-key"])
-        XCTAssertNil(seen.headers["openrouter.ai"]?["anthropic-version"])
-        XCTAssertEqual(seen.headers["openrouter.ai"]?["Authorization"], "Bearer k")
-        XCTAssertEqual(seen.headers["api.anthropic.com"]?["x-api-key"], "k")
-        XCTAssertEqual(seen.headers["api.anthropic.com"]?["anthropic-version"], "2023-06-01")
+        // Header names are case-insensitive: Linux's URLRequest stores them capitalised.
+        func header(_ host: String, _ name: String) -> String? { seen.headers[host]?.first { $0.key.lowercased() == name.lowercased() }?.value }
+        XCTAssertNil(header("openrouter.ai", "x-api-key"))
+        XCTAssertNil(header("openrouter.ai", "anthropic-version"))
+        XCTAssertEqual(header("openrouter.ai", "Authorization"), "Bearer k")
+        XCTAssertEqual(header("api.anthropic.com", "x-api-key"), "k")
+        XCTAssertEqual(header("api.anthropic.com", "anthropic-version"), "2023-06-01")
     }
 
     func testFreeModelsThatCanUseToolsAreRecognised() async throws {

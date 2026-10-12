@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 /// A switch a caller flips to stop a running tool, like a JavaScript AbortSignal.
 public final class CancelSignal: @unchecked Sendable {
@@ -110,7 +109,7 @@ enum PathUtil {
         return (ups + b[common...].map(String.init)).joined(separator: "/")
     }
     static func realpath(_ path: String) -> String? {
-        guard let resolved = Darwin.realpath(path, nil) else { return nil }
+        guard let resolved = cRealpath(path) else { return nil }
         defer { free(resolved) }
         return String(cString: resolved)
     }
@@ -119,7 +118,12 @@ enum PathUtil {
         let status = follow ? followedStat(path, &info) : plainStat(path, &info)
         guard status == 0 else { return nil }
         let kind = info.st_mode & S_IFMT
-        let mtime = Double(info.st_mtimespec.tv_sec) * 1000 + Double(info.st_mtimespec.tv_nsec) / 1_000_000
+        #if os(Linux)
+        let stamp = info.st_mtim
+        #else
+        let stamp = info.st_mtimespec
+        #endif
+        let mtime = Double(stamp.tv_sec) * 1000 + Double(stamp.tv_nsec) / 1_000_000
         return FileStat(isFile: kind == S_IFREG, isDirectory: kind == S_IFDIR, size: Int64(info.st_size), mode: Int(info.st_mode & 0o777), mtimeMs: mtime)
     }
     static func statThrowing(_ path: String) throws -> FileStat {
@@ -135,7 +139,7 @@ enum PathUtil {
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 65536)
         while true {
-            let count = read(fd, &buffer, buffer.count)
+            let count = cRead(fd, &buffer, buffer.count)
             if count < 0 { if errno == EINTR { continue }; throw posixFailure(errno) }
             if count == 0 { break }
             data.append(buffer, count: count)
@@ -236,13 +240,21 @@ final class ExecJob: @unchecked Sendable {
         var outPipe: [Int32] = [0, 0], errPipe: [Int32] = [0, 0]
         guard pipe(&outPipe) == 0, pipe(&errPipe) == 0 else { outcome.spawnError = errno; outcome.code = 127; next.resume(returning: outcome); return }
         for fd in outPipe + errPipe { _ = fcntl(fd, F_SETFD, FD_CLOEXEC) }
+        #if os(Linux)
+        var actions = posix_spawn_file_actions_t()
+        #else
         var actions: posix_spawn_file_actions_t? = nil
+        #endif
         posix_spawn_file_actions_init(&actions)
         posix_spawn_file_actions_adddup2(&actions, outPipe[1], 1)
         posix_spawn_file_actions_adddup2(&actions, errPipe[1], 2)
         posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
         if let cwd { posix_spawn_file_actions_addchdir_np(&actions, cwd) }
+        #if os(Linux)
+        var attributes = posix_spawnattr_t()
+        #else
         var attributes: posix_spawnattr_t? = nil
+        #endif
         posix_spawnattr_init(&attributes)
         // A group of its own, so one signal reaches the command and everything it started.
         // The app may block or ignore signals; the command starts with the defaults, so SIGTERM stops it.
@@ -286,7 +298,8 @@ final class ExecJob: @unchecked Sendable {
         Thread.detachNewThread { [self] in read(outPipe[0], into: 0) }
         Thread.detachNewThread { [self] in read(errPipe[0], into: 1) }
         Thread.detachNewThread { [self] in await_(child) }
-        if pendingStop { stop() }
+        // observe() does not call back for a signal cancelled earlier, and one cancelled while the program was starting would be missed.
+        if pendingStop || signal?.isCancelled == true { stop() }
     }
 
     private func read(_ fd: Int32, into stream: Int) {
@@ -298,7 +311,7 @@ final class ExecJob: @unchecked Sendable {
             let ready = poll(&poller, 1, 100)
             if ready < 0 { if errno == EINTR { continue }; break }
             if ready == 0 { continue }
-            let count = Darwin.read(fd, &buffer, buffer.count)
+            let count = cRead(fd, &buffer, buffer.count)
             if count < 0 { if errno == EINTR || errno == EAGAIN { continue }; break }
             if count == 0 { break }
             append(Array(buffer[0..<count]), stream: stream)

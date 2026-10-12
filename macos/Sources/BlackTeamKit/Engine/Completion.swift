@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// One tool call the model asked for, assembled from the streamed pieces.
 public struct ToolCallPart: Equatable, Sendable {

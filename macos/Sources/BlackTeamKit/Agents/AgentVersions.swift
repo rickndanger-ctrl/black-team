@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// What the person is told about a subscription agent's version. `installed` and `latest` are nil when unknown.
 public struct AgentUpdateStatus: Equatable, Sendable {

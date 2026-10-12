@@ -71,7 +71,11 @@ final class SystemTests: XCTestCase {
         XCTAssertGreaterThan(memory.total, 1024 * 1024 * 1024)
         XCTAssertGreaterThan(memory.available, 0)
         XCTAssertLessThanOrEqual(memory.available, memory.total)
+        #if os(Linux)
+        if let temperature = SystemInfo.cpuTemperature() { XCTAssertTrue((1...150).contains(temperature.celsius)) }
+        #else
         XCTAssertNil(SystemInfo.cpuTemperature())
+        #endif
         let me = SystemInfo.processMemory(Int(getpid()))
         XCTAssertGreaterThan(me?.resident ?? 0, 0)
         XCTAssertNil(SystemInfo.processMemory(0))

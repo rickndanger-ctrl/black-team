@@ -1,8 +1,12 @@
 import XCTest
+#if canImport(ImageIO)
 import ImageIO
 import CoreGraphics
 import UniformTypeIdentifiers
+#endif
 @testable import BlackTeamKit
+
+#if canImport(ImageIO)
 
 /// Pictures made on the spot: a solid colour (with or without transparency), encoded as PNG or JPEG, optionally tagged
 /// with an EXIF orientation and a GPS position.
@@ -42,3 +46,22 @@ enum TestImage {
         CGImageSourceCopyPropertiesAtIndex(CGImageSourceCreateWithData(data as CFData, nil)!, 0, nil) as? [CFString: Any] ?? [:]
     }
 }
+#else
+/// Linux has no image library in this build: these are small files with the right signature and a size header,
+/// enough for the format checks and for storing; they are not pictures that can be decoded or drawn.
+enum TestImage {
+    static func png(width: Int = 64, height: Int = 48, alpha: CGFloat = 1) -> Data {
+        func be(_ value: Int) -> [UInt8] { [UInt8(value >> 24 & 255), UInt8(value >> 16 & 255), UInt8(value >> 8 & 255), UInt8(value & 255)] }
+        var bytes: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] + be(13) + Array("IHDR".utf8) + be(width) + be(height) + [8, 6, 0, 0, 0, 0, 0, 0, 0]
+        bytes += be(0) + Array("IEND".utf8) + be(0)
+        return Data(bytes)
+    }
+
+    static func jpeg(width: Int = 64, height: Int = 48) -> Data {
+        var bytes: [UInt8] = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10] + Array("JFIF".utf8) + [0, 1, 1, 0, 0, 1, 0, 1, 0, 0]
+        bytes += [0xFF, 0xC0, 0x00, 0x11, 8, UInt8(height >> 8 & 255), UInt8(height & 255), UInt8(width >> 8 & 255), UInt8(width & 255), 3, 1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0]
+        bytes += [0xFF, 0xD9]
+        return Data(bytes)
+    }
+}
+#endif

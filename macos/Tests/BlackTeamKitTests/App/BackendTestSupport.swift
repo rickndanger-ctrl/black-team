@@ -79,7 +79,13 @@ final class ServerRequests: @unchecked Sendable {
 
 /// A chat reply as the server would stream it: `text` split into lines.
 func sse(_ text: String, status: Int = 200) -> (HTTPURLResponse, HTTPLines) {
-    var rows = text.components(separatedBy: "\n")
+    // Split on the newline scalar: on Linux, components(separatedBy:) does not split inside a "\r\n" pair.
+    var rows: [String] = []
+    var current = String.UnicodeScalarView()
+    for scalar in text.unicodeScalars {
+        if scalar == "\n" { rows.append(String(current)); current.removeAll() } else { current.append(scalar) }
+    }
+    rows.append(String(current))
     if rows.last == "" { rows.removeLast() }
     return (httpResponse(status), lines(rows))
 }
@@ -165,4 +171,15 @@ func newID() -> String { UUID().uuidString.lowercased() }
 /// The last message of a conversation.
 func lastMessage(_ backend: Backend, _ threadId: String) -> JSONValue {
     backend.history.get(threadId)?["messages"]?.array?.last ?? .null
+}
+
+extension BackendCloudTests {
+    /// An instance used only for its helpers and constants (XCTest on Linux has no plain `init()`).
+    static func helper() -> BackendCloudTests {
+        #if os(Linux)
+        return BackendCloudTests(name: "helper") { _ in }
+        #else
+        return BackendCloudTests()
+        #endif
+    }
 }

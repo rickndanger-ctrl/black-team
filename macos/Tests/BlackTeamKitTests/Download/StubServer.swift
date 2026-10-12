@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import BlackTeamKit
 
 /// A pretend HTTPS server living inside URLSession, so tests need no network.

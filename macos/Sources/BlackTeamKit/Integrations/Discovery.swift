@@ -37,7 +37,7 @@ public struct DiscoveryResult: Equatable, Sendable {
 }
 
 func isExecutableFile(_ file: String) -> Bool {
-    var info = stat()
+    var info = CStat()
     return stat(file, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG && access(file, X_OK) == 0
 }
 

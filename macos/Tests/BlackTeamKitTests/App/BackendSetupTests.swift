@@ -245,11 +245,7 @@ final class StubInstaller: RuntimeProviding, @unchecked Sendable {
     func writeRuntime() throws -> InstalledRuntime {
         let folder = dir + "/runtime/b9999"
         try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-        var exe = [UInt8](repeating: 0, count: 64)
-        exe[0...3] = [0xcf, 0xfa, 0xed, 0xfe]
-        let cpu = MachOCPU.current
-        for index in 0..<4 { exe[4 + index] = UInt8((cpu >> (8 * UInt32(index))) & 0xff) }
-        exe[12] = 2
+        let exe = nativeProgramHeader()
         let path = folder + "/llama-server"
         FileManager.default.createFile(atPath: path, contents: Data(exe), attributes: [.posixPermissions: 0o700])
         return InstalledRuntime(tag: "b9999", executable: path, architecture: .current, installedAt: "2026-10-11T00:00:00Z", previousTag: nil, versionOutput: nil)

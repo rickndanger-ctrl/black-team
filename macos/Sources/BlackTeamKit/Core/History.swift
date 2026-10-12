@@ -19,13 +19,13 @@ enum CoreFS {
 
     /// stat() follows symbolic links, as Node's statSync does.
     static func stat(_ path: String) -> (mode: mode_t, size: Int, error: Int32) {
-        var info = Darwin.stat()
+        var info = CStat()
         if fstatat(AT_FDCWD, path, &info, 0) != 0 { return (0, 0, errno) }
         return (info.st_mode, Int(info.st_size), 0)
     }
 
     static func isSymlink(_ path: String) -> Bool {
-        var info = Darwin.stat()
+        var info = CStat()
         return lstat(path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFLNK
     }
 
@@ -57,7 +57,7 @@ enum CoreFS {
                 throw BlackTeamError("Could not save \((file as NSString).lastPathComponent): \(errnoName(errno)).")
             }
             if syncDirectory {
-                let dirfd = Darwin.open((file as NSString).deletingLastPathComponent, O_RDONLY)
+                let dirfd = open((file as NSString).deletingLastPathComponent, O_RDONLY)
                 if dirfd >= 0 { fsync(dirfd); close(dirfd) }
             }
         } catch {

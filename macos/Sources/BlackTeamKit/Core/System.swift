@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 // What this computer is and how hard it is working, read from the kernel (sysctl and the Mach
 // host calls) so the readout matches what Activity Monitor would say. A value that cannot be
@@ -152,6 +156,16 @@ public enum SystemInfo {
 
     // MARK: Reading the system
 
+    /// Whether this is an Apple Silicon Mac (the llama.cpp Metal build then runs on the GPU).
+    public static var isAppleSilicon: Bool {
+        #if arch(arm64)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    #if canImport(Darwin)
     static func sysctlInt(_ name: String) -> Int? {
         var value: Int64 = 0
         var size = MemoryLayout<Int64>.size
@@ -165,15 +179,6 @@ public enum SystemInfo {
         var buffer = [CChar](repeating: 0, count: size)
         guard sysctlbyname(name, &buffer, &size, nil, 0) == 0 else { return nil }
         return String(cString: buffer)
-    }
-
-    /// Whether this is an Apple Silicon Mac (the llama.cpp Metal build then runs on the GPU).
-    public static var isAppleSilicon: Bool {
-        #if arch(arm64)
-        return true
-        #else
-        return false
-        #endif
     }
 
     /// Physical cores against threads, the chip name, and the clock where macOS reports one (Intel only).
@@ -272,4 +277,5 @@ public enum SystemInfo {
         let available = values.volumeAvailableCapacityForImportantUsage.map { Int($0) } ?? free
         return DiskInfo(path: probe, total: total, free: free, available: available)
     }
+    #endif
 }
