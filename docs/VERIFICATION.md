@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.18**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.19**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -651,3 +651,54 @@ It is a template and is not active. The publishing credential did not have GitHu
 `.github/workflows/checks.yml` using a GitHub session or credential permitted to
 manage workflows. It builds the renderer and runs the automated suites without
 downloading an Electron binary.
+
+## Live follow-up — October 12, 2026 (alpha.19)
+
+Changes after alpha.18: one engine for both platforms.
+
+**The Swift engine on Linux.** The engine in `macos/Sources/BlackTeamKit`
+builds and passes its tests on Linux (573 tests, 6 skipped; 513 on macOS). The
+Linux parts are its own: the phone server on POSIX sockets, the runtime
+download for Linux, terminal launching, hardware readout from `/proc` and
+`/sys`.
+
+**The `black-team` command.** One terminal program for Mac and Linux: an
+interactive session with slash commands, `-p` for one message, and subcommands
+for status, models, chat, code, agents and the room. On the Mac it is inside
+the app; `black-team install-command` links it into `~/.local/bin`. Checked on a
+Mac mini with Ornith 1.5 9B: a one-shot answer, a chat and a Code task that
+wrote and re-read a file in a session; closing the terminal stopped the model
+server each time. Only one program may start a local model at a time
+(`engine.lock`), so the app and the command take turns.
+
+**The Linux app runs on the Swift engine.** The Electron app starts
+`black-team desktop-service` as a child process and talks to it over JSON lines
+(`engine-client.cjs`); the engine serves the window and the phone on
+`127.0.0.1:18199`. The Node engine in `lib/` is removed. The engine reads the
+data folder the Node app wrote as it is; a fixture written by the alpha.18 Node
+modules proves it in the tests. The Hermes runner is ported to Swift. The
+packaged engine is fully static (Swift's Static Linux SDK, `scripts/build-engine.sh`)
+so it does not depend on the C library of the build machine; the packager
+refuses an engine that is not.
+
+Checked on the development laptop (Arch), through the real window:
+- a data folder in the alpha.18 format shows its model, conversations and
+  project, and a new reply is saved;
+- a clean first run reaches setup and saves a model;
+- a running local server (Ornith 1.5 35B) answers a chat and completes a Code
+  task; the same model loaded from its GGUF file by the app is ready in 18
+  seconds and answers; two Code tasks run through Hermes in the workspace;
+- a normal quit and a force-killed app both stop the engine and its model
+  server and free the port and the lock;
+- the packaged tarball installs over alpha.18 in a clean home and starts with
+  the earlier data (see the release notes for the exact run).
+
+Not checked for this release: phone pairing on Linux with the new engine (the
+router and its tests are shared with the Mac, where pairing is in use), the
+optional AppArmor profile on a system that needs it (the profile is unchanged
+and names only the window program), and any distribution other than Arch. The
+static engine made HTTPS requests on Arch; where another distribution keeps
+its certificates could differ.
+
+On macOS the app is the same as alpha.18 apart from carrying the `black-team`
+command and reporting its version.
