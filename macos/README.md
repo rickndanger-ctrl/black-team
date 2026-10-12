@@ -100,6 +100,14 @@ The app and the command can share a data folder: `Core/EngineLock.swift` lets on
 `macos/dev/install-cli.sh` builds the release binary and runs `install-command`; `build-app.sh` also puts `black-team` in the app
 bundle at `Contents/MacOS/black-team`.
 
+`black-team desktop-service --web <dist> --version <v> [--port <n>] [--data <folder>]` (hidden from the help) is the engine of the Linux
+Electron app (stage 3): it serves the web app and `/api` on 127.0.0.1:18199 to the desktop window (`/bootstrap?key=` sets the window's
+session cookie, as `lib/server.cjs` did; phones keep their own pairing) and answers `{"id","action","data"}` lines on standard input
+with `{"id","ok","result"|"error"}` lines on standard output, after a first `{"ready":true,"origin","bootstrapURL","dataFolder"}` line.
+Nothing else is written to standard output. It stops, model server included, at end of input, SIGTERM or SIGINT. Code:
+`Sources/BlackTeamKit/Desktop/` and `Sources/BlackTeamCLI/DesktopCommand.swift`. `Tests/BlackTeamKitTests/Desktop/Fixtures/node-data` is a
+data folder written by the Node app itself (`make-node-data.cjs` makes it again); the tests open it with the Swift engine.
+
 `Tests/DesignSnapshot` renders every screen to PNG at the size of the Linux
 reference screenshots; the Mac interface is meant to match the daily app exactly.
 

@@ -124,9 +124,16 @@ npm run build
 python3 scripts/package.py --runtime-zip /path/to/electron-v44.7.0-linux-x64.zip --out release
 ```
 
+The engine is the Swift program `black-team`. The packager copies it from
+`macos/.build/engine/black-team` by default, or from `--engine <path>`, and fails
+with a message if it is missing or needs system libraries. Build it first with
+`scripts/build-engine.sh`, which makes a fully static program (Swift's Static Linux
+SDK) so the package does not depend on the C library of the computer that built it.
+
 The packager uses Python's standard library and an explicit application allowlist:
-`main.cjs`, `preload.cjs`, `lib/*.cjs`, built `dist`, a minimal `package.json` and
-required third-party notices. It does not include the source checkout's
+`main.cjs`, `preload.cjs`, `engine-client.cjs`, the engine as `bin/black-team`,
+`scripts/agent-runner.py` with the companion plugin it uses, built `dist`, a minimal
+`package.json` and required third-party notices. It does not include the source checkout's
 `node_modules`, home directories, models, chats, keys or existing customer state.
 It rejects symlinks in app assets, source maps and unsafe runtime ZIP paths.
 The payload includes a file-hash manifest; the outer archive has a SHA-256 sidecar.

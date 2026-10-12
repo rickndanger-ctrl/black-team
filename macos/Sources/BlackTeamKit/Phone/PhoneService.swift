@@ -8,6 +8,8 @@ public struct PhoneOptions: Sendable {
     public var webRoot: String = Bundle.main.resourceURL?.appendingPathComponent("web").path ?? ""
     /// The loopback port the Tailscale route points at. Only tests use another.
     public var port: Int = Phone.localPort
+    /// The Linux desktop window's session. Nil on the Mac, where the local address grants nothing.
+    public var desktop: DesktopSession?
     public init() {}
 }
 
@@ -62,8 +64,8 @@ final class PhoneService: @unchecked Sendable {
         }
         let configStore = backend.configStore
         let manager = self.manager
-        let router = PhoneRouter(backend: BackendPhone(backend), config: configStore, keys: keys, webRoot: options.webRoot, localPort: options.port,
-                                 isConnected: { [weak self] in
+        let router = PhoneRouter(backend: BackendPhone(backend), config: configStore, keys: keys, webRoot: options.webRoot,
+                                 localPort: options.port, desktop: options.desktop, isConnected: { [weak self] in
             // The route must be ours and private, and it must lead to a server that is listening.
             guard let self, self.serverRunning, let status = try? await manager.status() else { return false }
             return status.connected
@@ -192,6 +194,9 @@ extension Backend {
 final class BackendPhone: PhoneBackend, @unchecked Sendable {
     private let backend: Backend
     init(_ backend: Backend) { self.backend = backend }
+
+    func desktopStatus() async throws -> JSONValue { try await backend.desktopStatusJSON() }
+    func dictate() throws { try backend.dictate() }
 
     func phoneStatus() async throws -> JSONValue {
         let status = try await backend.status()

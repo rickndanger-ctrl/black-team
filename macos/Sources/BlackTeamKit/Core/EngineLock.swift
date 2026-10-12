@@ -2,7 +2,11 @@ import Foundation
 #if canImport(Darwin)
 import Darwin
 #else
+#if canImport(Glibc)
 import Glibc
+#else
+import Musl
+#endif
 #endif
 
 /// Two Black Teams (the app and the `black-team` command) can be open on the same data folder. Conversations are files and both

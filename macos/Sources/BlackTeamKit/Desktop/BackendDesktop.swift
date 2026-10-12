@@ -1,0 +1,59 @@
+import Foundation
+
+// What the desktop window reads from the engine beyond the phone's view: the full status of `backend.status('desktop')`
+// (lib/server.cjs) and the dictation button.
+
+extension Backend {
+    /// Makes this Backend the Linux desktop service: Hermes settings are stored and checked as the Linux app did.
+    public func configureDesktop(_ options: DesktopOptions = DesktopOptions()) {
+        locked { desktopOptions = options }
+        integrations.hermesSupported = true
+    }
+
+    /// The dictation tool: the saved choice wins; otherwise the one found on this computer (Voxtype).
+    func dictationTool() -> String {
+        let saved = (try? integrations.read().dictation) ?? ""
+        return saved.isEmpty ? discovery.get().dictation : saved
+    }
+
+    /// Starts or stops the system dictation tool. The words are typed by the tool itself, into the focused text bar.
+    func dictate() throws {
+        let tool = dictationTool()
+        if tool.isEmpty { throw BlackTeamError("No system dictation tool is set up on this computer.") }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = (tool as NSString).lastPathComponent == "voxtype" ? ["record", "toggle"] : []
+        process.environment = localEnvironment()
+        process.standardInput = FileHandle.nullDevice; process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { /* The button does nothing more than ask; a tool that will not start is not an error to show. */ }
+    }
+
+    /// `status('desktop')`: the shape the web app reads, from the engine's own status.
+    func desktopStatusJSON() async throws -> JSONValue {
+        let status = try await self.status()
+        var json = JSONValue.encoded(status).object ?? [:]
+        let config = try configStore.read()
+        var shown = json["config"]?.object ?? [:]
+        shown["phone"] = .encoded(config.phone)
+        json["config"] = .object(shown)
+        // JavaScript wrote null where there is no value; the web app tells null from missing in a few places.
+        var performance = json["performance"]?.object ?? [:]
+        for key in ["temperature", "model"] where performance[key] == nil { performance[key] = .null }
+        json["performance"] = .object(performance)
+        json["access"] = "desktop"
+        if json["job"] == nil { json["job"] = .null }   // the web app reads `job`, which is null when nothing runs
+        // As lib/server.cjs: Hermes is offered when this service has the runner's scripts and Hermes is enabled in its settings.
+        let scripts = locked { desktopOptions?.scripts }
+        json["hermesEnabled"] = .bool(scripts != nil && (try? integrations.read().hermes.enabled) == true)
+        json["dictation"] = .bool(!dictationTool().isEmpty)
+        let service = phone()
+        let phoneStatus = try await service.manager.status()
+        var url = phoneStatus.url
+        if !url.isEmpty {
+            let keys = try service.keys ?? PhoneKeys(folder: dataFolder)
+            url += "#pair=" + keys.secret("pair", hostname: config.phone.hostname, owner: config.phone.owner)
+        }
+        json["phone"] = ["enabled": .bool(phoneStatus.enabled), "connected": .bool(phoneStatus.connected), "url": .string(url), "command": .string(phoneStatus.command)]
+        return .object(json)
+    }
+}

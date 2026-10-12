@@ -17,6 +17,9 @@ let programVersion: String = {
 }()
 let rawArguments = Array(CommandLine.arguments.dropFirst())
 
+// The Linux desktop app's engine. Handled first: its --version names the app, it is not a request for ours.
+if rawArguments.first == "desktop-service" { exit(await runDesktopService(Array(rawArguments.dropFirst()))) }
+
 if rawArguments.contains("--version") || rawArguments.first == "version" {
     print("black-team \(programVersion)")
     exit(0)

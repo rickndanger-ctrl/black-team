@@ -1,6 +1,19 @@
 #if os(Linux)
 import Foundation
+#if canImport(Glibc)
 import Glibc
+#else
+import Musl
+#endif
+
+// The two C libraries Linux builds use (glibc, and musl for the fully static program) differ in a few spellings; these hide that.
+#if canImport(Glibc)
+let posixSockStream = Int32(SOCK_STREAM.rawValue)
+#else
+let posixSockStream = Int32(SOCK_STREAM)
+#endif
+func posixClose(_ fd: Int32) { close(fd) }
+func posixSend(_ fd: Int32, _ buffer: UnsafeRawPointer, _ count: Int, _ flags: Int32) -> Int { send(fd, buffer, count, flags) }
 
 // The Linux readout: the kernel's own files under /proc and /sys, as lib/system.cjs reads them, so
 // the figures match `lscpu`, `free` and `df`. A missing file leaves that value out. The roots can

@@ -120,7 +120,7 @@ tar -tzf "$source/payload.tar.gz" | while IFS= read -r member; do
   case "$member" in /*|../*|*/../*|*/..|..) echo 'Unsafe archive path.' >&2; exit 1 ;; esac
 done
 tar -xzf "$source/payload.tar.gz" -C "$stage" --no-same-owner --no-same-permissions
-[ -x "$stage/electron" ] && [ -f "$stage/resources/app/main.cjs" ] && [ -f "$stage/MANIFEST.json" ] || { echo 'The payload is incomplete.' >&2; exit 1; }
+[ -x "$stage/electron" ] && [ -f "$stage/resources/app/main.cjs" ] && [ -x "$stage/resources/app/bin/black-team" ] && [ -f "$stage/MANIFEST.json" ] || { echo 'The payload is incomplete.' >&2; exit 1; }
 [ "$(cat "$stage/RELEASE_VERSION")" = "$version" ] || { echo 'Payload version mismatch.' >&2; exit 1; }
 mv -- "$stage" "$root/releases/$version"
 stage=''

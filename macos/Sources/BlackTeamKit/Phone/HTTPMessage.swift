@@ -132,6 +132,7 @@ struct HTTPResponse {
         switch status {
         case 200: return "OK"
         case 202: return "Accepted"
+        case 303: return "See Other"
         case 400: return "Bad Request"
         case 401: return "Unauthorized"
         case 403: return "Forbidden"

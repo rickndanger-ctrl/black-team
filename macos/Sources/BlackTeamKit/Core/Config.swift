@@ -388,6 +388,11 @@ public struct HardwareReport: Codable, Equatable, Sendable {
 public func hardwareReport(stateDir: String = NSHomeDirectory()) async -> HardwareReport {
     var memory = SystemInfo.memoryInfo()
     memory.free = memory.available
-    return HardwareReport(platform: "darwin", arch: SystemInfo.isAppleSilicon ? "arm64" : "x64", cpu: SystemInfo.cpuTopology(),
+    #if os(Linux)
+    let platform = "linux", arch = ELFMachine.name   // as os.platform() and os.arch() say in the Linux app
+    #else
+    let platform = "darwin", arch = SystemInfo.isAppleSilicon ? "arm64" : "x64"
+    #endif
+    return HardwareReport(platform: platform, arch: arch, cpu: SystemInfo.cpuTopology(),
                           memory: memory, disk: SystemInfo.diskSpace(at: stateDir))
 }
