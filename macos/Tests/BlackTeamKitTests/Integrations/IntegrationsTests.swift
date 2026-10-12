@@ -64,7 +64,12 @@ final class IntegrationsTests: XCTestCase {
         XCTAssertEqual(call.mode, 0o700)
         XCTAssertEqual(mode(f.state + "/launch"), 0o700)
         XCTAssertTrue(call.script.hasPrefix(f.state + "/launch/") && call.script.hasSuffix(".command"))
-        XCTAssertTrue(call.text.hasPrefix("#!/bin/zsh\nrm -f -- \"$0\"\ncd -- '\(f.dir)' || exit 1\nexport BLACK_TEAM_BASE_URL='http://127.0.0.1:1234/v1'\n"))
+        #if os(Linux)
+        let shebang = "#!/bin/bash"
+        #else
+        let shebang = "#!/bin/zsh"
+        #endif
+        XCTAssertTrue(call.text.hasPrefix(shebang + "\nrm -f -- \"$0\"\ncd -- '\(f.dir)' || exit 1\nexport BLACK_TEAM_BASE_URL='http://127.0.0.1:1234/v1'\n"))
         XCTAssertTrue(call.text.contains("export OPENAI_API_KEY='fixture-secret'\n"))
         XCTAssertTrue(call.text.contains("export PATH='/usr/bin:/bin:/usr/sbin:/sbin'\n"))
         XCTAssertTrue(call.text.hasSuffix("exec '\(f.exe)' '--model' 'user-model' '\(f.dir)' '$(touch should-not-exist)' 'it'\\''s'\n"))
@@ -87,7 +92,13 @@ final class IntegrationsTests: XCTestCase {
         let env = localEnvironment(["PATH": "/bin", "HOME": "/h", "USER": "u", "LANG": "C", "LC_ALL": "C", "TERM": "x", "TMPDIR": "/t",
                                     "DISPLAY": ":0", "WAYLAND_DISPLAY": "w", "XDG_RUNTIME_DIR": "/r", "DBUS_SESSION_BUS_ADDRESS": "d",
                                     "ANTHROPIC_API_KEY": "secret", "OPENAI_API_KEY": "secret", "SHELL": "/bin/zsh"])
+        #if os(Linux)
+        // A terminal window opens on the person's display, so those names stay.
+        XCTAssertEqual(Set(env.keys), ["PATH", "HOME", "USER", "LANG", "LC_ALL", "TERM", "TMPDIR", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"])
+        #else
         XCTAssertEqual(Set(env.keys), ["PATH", "HOME", "USER", "LANG", "LC_ALL", "TERM", "TMPDIR"])
+        #endif
+        XCTAssertNil(env["ANTHROPIC_API_KEY"]); XCTAssertNil(env["OPENAI_API_KEY"]); XCTAssertNil(env["SHELL"])
     }
 
     func testShellQuote() {
@@ -168,7 +179,11 @@ final class PresetsTests: XCTestCase {
         let script = launchScript(workspace: "/tmp/w", environment: ["A": "b"], executable: "/x/dsh", args: dsh.args, opensLocalPage: true)
         XCTAssertFalse(script.contains("\nexec "))
         XCTAssertTrue(script.contains("'/x/dsh' '--profile' 'web'"))
+        #if os(Linux)
+        XCTAssertTrue(script.contains("'xdg-open' \"$page\""))
+        #else
         XCTAssertTrue(script.contains("/usr/bin/open \"$page\""))
+        #endif
         XCTAssertTrue(script.contains("opening the default browser"))
         XCTAssertTrue(launchScript(workspace: "/tmp/w", environment: [:], executable: "/x/pi", args: []).contains("\nexec '/x/pi'"))
         let opencode = try JSONValue.parse(try applyPreset("opencode", values, stateDir: state).env["OPENCODE_CONFIG_CONTENT"]!)
@@ -184,6 +199,27 @@ final class DiscoveryTests: XCTestCase {
     }
 
     func testFindsAppsTerminalsAndToolsWithoutRunningThem() throws {
+        #if os(Linux)
+        let home = makeTemporaryFolder(self)
+        let bin = home + "/bin"
+        for name in ["claude", "dsh", "graphify", "llama-server", "kitty", "ghostty", "xterm", "not-a-terminal"] { executable(bin + "/" + name) }
+        executable(bin + "/codex", mode: 0o644)
+        executable(bin + "/konsole", mode: 0o644)     // not executable: not found
+        executable(home + "/.local/bin/alacritty")
+        executable(home + "/.cargo/bin/aider")
+        let found = discoverInstalled(home: home, env: ["PATH": bin])
+        XCTAssertEqual(found.terminals, [FoundTerminal(name: "Ghostty", executable: bin + "/ghostty", args: ["-e"]),
+                                         FoundTerminal(name: "Kitty", executable: bin + "/kitty", args: ["--"]),
+                                         FoundTerminal(name: "Alacritty", executable: home + "/.local/bin/alacritty", args: ["-e"]),
+                                         FoundTerminal(name: "XTerm", executable: bin + "/xterm", args: ["-e"])])
+        XCTAssertEqual(found.apps.map(\.id), ["claude", "dsh", "aider"])
+        XCTAssertEqual(found.graph, bin + "/graphify")
+        XCTAssertEqual(found.runtime, bin + "/llama-server")
+        // Nothing was run: the fake programs would have exited with 99 and left no trace, so check they are untouched.
+        XCTAssertEqual(try String(contentsOfFile: bin + "/kitty", encoding: .utf8), "#!/bin/sh\nexit 99\n")
+        XCTAssertEqual(linuxTerminalArguments(for: "/usr/bin/gnome-terminal"), ["--"])
+        XCTAssertEqual(linuxTerminalArguments(for: "/opt/odd/term"), ["-e"])
+        #else
         let home = makeTemporaryFolder(self)
         let bin = home + "/bin"
         for name in ["claude", "dsh", "graphify", "llama-server"] { executable(bin + "/" + name) }
@@ -198,6 +234,7 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(found.graph, bin + "/graphify")
         XCTAssertEqual(found.runtime, bin + "/llama-server")
         XCTAssertEqual(try String(contentsOfFile: bin + "/claude", encoding: .utf8), "#!/bin/sh\nexit 99\n")
+        #endif
     }
 
     func testMissingInstallsAndRelativePathEntriesAreIgnored() {
@@ -217,3 +254,101 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertFalse(paths.contains("relative"))
     }
 }
+
+#if os(Linux)
+/// The Linux way of opening a terminal and a local page, with fake programs so nothing real opens.
+final class LinuxTerminalTests: XCTestCase {
+    private func write(_ file: String, _ text: String) {
+        try! FileManager.default.createDirectory(atPath: (file as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: file, contents: Data(text.utf8), attributes: [.posixPermissions: 0o700])
+    }
+
+    private func waitFor(_ file: String, seconds: Double = 5) -> String? {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            if let text = try? String(contentsOfFile: file, encoding: .utf8), !text.isEmpty { return text }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        return nil
+    }
+
+    func testTheTerminalIsStartedWithItsRunArgumentsAndTheScript() async throws {
+        let dir = makeTemporaryFolder(self)
+        let log = dir + "/log.txt"
+        write(dir + "/ghostty", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \(shellQuote(log))\nenv >> \(shellQuote(log))\n")
+        write(dir + "/gnome-terminal", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \(shellQuote(log + "2"))\n")
+        try await openInTerminal(dir + "/ghostty", "/tmp/launch.command")
+        let text = try XCTUnwrap(waitFor(log))
+        XCTAssertTrue(text.hasPrefix("-e\n/tmp/launch.command\n"), text)
+        XCTAssertFalse(text.contains("OPENAI_API_KEY"))
+        try await openInTerminal(dir + "/gnome-terminal", "/tmp/x.command")
+        XCTAssertEqual(waitFor(log + "2"), "--\n/tmp/x.command\n")
+        do { try await openInTerminal(dir + "/missing", "/tmp/x"); XCTFail("opened a missing terminal") }
+        catch { XCTAssertTrue((error as? BlackTeamError)?.message.contains("could not launch") == true) }
+    }
+
+    func testAHarnessLaunchHandsTheChosenTerminalAndTheScriptToTheOpener() async throws {
+        let dir = makeTemporaryFolder(self)
+        let exe = dir + "/tool", terminal = dir + "/kitty"
+        write(exe, "#!/bin/sh\n"); write(terminal, "#!/bin/sh\n")
+        let store = Integrations(stateDir: dir + "/state")
+        try store.save(["harnesses": [["id": "tool", "name": "Tool", "executable": .string(exe), "args": [], "terminal": [.string(terminal), "--"]]]])
+        let opened = LockedList()
+        let result = try await launchHarness(id: "tool", store: store, config: Config(workspace: dir), runtime: LinuxFakeRuntime(), stateDir: dir + "/state",
+                                             open: { app, script in opened.add(app + "|" + (try String(contentsOfFile: script, encoding: .utf8))) })
+        XCTAssertTrue(result.launched)
+        let calls = opened.items
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertTrue(calls[0].hasPrefix(terminal + "|#!/bin/bash\n"), calls[0])
+        XCTAssertTrue(calls[0].hasSuffix("exec '\(exe)'\n"), calls[0])
+    }
+
+    /// Runs the page-opening launch script with a fake harness and a fake opener, as the Mac test does with zsh.
+    private func runPageScript(output: [String], opener: String) throws -> (opened: [String], elapsed: TimeInterval) {
+        let dir = makeTemporaryFolder(self)
+        let harness = dir + "/dsh", log = dir + "/opened.txt", fake = dir + "/fake-open"
+        write(harness, "#!/bin/sh\n" + output.map { "echo \(shellQuote($0))" }.joined(separator: "\n") + "\nsleep 3\n")
+        write(fake, "#!/bin/sh\necho \"$1\" >> \(shellQuote(log))\n")
+        let text = launchScript(workspace: dir, environment: [:], executable: harness, args: ["--port", "0"], opensLocalPage: true, pageOpener: fake)
+        let script = dir + "/run.sh"
+        write(script, text)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [script]
+        process.standardOutput = FileHandle.nullDevice
+        let start = Date()
+        try process.run()
+        process.waitUntilExit()
+        let elapsed = Date().timeIntervalSince(start)
+        Thread.sleep(forTimeInterval: 2.6)   // the opener fires two seconds after the address appears
+        let lines = ((try? String(contentsOfFile: log, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        return (lines, elapsed)
+    }
+
+    func testThePageAddressIsOpenedOnceAfterTwoSeconds() throws {
+        let run = try runPageScript(output: ["starting", "dsh web: http://127.0.0.1:64155", "dsh web: http://127.0.0.1:64199/other"], opener: "")
+        XCTAssertEqual(run.opened, ["http://127.0.0.1:64155"])
+    }
+
+    func testAHarnessThatOpensItsOwnBrowserIsLeftAlone() throws {
+        let run = try runPageScript(output: ["web: http://127.0.0.1:64155/?token=abc", "opening the default browser"], opener: "")
+        XCTAssertEqual(run.opened, [])
+    }
+
+    func testOnlyThisComputersAddressIsOpened() throws {
+        let run = try runPageScript(output: ["see http://example.com:80/", "http://localhost:9000"], opener: "")
+        XCTAssertEqual(run.opened, [])
+    }
+}
+
+private final class LockedList: @unchecked Sendable {
+    private let lock = NSLock(); private var list: [String] = []
+    func add(_ item: String) { lock.lock(); list.append(item); lock.unlock() }
+    var items: [String] { lock.lock(); defer { lock.unlock() }; return list }
+}
+
+private struct LinuxFakeRuntime: HarnessRuntime {
+    func start() async throws -> String { "http://127.0.0.1:1234/v1" }
+    func requestHeaders() -> [String: String] { [:] }
+}
+#endif

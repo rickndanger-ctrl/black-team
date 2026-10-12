@@ -11,6 +11,7 @@ Usage: black-team-cli [--json] <command>
   status                              set-up state, runtime, saved models, hardware
   starter list                        the starter models, what is installed, the recommendation
   starter install <id>                download the runtime and a starter model and set it up
+  runtime status | install            the downloaded llama.cpp program; download it (no model)
   find                                look for running model servers and model files
   models                              the saved models
   use <key>                           make a saved model the one in use
@@ -497,6 +498,25 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
                     print("Set up \(result.modelName) with llama.cpp \(result.runtimeTag).")
                     if let warning = result.warning { print("warning: \(warning)") }
                 }
+                return 0
+            }
+            fail(usage, code: 2)
+
+        case "runtime":
+            let action = arguments.isEmpty ? "" : arguments.removeFirst()
+            if action == "status" {
+                let installed = backend.downloadedRuntime()
+                if asJSON { printJSON(installed); return 0 }
+                if let installed { print("llama.cpp \(installed.tag) at \(installed.executable)\n\(installed.versionOutput ?? "")") } else { print("No llama.cpp runtime is installed.") }
+                return 0
+            }
+            if action == "install" {
+                let last = ProgressMemory()
+                let installed = try await backend.installRuntime { progress in
+                    if asJSON { return }
+                    if let line = last.line(progress) { print(line); fflush(stdout) }
+                }
+                if asJSON { printJSON(installed) } else { print("Installed llama.cpp \(installed.tag) at \(installed.executable)\n\(installed.versionOutput ?? "")") }
                 return 0
             }
             fail(usage, code: 2)

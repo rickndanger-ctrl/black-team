@@ -17,6 +17,18 @@ public enum MacArchitecture: String, Sendable, Codable {
     var cpuType: UInt32 { self == .arm64 ? 0x0100000C : 0x01000007 }
 }
 
+/// Which llama.cpp packages to look for: the macOS ones or the Ubuntu (generic Linux) ones.
+public enum RuntimePlatform: String, Sendable {
+    case macos, ubuntu
+    public static var current: RuntimePlatform {
+        #if os(Linux)
+        return .ubuntu
+        #else
+        return .macos
+        #endif
+    }
+}
+
 /// A downloadable llama.cpp build for one architecture.
 public struct RuntimeAsset: Codable, Sendable, Equatable {
     public var name: String
@@ -57,7 +69,7 @@ public enum RuntimeInstallEvent: Sendable {
 
 public typealias RuntimeFetcher = @Sendable (URL) async throws -> Data
 
-/// Installs the official llama.cpp macOS build into `<dataFolder>/runtime/<tag>/`.
+/// Installs the official llama.cpp build for this computer (macOS or Linux) into `<dataFolder>/runtime/<tag>/`.
 public final class RuntimeInstaller: @unchecked Sendable {
     public static let latestURL = URL(string: "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest")!
     /// GitHub's "latest" is not reliable for llama.cpp: today it points at a stray "v0.6.0" release with no
@@ -66,15 +78,17 @@ public final class RuntimeInstaller: @unchecked Sendable {
 
     public let dataFolder: URL
     private let architecture: MacArchitecture
+    private let platform: RuntimePlatform
     private let fetch: RuntimeFetcher
     private let downloader: FileDownloading
     private let versionTimeout: TimeInterval
 
     /// `fetch`, `downloader` and `architecture` are injectable for tests.
-    public init(dataFolder: URL, architecture: MacArchitecture = .current, fetch: RuntimeFetcher? = nil,
+    public init(dataFolder: URL, architecture: MacArchitecture = .current, platform: RuntimePlatform = .current, fetch: RuntimeFetcher? = nil,
                 downloader: FileDownloading = Downloader(), versionTimeout: TimeInterval = 20) {
         self.dataFolder = dataFolder
         self.architecture = architecture
+        self.platform = platform
         self.fetch = fetch ?? RuntimeInstaller.githubFetch
         self.downloader = downloader
         self.versionTimeout = versionTimeout
@@ -101,11 +115,11 @@ public final class RuntimeInstaller: @unchecked Sendable {
         for url in [RuntimeInstaller.latestURL, RuntimeInstaller.listURL] {
             do {
                 let data = try await fetch(url)
-                if let release = RuntimeInstaller.selectRelease(from: data, architecture: architecture) { return release }
+                if let release = RuntimeInstaller.selectRelease(from: data, architecture: architecture, platform: platform) { return release }
             } catch { firstError = firstError ?? error }
         }
         if let firstError, firstError is BlackTeamError { throw firstError }
-        throw BlackTeamError("Could not find a llama.cpp download for this Mac. Check your internet connection and try again.")
+        throw BlackTeamError("Could not find a llama.cpp download for this \(platform == .macos ? "Mac" : "computer"). Check your internet connection and try again.")
     }
 
     /// A newer build than the installed one, or nil.
@@ -160,7 +174,7 @@ public final class RuntimeInstaller: @unchecked Sendable {
         do {
             RuntimeInstaller.clearQuarantine(at: final)
             try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
-            try RuntimeInstaller.verifyMachO(executable, architecture: architecture)
+            try RuntimeInstaller.verifyProgram(executable, architecture: architecture, platform: platform)
             let output = try await RuntimeInstaller.runVersion(executable: executable, timeout: versionTimeout)
             let installed = InstalledRuntime(tag: release.tag, executable: executable.path, architecture: architecture,
                                              installedAt: ISO8601DateFormatter().string(from: Date()),
@@ -200,21 +214,22 @@ public final class RuntimeInstaller: @unchecked Sendable {
 
     /// Picks the macOS package for `architecture` from a GitHub release (one object) or a list of them.
     /// In a list the highest bNNNN tag that has the package wins; drafts and non-bNNNN tags are skipped.
-    public static func selectRelease(from data: Data, architecture: MacArchitecture) -> RuntimeRelease? {
+    public static func selectRelease(from data: Data, architecture: MacArchitecture, platform: RuntimePlatform = .current) -> RuntimeRelease? {
         guard let json = try? JSONValue.parse(data) else { return nil }
         let releases: [JSONValue] = json.array ?? [json]
         var best: RuntimeRelease?
         for release in releases {
             guard release["draft"]?.bool != true, let tag = release["tag_name"]?.string, buildNumber(tag) >= 0,
-                  let asset = selectAsset(from: release["assets"]?.array ?? [], architecture: architecture) else { continue }
+                  let asset = selectAsset(from: release["assets"]?.array ?? [], architecture: architecture, platform: platform) else { continue }
             if best == nil || buildNumber(tag) > buildNumber(best!.tag) { best = RuntimeRelease(tag: tag, asset: asset) }
         }
         return best
     }
 
-    /// The plain build, not variants: `llama-bNNNN-bin-macos-arm64.tar.gz` (or `.zip`).
-    public static func selectAsset(from assets: [JSONValue], architecture: MacArchitecture) -> RuntimeAsset? {
-        let stem = "-bin-macos-\(architecture.rawValue)"
+    /// The plain build, not variants: `llama-bNNNN-bin-macos-arm64.tar.gz` (or `.zip`) on the Mac, and
+    /// `llama-bNNNN-bin-ubuntu-x64.tar.gz` / `…-ubuntu-arm64.tar.gz` (the CPU build, not Vulkan, CUDA, ROCm…) on Linux.
+    public static func selectAsset(from assets: [JSONValue], architecture: MacArchitecture, platform: RuntimePlatform = .current) -> RuntimeAsset? {
+        let stem = "-bin-\(platform.rawValue)-\(architecture.rawValue)"
         var candidates: [(rank: Int, asset: RuntimeAsset)] = []
         for item in assets {
             guard let name = item["name"]?.string, name.hasPrefix("llama-"), let link = item["browser_download_url"]?.string,
@@ -230,13 +245,17 @@ public final class RuntimeInstaller: @unchecked Sendable {
         return candidates.min { $0.rank < $1.rank }?.asset
     }
 
-    /// Unpacks a .tar.gz with /usr/bin/tar or a .zip with /usr/bin/ditto.
+    /// Unpacks a .tar.gz with tar (on the Mac /usr/bin/tar, on Linux the `tar` on the PATH) or a .zip with /usr/bin/ditto.
     static func extract(archive: URL, into folder: URL) async throws {
         let name = archive.lastPathComponent
-        let command: (String, [String])
+        var command: (String, [String])
         if name.hasSuffix(".zip") { command = ("/usr/bin/ditto", ["-x", "-k", archive.path, folder.path]) }
         else if name.hasSuffix(".tar.gz") || name.hasSuffix(".tgz") { command = ("/usr/bin/tar", ["-xzf", archive.path, "-C", folder.path]) }
         else { throw BlackTeamError("Unknown llama.cpp package type: \(name).") }
+        #if os(Linux)
+        if name.hasSuffix(".zip") { throw BlackTeamError("Unknown llama.cpp package type: \(name).") }
+        command = ("/usr/bin/env", ["tar"] + command.1)
+        #endif
         let (status, output) = try await Task.detached { try RuntimeInstaller.run(command.0, command.1, timeout: 300) }.value
         if status != 0 { throw BlackTeamError("Could not unpack the llama.cpp download. \(output.trimmingCharacters(in: .whitespacesAndNewlines))") }
     }
@@ -254,6 +273,15 @@ public final class RuntimeInstaller: @unchecked Sendable {
             if full.resolvingSymlinksInPath().path.hasPrefix(root + "/") { hits.append(relative) }
         }
         return hits.min { $0.split(separator: "/").count < $1.split(separator: "/").count }
+    }
+
+    /// Throws unless the file is a program for this platform and `architecture`: a Mach-O on the Mac, an ELF on Linux.
+    static func verifyProgram(_ file: URL, architecture: MacArchitecture, platform: RuntimePlatform) throws {
+        #if os(Linux)
+        _ = try inspectRuntime(file.path)
+        #else
+        try verifyMachO(file, architecture: architecture)
+        #endif
     }
 
     /// Throws unless the file is a Mach-O (or universal) program that contains `architecture`.
@@ -302,7 +330,7 @@ public final class RuntimeInstaller: @unchecked Sendable {
         } catch let error as BlackTeamError { throw error }
         catch { throw BlackTeamError("llama-server could not be started: \(error.localizedDescription)") }
         guard status == 0 else {
-            throw BlackTeamError("llama-server did not start (exit code \(status)). macOS may be blocking it. \(output.suffix(300))")
+            throw BlackTeamError("llama-server did not start (exit code \(status)). \(RuntimePlatform.current == .macos ? "macOS may be blocking it. " : "A library it needs may be missing. ")\(output.suffix(300))")
         }
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -332,11 +360,15 @@ public final class RuntimeInstaller: @unchecked Sendable {
         return (process.terminationStatus, String(decoding: collected, as: UTF8.self))
     }
 
+    /// One session for all checks: on Linux, a session thrown away after a single request makes
+    /// swift-corelibs-foundation complain about its internals being freed too early.
+    private static let githubSession = URLSession(configuration: .ephemeral)
+
     static let githubFetch: RuntimeFetcher = { url in
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("BlackTeam", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+        let (data, response) = try await githubSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw BlackTeamError("GitHub sent an unexpected reply.") }
         if http.statusCode == 403 || http.statusCode == 429 {
             throw BlackTeamError("GitHub is limiting requests right now. Please try again in a few minutes.")

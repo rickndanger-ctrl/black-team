@@ -165,7 +165,13 @@ public protocol HarnessRuntime: Sendable {
 /// Only what a harness needs from Black Team's own environment: no provider secrets, and no
 /// display-server or desktop-session names, which mean nothing in a Terminal window on a Mac.
 public func localEnvironment(_ source: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
-    source.filter { $0.key.range(of: "^(PATH|HOME|USER|LANG|LC_[A-Z_]+|TERM|TMPDIR)$", options: .regularExpression) != nil }
+    #if os(Linux)
+    // As in the Linux app: a terminal window also needs to know which display to open on.
+    let allowed = "^(PATH|HOME|USER|LANG|LC_[A-Z_]+|TERM|DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|XDG_CONFIG_HOME|XDG_DATA_HOME|XDG_CACHE_HOME|LD_LIBRARY_PATH|TMPDIR)$"
+    #else
+    let allowed = "^(PATH|HOME|USER|LANG|LC_[A-Z_]+|TERM|TMPDIR)$"
+    #endif
+    return source.filter { $0.key.range(of: allowed, options: .regularExpression) != nil }
 }
 
 public func modelEnvironment(config: Config, runtime: HarnessRuntime, endpoint: String) -> [String: String] {
@@ -187,9 +193,19 @@ public func shellQuote(_ value: String) -> String {
 /// A harness that serves a page instead of drawing in the terminal prints the page's address when it
 /// is ready. With `opensLocalPage` the script shows the harness's output as usual and opens the first
 /// address on this computer that it prints, once, unless the harness opens it itself; nothing else is ever opened.
+///
+/// On the Mac the script is zsh and opens the page with `/usr/bin/open`; on Linux it is bash and uses `xdg-open`.
+/// `pageOpener` replaces that program (tests use a fake one that opens nothing).
 public func launchScript(workspace: String, environment: [String: String], executable: String, args: [String],
-                         opensLocalPage: Bool = false) -> String {
-    var lines = ["#!/bin/zsh", "rm -f -- \"$0\"", "cd -- \(shellQuote(workspace)) || exit 1"]
+                         opensLocalPage: Bool = false, pageOpener: String? = nil) -> String {
+    #if os(Linux)
+    let shebang = "#!/bin/bash"
+    let opener = shellQuote(pageOpener ?? "xdg-open")
+    #else
+    let shebang = "#!/bin/zsh"
+    let opener = pageOpener.map(shellQuote) ?? "/usr/bin/open"
+    #endif
+    var lines = [shebang, "rm -f -- \"$0\"", "cd -- \(shellQuote(workspace)) || exit 1"]
     for name in environment.keys.sorted() where name.range(of: "^[A-Za-z_][A-Za-z0-9_]*$", options: .regularExpression) != nil {
         lines.append("export \(name)=\(shellQuote(environment[name]!))")
     }
@@ -198,6 +214,20 @@ public func launchScript(workspace: String, environment: [String: String], execu
         // Older DeepSeek Harness only prints its address. Newer versions print one carrying a one-time
         // token and open the browser themselves, saying so on the next line. So the address is opened
         // two seconds after it appears, unless the harness has said by then that it is opening it.
+        #if os(Linux)
+        lines += [
+            "seen=; own=\"${TMPDIR:-/tmp}/black-team-page.$$\"; rm -f -- \"$own\"",
+            "address='(http://127\\.0\\.0\\.1:[0-9]+[^[:space:]]*)'",
+            command + " 2>&1 | while IFS= read -r line; do",
+            "  printf '%s\\n' \"$line\"",
+            "  if [[ $line == *'opening the default browser'* ]]; then : > \"$own\"; fi",
+            "  if [[ -z $seen && $line =~ $address ]]; then",
+            "    seen=1; page=${BASH_REMATCH[1]}",
+            "    ( sleep 2; [[ -e $own ]] || \(opener) \"$page\" >/dev/null 2>&1; rm -f -- \"$own\" ) &",
+            "  fi",
+            "done",
+        ]
+        #else
         lines += [
             "seen=; own=\"${TMPDIR:-/tmp}/black-team-page.$$\"; rm -f -- \"$own\"",
             command + " 2>&1 | while IFS= read -r line; do",
@@ -205,10 +235,11 @@ public func launchScript(workspace: String, environment: [String: String], execu
             "  if [[ $line == *'opening the default browser'* ]]; then : > \"$own\"; fi",
             "  if [[ -z $seen && $line =~ '(http://127\\.0\\.0\\.1:[0-9]+[^[:space:]]*)' ]]; then",
             "    seen=1; page=$match[1]",
-            "    ( sleep 2; [[ -e $own ]] || /usr/bin/open \"$page\"; rm -f -- \"$own\" ) &!",
+            "    ( sleep 2; [[ -e $own ]] || \(opener) \"$page\"; rm -f -- \"$own\" ) &!",
             "  fi",
             "done",
         ]
+        #endif
     } else {
         lines.append("exec " + command)
     }
@@ -219,10 +250,19 @@ public func launchScript(workspace: String, environment: [String: String], execu
 public typealias TerminalOpener = @Sendable (_ terminalApp: String, _ script: String) async throws -> Void
 
 public let openInTerminal: TerminalOpener = { app, script in
-    #if os(Linux)
-    throw BlackTeamError("Opening a terminal is not available on Linux in this build yet.")
-    #else
     let failure = BlackTeamError("The harness could not launch. Check its executable, terminal and workspace.")
+    #if os(Linux)
+    // `app` is a terminal program (a harness's chosen one), or "Terminal"/empty for the first terminal found on the PATH.
+    var program = app
+    if app.isEmpty || !app.hasPrefix("/") {
+        guard let first = discoverInstalled().terminals.first else {
+            throw BlackTeamError("No terminal was found on this computer. Install one (for example Ghostty, Kitty, Alacritty, GNOME Terminal, Konsole or XTerm) and try again.")
+        }
+        program = first.executable
+    }
+    guard isExecutableFile(program) else { throw failure }
+    try spawnDetached(program, linuxTerminalArguments(for: program) + [script], environment: localEnvironment(), failure: failure)
+    #else
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
     process.arguments = ["-a", app, script]
@@ -233,6 +273,27 @@ public let openInTerminal: TerminalOpener = { app, script in
     if process.terminationStatus != 0 { throw failure }
     #endif
 }
+
+#if os(Linux)
+/// Starts a program in its own session with no input or output, and does not wait for it (it is reaped in the background).
+func spawnDetached(_ program: String, _ arguments: [String], environment: [String: String], failure: BlackTeamError) throws {
+    var actions = posix_spawn_file_actions_t()
+    posix_spawn_file_actions_init(&actions)
+    defer { posix_spawn_file_actions_destroy(&actions) }
+    for fd: Int32 in [0, 1, 2] { posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", fd == 0 ? O_RDONLY : O_WRONLY, 0) }
+    var attributes = posix_spawnattr_t()
+    posix_spawnattr_init(&attributes)
+    defer { posix_spawnattr_destroy(&attributes) }
+    posix_spawnattr_setflags(&attributes, Int16(0x80))   // POSIX_SPAWN_SETSID (glibc does not export the macro to Swift)
+    let argv = ([program] + arguments).map { strdup($0) } + [nil]
+    let envp = environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
+    defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
+    var pid: pid_t = 0
+    guard posix_spawn(&pid, program, &actions, &attributes, argv, envp) == 0 else { throw failure }
+    let child = pid
+    DispatchQueue.global(qos: .utility).async { var status: Int32 = 0; waitpid(child, &status, 0) }
+}
+#endif
 
 public struct LaunchResult: Equatable, Sendable {
     public var launched: Bool

@@ -274,6 +274,25 @@ extension Backend {
         downloads.forEach { $0.cancel() }
     }
 
+    /// The downloaded llama.cpp program, if one is installed.
+    public func downloadedRuntime() -> InstalledRuntime? { installer.installedRuntime() }
+
+    /// Downloads and installs the llama.cpp runtime on its own (no model), unless one is installed already.
+    @discardableResult
+    public func installRuntime(progress: (@Sendable (SetupProgress) -> Void)? = nil) async throws -> InstalledRuntime {
+        if let existing = installer.installedRuntime() { return existing }
+        let report: @Sendable (SetupProgress) -> Void = { progress?($0) }
+        return try await installer.installLatest { event in
+            switch event {
+            case .checking: report(SetupProgress(stage: "Looking for the llama.cpp runtime\u{2026}"))
+            case .downloading(let p): report(SetupProgress(stage: "Downloading the llama.cpp runtime", fraction: p.fraction, bytesPerSecond: p.bytesPerSecond))
+            case .extracting: report(SetupProgress(stage: "Unpacking the llama.cpp runtime\u{2026}"))
+            case .verifying: report(SetupProgress(stage: "Checking the llama.cpp runtime\u{2026}"))
+            case .done: break
+            }
+        }
+    }
+
     /// Downloads the llama.cpp runtime if none is installed, downloads the chosen model, then saves the model
     /// as the "Model file" setup would (source file, the downloaded `llama-server`, the model's recommended
     /// context, its name) and remembers it, so the next message starts it.

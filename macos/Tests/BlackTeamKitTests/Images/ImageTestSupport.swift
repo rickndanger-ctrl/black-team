@@ -49,6 +49,7 @@ enum TestImage {
 #else
 /// Linux has no image library in this build: these are small files with the right signature and a size header,
 /// enough for the format checks and for storing; they are not pictures that can be decoded or drawn.
+/// Real pictures for the tests that need them come from ImageMagick (`LinuxPicture`).
 enum TestImage {
     static func png(width: Int = 64, height: Int = 48, alpha: CGFloat = 1) -> Data {
         func be(_ value: Int) -> [UInt8] { [UInt8(value >> 24 & 255), UInt8(value >> 16 & 255), UInt8(value >> 8 & 255), UInt8(value & 255)] }
@@ -57,11 +58,59 @@ enum TestImage {
         return Data(bytes)
     }
 
-    static func jpeg(width: Int = 64, height: Int = 48) -> Data {
+    /// An APP1 segment holding an EXIF block with a GPS position, a note, a camera make and the given orientation.
+    static func exifSegment(orientation: Int = 1) -> [UInt8] {
+        let tiff: [UInt8] = Array("MM".utf8) + [0, 42, 0, 0, 0, 8] + [0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, UInt8(orientation), 0, 0, 0, 0, 0, 0]
+        let notes = Array("GPSLatitude=51.5 GPSLongitude=-0.12 private note SecretCam".utf8)
+        let body = Array("Exif\0\0".utf8) + tiff + notes
+        let length = body.count + 2
+        return [0xFF, 0xE1, UInt8(length >> 8 & 255), UInt8(length & 255)] + body
+    }
+
+    static func jpeg(width: Int = 64, height: Int = 48, exif: Bool = false, orientation: Int = 1) -> Data {
         var bytes: [UInt8] = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10] + Array("JFIF".utf8) + [0, 1, 1, 0, 0, 1, 0, 1, 0, 0]
+        if exif { bytes += exifSegment(orientation: orientation) }
         bytes += [0xFF, 0xC0, 0x00, 0x11, 8, UInt8(height >> 8 & 255), UInt8(height & 255), UInt8(width >> 8 & 255), UInt8(width & 255), 3, 1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0]
         bytes += [0xFF, 0xD9]
         return Data(bytes)
     }
+
+    /// A real JPEG with an EXIF/GPS segment placed right after its start marker.
+    static func inject(exifInto jpeg: Data, orientation: Int = 1) -> Data { Data(jpeg.prefix(2)) + Data(exifSegment(orientation: orientation)) + Data(jpeg.dropFirst(2)) }
+}
+
+/// Real pictures for the tests that need ImageMagick; those tests are skipped, saying so, when it is not installed.
+enum LinuxPicture {
+    static func program() throws -> String {
+        guard let program = ImageMagick.find() else { throw XCTSkip("ImageMagick is not installed here, so the picture-resizing path cannot be tested") }
+        return program
+    }
+
+    private static func run(_ program: String, _ arguments: [String], input: Data = Data()) throws -> (Int32, Data) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: program)
+        process.arguments = arguments
+        let stdin = Pipe(), stdout = Pipe()
+        process.standardInput = stdin; process.standardOutput = stdout; process.standardError = FileHandle.nullDevice
+        try process.run()
+        DispatchQueue.global().async { try? stdin.fileHandleForWriting.write(contentsOf: input); try? stdin.fileHandleForWriting.close() }
+        let output = stdout.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, output)
+    }
+
+    static func make(width: Int, height: Int, format: String, color: String = "red", extra: [String] = []) throws -> Data {
+        let (status, output) = try run(try program(), ["-size", "\(width)x\(height)", "xc:\(color)"] + extra + ["\(format):-"])
+        guard status == 0, !output.isEmpty else { throw XCTSkip("ImageMagick could not make a test picture") }
+        return output
+    }
+
+    private static func identify(_ data: Data, _ format: String) throws -> String {
+        let program = try program()
+        let (_, output) = try run(program, (program.hasSuffix("magick") ? ["identify"] : []) + ["-format", format, "-"], input: data)
+        return String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    static func size(_ data: Data) throws -> String { try identify(data, "%wx%h") }
+    static func pixel(_ data: Data, x: Int, y: Int) throws -> String { try identify(data, "%[pixel:p{\(x),\(y)}]") }
 }
 #endif
