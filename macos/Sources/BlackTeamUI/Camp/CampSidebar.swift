@@ -27,7 +27,6 @@ struct CampSidebar: View {
                     NavRow(title: "Chat", selected: model.campPage == .chat) { model.showCamp(.chat) }
                     NavRow(title: "Memory", selected: model.campPage == .memory) { model.showCamp(.memory) }
                     NavRow(title: "Plugins", selected: model.campPage == .plugins) { model.showCamp(.plugins) }
-                    NavRow(title: "DSH sessions", selected: model.campPage == .dsh) { model.showCamp(.dsh) }
                     NavRow(title: "Servers & access", selected: model.campPage == .servers) { model.showCamp(.servers) }
                     commandRow
                 }

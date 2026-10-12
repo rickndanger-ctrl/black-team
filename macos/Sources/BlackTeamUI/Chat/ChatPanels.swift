@@ -200,11 +200,6 @@ struct FileCard: View {
                 Button { model.open(file: file) } label: { Text("Download").font(BTFont.body(12.5, .semibold)).foregroundStyle(theme.ink).padding(.horizontal, 16).frame(height: 38).contentShape(Rectangle()) }.buttonStyle(.plain)
                 Button("Reveal in Finder") { model.reveal(file) }.buttonStyle(.btQuiet)
             }
-            HStack(spacing: 8) {
-                BTSelect(options: [("", "Choose your device\u{2026}")], selection: .constant(""), height: 38, fontSize: 12, fill: true).disabled(true)
-                Button {} label: { Text("Send with Taildrop") }.buttonStyle(.btSecondary).disabled(true)
-            }
-            NotYet()
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -204,8 +204,6 @@ struct ChatFooter: View {
             VStack(spacing: 0) {
                 Text(note).font(BTFont.mono(8)).tracking(0.64).foregroundStyle(theme.faint)
                     .btLines(8, 1.8, mono: true)
-                Text("+ Files and dictation: Not on the Mac yet.").font(BTFont.mono(8)).tracking(0.64).foregroundStyle(theme.faint)
-                    .btLines(8, 1.8, mono: true)
             }
             .frame(maxWidth: .infinity, alignment: .center).multilineTextAlignment(.center).padding(.top, 12)
         }
@@ -235,10 +233,6 @@ struct ComposerBar: View {
         let available = model.setupComplete && !model.sending && (model.pending != nil || !activeJob)
         let canSend = available && (model.pending != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         HStack(alignment: .bottom, spacing: 10) {
-            Button {} label: { Text("+ Files").font(BTFont.body(12.5, .medium)) }
-                .buttonStyle(.btSecondary).disabled(true).accessibilityLabel("+ Files")
-            Button {} label: { IconView(.mic, size: 15).frame(width: 6) }
-                .buttonStyle(.btSecondary).disabled(true).accessibilityLabel("Dictate")
             composerField(key: key, kind: kind)
                 .frame(height: 64)
                 .accessibilityLabel(kind == .agent ? "Describe a task for Code" : "Message your local model")

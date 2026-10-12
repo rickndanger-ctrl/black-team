@@ -30,7 +30,7 @@ struct CampMain: View {
         case .memory: title("Memory", "The Black Team vault: what your local models remember. It never leaves this computer.")
         case .plugins: title("Tools & workspace", "Choose what Camp can use on your next agent turn.")
         case .dsh: title("Harness sessions", "Review recent work and reopen the full DeepSeek workspace.")
-        case .servers: title("Servers & access", "Control your model servers and connect privately.")
+        case .servers: title("Servers & access", "Start and stop your model servers.")
         }
     }
 
@@ -185,8 +185,3 @@ struct CardText: View {
     }
 }
 
-/// The line under a control the Mac does not have yet, in the daily app's muted small text.
-struct NotYet: View {
-    @Environment(\.btTheme) private var theme
-    var body: some View { Text("Not on the Mac yet.").btBody(11, 1.5, theme.muted) }
-}

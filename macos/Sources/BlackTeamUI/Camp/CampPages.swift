@@ -36,12 +36,6 @@ struct PluginsPage: View {
     @ObservedObject var model: AppModel
     @Environment(\.btTheme) private var theme
 
-    private let plugins: [(icon: String, name: String, text: String, on: Bool)] = [
-        ("\u{2318}", "Build & edit", "Hermes terminal, file editing, searches and task planning.", true),
-        ("\u{21A7}", "Files to your phone", "Attach workspace files and send them to your own devices with Taildrop.", true),
-        ("\u{25CE}", "Browser", "Navigate, inspect and operate a separate local browser.", false),
-        ("\u{25A3}", "Desktop control", "Inspect and control supported desktop apps through the installed computer-use driver.", false),
-    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -59,31 +53,13 @@ struct PluginsPage: View {
             WorkCard(label: "ENGINE", title: "What runs your Code conversations") {
                 HStack(spacing: 2) {
                     engineButton("Black Team", selected: true)
-                    engineButton("Hermes", selected: false).disabled(true)
                 }
                 .padding(3)
                 .background(RoundedRectangle(cornerRadius: 8).fill(theme.field))
                 .overlay(RoundedRectangle(cornerRadius: 8).inset(by: 0.5).stroke(theme.line, lineWidth: 1))
                 .padding(.top, 0)
-                NotYet().padding(.top, 8)
-                CardText("Black Team\u{2019}s own engine, built for local models: it measures your model\u{2019}s speed and sizes its work to match. Browser and Desktop control use Hermes. Applies to new conversations.").padding(.bottom, 10)
+                CardText("Black Team\u{2019}s own engine, built for local models: it measures your model\u{2019}s speed and sizes its work to match, and shows every change.").padding(.bottom, 10)
             }
-            EqualColumns(columns: 2, spacing: 14) {
-                ForEach(plugins, id: \.name) { plugin in
-                    WorkCard(verticalMargin: 0) {
-                        HStack {
-                            Text(plugin.icon).font(BTFont.body(24)).foregroundStyle(theme.ink2)
-                            Spacer(minLength: 0)
-                            BTSwitch(isOn: plugin.on, label: plugin.name) {}.disabled(true)
-                        }
-                        .padding(.bottom, 14)
-                        Text(plugin.name).font(BTFont.body(18, .semibold)).tracking(-0.41).foregroundStyle(theme.ink).btLines(18, 1.5)
-                        CardText(plugin.text)
-                        NotYet().padding(.top, 4).padding(.bottom, 10)
-                    }
-                }
-            }
-            CampNotice(text: "These plugins need the Hermes engine, which is not on the Mac yet. Code mode uses Black Team\u{2019}s own engine and shows every change.").padding(.top, 16)
         }
         .padding(.top, 16)
     }
@@ -131,7 +107,6 @@ struct ServersPage: View {
     var body: some View {
         let runtime = model.status?.runtime
         VStack(alignment: .leading, spacing: 0) {
-            pairing
             ForEach(model.status?.models ?? [], id: \.key) { item in
                 let ready = item.active && runtime?.ready == true
                 let starting = item.active && runtime?.state == "starting"
@@ -145,39 +120,7 @@ struct ServersPage: View {
                     .padding(.top, 4)
                 }
             }
-            phoneApp
         }
         .padding(.top, 16)
-    }
-
-    private var pairing: some View {
-        WorkCard(label: "PRIVATE ACCESS", title: "Take Camp with you.") {
-            CardText("Scan this with your phone while it is connected to your Tailscale account. The code pairs that phone with this computer; share it only with your own devices.")
-            HStack(spacing: 24) {
-                RoundedRectangle(cornerRadius: Theme.radius).fill(theme.field).frame(width: 200, height: 200)
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).inset(by: 0.5).stroke(theme.line2, lineWidth: 1))
-                    .opacity(0.45).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 10) {
-                    FieldText(text: "Pairing link", mono: true, disabled: true)
-                    HStack(spacing: 10) {
-                        Button("Copy pairing link") {}.buttonStyle(.btSecondary).disabled(true)
-                        Button("Reset phone pairing") {}.buttonStyle(.btSecondary).disabled(true)
-                    }
-                    NotYet()
-                }
-            }
-            .padding(.vertical, 16)
-            CardText("This computer must stay powered on and awake. Chats are saved here; running requests continue after you close the app.").padding(.bottom, 10)
-        }
-    }
-
-    private var phoneApp: some View {
-        WorkCard(label: "PHONE APP", title: "Install Black Team") {
-            CardText("On iPhone: open this private address in Safari, tap Share \u{2192} Add to Home Screen, and enable Open as Web App. Keep Tailscale connected.")
-            CardText("Tasks run on your computer while the phone is closed. Reconnect to review progress. The computer must stay awake.")
-            Button("Enable notifications") {}.buttonStyle(.btSecondary).disabled(true).padding(.top, 6)
-            CardText("Optional encrypted alerts use your browser\u{2019}s notification service. Alerts contain only task status; open Black Team over Tailscale to review details or approve actions.", small: true)
-            NotYet().padding(.top, 4).padding(.bottom, 10)
-        }
     }
 }

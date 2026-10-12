@@ -38,7 +38,7 @@ agent apps in Terminal, and the three themes. New on the Mac: first run can
 download the llama.cpp runtime (from its GitHub releases) and a starter model
 (from Hugging Face) into the data folder; `Download/StarterModels.swift` is the list.
 
-Not built yet, and shown greyed out with "Not on the Mac yet.": phone pairing,
+Not built yet, and left off the screens until they work: phone pairing,
 Hermes and its plugins, image attachments, dictation, DSH session listing.
 
 `black-team-cli` runs the same backend from a terminal (`status`, `starter list`,
