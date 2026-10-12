@@ -12,6 +12,17 @@ extension AgentService {
     }
 }
 
+/// How much a subscription agent may do without being asked. Saved on the conversation as `agentPermission`;
+/// a conversation without one is Edit, which is what every conversation had before the levels existed.
+public enum AgentPermission: String, CaseIterable, Sendable {
+    case ask, edit, auto
+
+    /// The level saved on a conversation, Edit when none is saved.
+    public static func of(thread: JSONValue?) -> AgentPermission {
+        thread?["agentPermission"]?.string.flatMap { AgentPermission(rawValue: $0) } ?? .edit
+    }
+}
+
 /// How the subscription agents are found, started and told what to do. Everything here is a pure function of its inputs,
 /// so the tests can check the command lines and the environment without starting a tool.
 public enum AgentTools {
@@ -46,22 +57,33 @@ public enum AgentTools {
     }
 
     /// The arguments for a run. A new session gets the task text; a resumed one gets the person's new message only.
-    /// Permissions stay at the tool's modest defaults: Claude Code accepts edits, Codex may write inside the workspace.
-    /// Nothing here skips permissions.
-    public static func arguments(service: AgentService, task: String, session: String?, workspace: String) -> [String] {
+    /// The level picks the tool's own modes: Claude Code `manual` / `acceptEdits` / `auto`, Codex a read-only / workspace-write
+    /// sandbox, the latter with automatic approval review for Auto. `allowedTools` are Claude Code rules for this one run only.
+    /// Nothing here skips permissions: no bypass mode, no full-access sandbox.
+    public static func arguments(service: AgentService, task: String, session: String?, workspace: String,
+                                 permission: AgentPermission = .edit, allowedTools: [String] = []) -> [String] {
         switch service {
         case .claudeCode:
+            let mode = ["ask": "manual", "edit": "acceptEdits", "auto": "auto"][permission.rawValue]!
             // The person's own Claude Code setup may have connectors to mail, calendars and the like. A task handed
             // over by Black Team is about the project folder, so those are left out of this run.
-            var args = ["-p", task, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits",
-                        "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}"]
+            var args = ["-p", task, "--output-format", "stream-json", "--verbose", "--permission-mode", mode]
+            // The rules follow their flag as separate arguments; the next flag ends the list.
+            if !allowedTools.isEmpty { args += ["--allowedTools"] + allowedTools }
+            args += ["--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}"]
             if let session { args += ["--resume", session] }
             return args
         case .codex:
+            let sandbox = permission == .ask ? "read-only" : "workspace-write"
             if let session {
-                return ["exec", "resume", session, "--json", "--skip-git-repo-check", "-c", "sandbox_mode=\"workspace-write\"", task]
+                // `exec resume` does not take --approve-for-me; its configuration is what that flag sets.
+                var args = ["exec", "resume", session, "--json", "--skip-git-repo-check", "-c", "sandbox_mode=\"\(sandbox)\""]
+                if permission == .auto { args += ["-c", "approval_policy=\"on-request\"", "-c", "approvals_reviewer=\"auto_review\""] }
+                return args + [task]
             }
-            return ["exec", "--json", "--skip-git-repo-check", "-C", workspace, "-s", "workspace-write", task]
+            // --approve-for-me brings its own workspace-write sandbox; Codex refuses it together with --sandbox.
+            let level = permission == .auto ? ["--approve-for-me"] : ["-s", sandbox]
+            return ["exec", "--json", "--skip-git-repo-check", "-C", workspace] + level + [task]
         }
     }
 }

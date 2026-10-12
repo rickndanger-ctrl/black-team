@@ -21,7 +21,9 @@ Usage: black-team-cli [--json] <command>
   chat "<message>" [--image <path>]... [--thread <id>] [--mode fast|balanced|deep|extended] [--allow-cloud]
   vision status | install             can the model read images; download a starter model's vision file
   code "<message>" [--workspace <folder>] [--thread <id>] [--mode ...] [--approve once|deny] [--allow-cloud]
-  agent claude|codex "<message>" [--workspace <folder>] [--thread <id>] [--allow-cloud]
+  agent claude|codex "<message>" [--workspace <folder>] [--thread <id>] [--allow-cloud] [--permission ask|edit|auto] [--approve once|deny]
+                                      ask: asks before changes (Claude Code) or only reads (Codex); edit: edits files; auto: more on its own
+  agent signin claude|codex           open the tool's sign-in in Terminal
                                       hand a task to your Claude Code or Codex subscription (it leaves this Mac)
   agent rollback <thread id> <run id> undo the files a task changed
   memory core | list | search <query>
@@ -64,7 +66,8 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
 
 /// Runs one subscription-agent task (Claude Code or Codex) and prints its steps and text as they arrive. Returns the exit status.
 /// The gate is the Backend's: a refusal prints its message, with the command-line choices, and exits non-zero.
-@MainActor func runAgentTask(_ backend: Backend, service: AgentService, message: String, thread: String?, workspace: String?, allowCloud: Bool) async -> Int32 {
+@MainActor func runAgentTask(_ backend: Backend, service: AgentService, message: String, thread: String?, workspace: String?, allowCloud: Bool,
+                                     permission: AgentPermission? = nil, approve: String = "deny") async -> Int32 {
     let check = backend.agentPrivacyCheck(service: service, threadId: thread, project: nil)
     if allowCloud, thread != nil, check.outcome == .needsChoice {
         do { try backend.convertToCloud(threadId: thread!, confirmingProvider: check.provider, agent: service) } catch { fail(describe(error)) }
@@ -72,7 +75,7 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
     }
     if thread == nil, !asJSON { FileHandle.standardError.write(Data((check.message + "\n").utf8)) }
     let sent: SubmitResult
-    do { sent = try backend.submitAgentTask(service: service, message: message, requestId: UUID().uuidString.lowercased(), threadId: thread, workspace: workspace) }
+    do { sent = try backend.submitAgentTask(service: service, message: message, requestId: UUID().uuidString.lowercased(), threadId: thread, workspace: workspace, permission: permission) }
     catch {
         var text = describe(error)
         if backend.agentPrivacyCheck(service: service, threadId: thread, project: nil).outcome == .needsChoice {
@@ -101,7 +104,16 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
         }
         fflush(stdout)
     }
-    while backend.isBusy { show(); try? await Task.sleep(nanoseconds: 80_000_000) }
+    var answered = Set<String>()
+    while backend.isBusy {
+        // Ask's questions are answered with --approve, as `code` does; the default is to deny.
+        if let approval = (try? await backend.status())?.job?.approval, !answered.contains(approval.id) {
+            answered.insert(approval.id)
+            if !asJSON { print("[approval] \(approval.description): \(approval.command) -> \(approve == "once" ? "allowed once" : "denied")") }
+            try? backend.approve(id: approval.id, digest: approval.digest, choice: approve)
+        }
+        show(); try? await Task.sleep(nanoseconds: 80_000_000)
+    }
     await backend.waitForIdle()
     show()
     let finalThread = backend.thread(sent.threadId)
@@ -112,6 +124,7 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
         var out: [String: JSONValue] = ["threadId": .string(sent.threadId), "runId": .string(sent.id), "state": .string(state),
                                          "reply": .string(reply?["content"]?.string ?? "")]
         if let error = reply?["error"]?.string { out["error"] = .string(error) }
+        if let needs = reply?["needsSignIn"]?.string { out["needsSignIn"] = .string(needs) }
         print(JSONValue.object(out).text(pretty: true))
     } else {
         print("\n")
@@ -122,6 +135,7 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
         if let note = reply?["rollbackNote"]?.string { print("rollback: \(note)") }
         print("privacy: leaves this Mac, sent to \(service.provider) under your \(service.displayName) subscription")
         if let error = reply?["error"]?.string { FileHandle.standardError.write(Data(("error: " + error + "\n").utf8)) }
+        if reply?["needsSignIn"] != nil { print("sign in: black-team-cli agent signin \(service.program)") }
     }
     return state == "done" ? 0 : 1
 }
@@ -367,8 +381,16 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
                     return 0
                 } catch { fail(describe(error)) }
             }
+            if action == "signin" {
+                guard arguments.count == 1, let service = AgentService.allCases.first(where: { $0.program == arguments[0] }) else {
+                    fail("agent signin takes claude or codex.\n\n\(usage)", code: 2)
+                }
+                do { try await backend.openAgentSignIn(service: service) } catch { fail(describe(error)) }
+                print("Opened \(service.displayName) sign-in in Terminal. Finish it there, then send your message again.")
+                return 0
+            }
             guard let service = AgentService.allCases.first(where: { $0.program == action }) else {
-                fail("agent takes claude or codex, then the task in quotes, or rollback.\n\n\(usage)", code: 2)
+                fail("agent takes claude or codex, then the task in quotes, signin, or rollback.\n\n\(usage)", code: 2)
             }
             let thread = option("--thread")
             let rawWorkspace = option("--workspace")
@@ -376,8 +398,14 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
             let workspace = rawWorkspace.map { URL(fileURLWithPath: $0).standardizedFileURL.path }
             let allowCloud = arguments.contains("--allow-cloud")
             arguments.removeAll { $0 == "--allow-cloud" }
+            let rawPermission = option("--permission")
+            let permission = rawPermission.flatMap { AgentPermission(rawValue: $0) }
+            if rawPermission != nil, permission == nil { fail("--permission takes ask, edit or auto.", code: 2) }
+            let approve = option("--approve") ?? "deny"
+            guard ["once", "deny"].contains(approve) else { fail("--approve takes once or deny.", code: 2) }
             guard let message = arguments.first, arguments.count == 1 else { fail("Give one task in quotes.\n\n\(usage)", code: 2) }
-            return await runAgentTask(backend, service: service, message: message, thread: thread, workspace: workspace, allowCloud: allowCloud)
+            return await runAgentTask(backend, service: service, message: message, thread: thread, workspace: workspace, allowCloud: allowCloud,
+                                      permission: permission, approve: approve)
 
         case "memory":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()

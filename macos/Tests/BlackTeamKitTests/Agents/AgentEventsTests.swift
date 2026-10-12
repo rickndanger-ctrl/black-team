@@ -62,3 +62,13 @@ extension AgentEvent {
         return nil
     }
 }
+
+final class AgentDenialEventsTests: XCTestCase {
+    func testDenialLineAndResultListAreRead() {
+        let live = ##"{"type":"system","subtype":"permission_denied","tool_name":"Bash","tool_use_id":"t1","message":"touch needs approval."}"##
+        XCTAssertEqual(AgentEventParser.parse(live, service: .claudeCode), [.denied(AgentDenial(id: "t1", tool: "Bash", message: "touch needs approval."))])
+        let end = ##"{"type":"result","is_error":false,"result":"ok","permission_denials":[{"tool_name":"Bash","tool_use_id":"t1","tool_input":{"command":"touch a"}}]}"##
+        let events = AgentEventParser.parse(end, service: .claudeCode)
+        XCTAssertEqual(events.first, .denied(AgentDenial(id: "t1", tool: "Bash", input: ["command": "touch a"])))
+    }
+}

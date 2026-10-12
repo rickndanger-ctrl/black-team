@@ -289,6 +289,28 @@ public final class AppModel: ObservableObject {
         updatePrivacy()
     }
 
+    /// The permission level each subscription agent starts a new conversation with; Edit until changed.
+    @Published var agentDefaultPermission: [AgentService: AgentPermission] = [:]
+    /// The permission chosen for an open subscription-agent conversation, by conversation ID; it applies to the next message.
+    @Published var threadPermissionChoice: [String: AgentPermission] = [:]
+
+    /// The permission the next message to the open (or new) subscription-agent conversation is sent with.
+    var agentPermission: AgentPermission {
+        if let threadId { return threadPermissionChoice[threadId] ?? AgentPermission.of(thread: thread) }
+        return agentChoice.flatMap { agentDefaultPermission[$0] } ?? .edit
+    }
+
+    /// Changes the permission for the next message: the open conversation's, or the default for the new one's agent.
+    func setAgentPermission(_ permission: AgentPermission) {
+        if let threadId { threadPermissionChoice[threadId] = permission }
+        else if let agentChoice { agentDefaultPermission[agentChoice] = permission }
+    }
+
+    /// Opens the subscription agent's own sign-in in Terminal (`Backend.openAgentSignIn`).
+    func openAgentSignIn(_ agent: AgentService) async throws {
+        try await backend.openAgentSignIn(service: agent)
+    }
+
     var currentKind: ChatKind {
         if let kind = thread?["kind"]?.string, let known = ChatKind(rawValue: kind) { return known }
         if activeAgent != nil { return .agent }
@@ -539,7 +561,7 @@ public final class AppModel: ObservableObject {
             let result: SubmitResult
             if let agent {
                 result = try backend.submitAgentTask(service: agent, message: payload.message, requestId: payload.id, threadId: payload.threadId,
-                                                     project: payload.project)
+                                                     project: payload.project, permission: agentPermission)
             } else {
                 result = try backend.submit(message: payload.message, kind: payload.kind.rawValue, mode: payload.mode, requestId: payload.id,
                                             threadId: payload.threadId, project: payload.project, images: payload.images.map(\.upload))

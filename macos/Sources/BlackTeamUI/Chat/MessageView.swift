@@ -105,6 +105,9 @@ struct MessageView: View, Equatable {
             note("This reply reached its length limit. Ask the model to continue, or choose a longer reply length for your next message.")
         }
         if message.state == "error" { note(message.error ?? "The response was interrupted. Try again when your model is ready.") }
+        if !message.isUser, let engine = message.needsSignIn, let agent = AgentService.forEngine(engine) {
+            SignInControl(model: model, agent: agent).padding(.top, 10)
+        }
         if canRetry, ["error", "interrupted"].contains(message.state) {
             Button("Retry") { model.retryLast() }.buttonStyle(.btSecondary).disabled(busy).padding(.top, 10)
         }
@@ -138,6 +141,36 @@ struct PercentIndent: Layout {
         let indent = bounds.width * fraction
         subviews[0].place(at: CGPoint(x: bounds.minX + indent, y: bounds.minY), anchor: .topLeading,
                           proposal: ProposedViewSize(width: bounds.width - indent, height: bounds.height))
+    }
+}
+
+/// "Sign in to Claude Code" under a reply that failed because the tool is signed out. It opens the tool's own sign-in in Terminal.
+private struct SignInControl: View {
+    let model: AppModel
+    let agent: AgentService
+    @State private var opened = false
+    @Environment(\.btTheme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button("Sign in to \(agent.displayName)") { signIn() }
+                .buttonStyle(.btSecondary)
+                .accessibilityLabel("Sign in to \(agent.displayName)")
+            if opened {
+                Text("Finish signing in in Terminal, then send your message again.").btBody(11, 1.5, theme.muted)
+            }
+        }
+    }
+
+    private func signIn() {
+        Task {
+            do {
+                try await model.openAgentSignIn(agent)
+                opened = true
+            } catch {
+                model.error = plainMessage(error)
+            }
+        }
     }
 }
 
