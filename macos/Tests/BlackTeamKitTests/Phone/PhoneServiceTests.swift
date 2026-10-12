@@ -19,12 +19,7 @@ final class PhoneServiceTests: XCTestCase {
         return Setup(fixture: fixture, backend: backend, tailscale: tailscale, rig: rig)
     }
 
-    /// These tests run a real phone server, which needs Network.framework until the Linux server exists.
-    private func needsPhoneServer() throws {
-        #if !canImport(Network)
-        throw XCTSkip("The phone server needs Network.framework; its Linux version comes later")
-        #endif
-    }
+    private func needsPhoneServer() throws {}
 
     private func raw(_ setup: Setup, port: Int, _ path: String, headers: [String: String] = [:]) -> String {
         var lines = ["GET \(path) HTTP/1.1", "Host: \(phoneHost):\(Phone.phonePort)", "Tailscale-User-Login: \(phoneOwner)"]

@@ -2,7 +2,7 @@ import Foundation
 
 public struct FoundTerminal: Equatable, Sendable {
     public var name: String
-    /// The terminal's `.app` bundle. It is opened with `open -a`, never run directly.
+    /// The terminal's `.app` bundle on the Mac (opened with `open -a`, never run directly), or its program on Linux.
     public var executable: String
     public var args: [String]
     public init(name: String, executable: String, args: [String] = []) {
@@ -69,12 +69,38 @@ private let terminalSpecs: [(bundle: String, name: String)] = [
     ("WezTerm.app", "WezTerm"), ("Alacritty.app", "Alacritty"), ("kitty.app", "kitty"),
 ]
 
+/// The terminals the Linux app knows (lib/discovery.cjs), in its order, with what each takes before a command to run it.
+let linuxTerminalSpecs: [(command: String, name: String, args: [String])] = [
+    ("ghostty", "Ghostty", ["-e"]), ("kitty", "Kitty", ["--"]), ("alacritty", "Alacritty", ["-e"]),
+    ("gnome-terminal", "GNOME Terminal", ["--"]), ("konsole", "Konsole", ["-e"]), ("xterm", "XTerm", ["-e"]),
+]
+
+/// The arguments that make a known terminal run a command, found by the program's file name; `-e` for any other.
+func linuxTerminalArguments(for executable: String) -> [String] {
+    let name = (executable as NSString).lastPathComponent
+    return linuxTerminalSpecs.first { $0.command == name }?.args ?? ["-e"]
+}
+
+/// Terminals on this Linux computer, found on the PATH (plus ~/.local/bin and ~/bin) without running anything.
+func discoverLinuxTerminals(home: String, env: [String: String]) -> [FoundTerminal] {
+    var seen = Set<String>()
+    let dirs = ((env["PATH"] ?? "").split(separator: ":", omittingEmptySubsequences: false).map(String.init) + [home + "/.local/bin", home + "/bin"])
+        .filter { $0.hasPrefix("/") && seen.insert($0).inserted }
+    return linuxTerminalSpecs.compactMap { spec in
+        let file = findExecutable(spec.command, in: dirs)
+        return file.isEmpty ? nil : FoundTerminal(name: spec.name, executable: file, args: spec.args)
+    }
+}
+
 public func discoverInstalled(home: String = NSHomeDirectory(), env: [String: String] = ProcessInfo.processInfo.environment,
                               applicationFolders: [String]? = nil) -> DiscoveryResult {
     // Bounded filesystem checks only: never run a discovered executable or scan a user's files.
     let dirs = harnessSearchPaths(home: home, env: env)
     let folders = applicationFolders ?? ["/System/Applications/Utilities", "/Applications/Utilities", "/Applications", home + "/Applications"]
     var terminals: [FoundTerminal] = []
+    #if os(Linux)
+    terminals = discoverLinuxTerminals(home: home, env: env)
+    #else
     for spec in terminalSpecs {
         for folder in folders {
             let bundle = folder + "/" + spec.bundle
@@ -84,6 +110,7 @@ public func discoverInstalled(home: String = NSHomeDirectory(), env: [String: St
             }
         }
     }
+    #endif
     // Harnesses with a preset open already pointed at the model in use. Hermes is not offered on macOS yet.
     let apps = PRESETS.compactMap { item -> FoundApp? in
         let file = findExecutable(item.command, in: dirs)

@@ -33,6 +33,16 @@ final class DownloaderTests: XCTestCase {
         return .data(status: 200, body: body)
     }
     typealias Reply = StubServer.Reply
+    #if os(Linux)
+    func realDownloader() -> Downloader {
+        let downloader = Downloader(configuration: .ephemeral, freeSpace: { _ in Int64.max })
+        downloader.allowsPlainLoopbackForTests = true
+        return downloader
+    }
+    func realRequest(_ url: URL, sha: String? = nil, hosts: [String] = []) -> DownloadRequest {
+        DownloadRequest(url: url, destination: destination, expectedSHA256: sha, expectedSize: nil, allowedHostSuffixes: hosts)
+    }
+    #endif
 
     func testFreshDownloadVerifiesAndMovesIntoPlace() async throws {
         StubServer.reset { _ in .data(status: 200, body: self.body) }
@@ -129,8 +139,17 @@ final class DownloaderTests: XCTestCase {
 
     func testRedirectToUnknownHostIsRefused() async throws {
         #if os(Linux)
-        throw XCTSkip("swift-corelibs-foundation aborts when a URLProtocol stub simulates a redirect")
-        #endif
+        // A real loopback server sends a real 302; the downloader must refuse it without connecting anywhere else.
+        let server = try LoopbackHTTPServer { _ in .redirect(to: URL(string: "https://evil.example/x")!) }
+        addTeardownBlock { server.stop() }
+        do {
+            _ = try await realDownloader().download(realRequest(server.url("/file.bin"), hosts: DownloadHosts.huggingFace))
+            XCTFail("expected an error")
+        } catch let error as BlackTeamError {
+            XCTAssertTrue(error.message.contains("evil.example"), error.message)
+        }
+        XCTAssertEqual(server.requests, ["/file.bin"])
+        #else
         StubServer.reset { req in
             req.url?.host == "example.test" ? .redirect(to: URL(string: "https://evil.example/x")!) : .data(status: 200, body: self.body)
         }
@@ -141,29 +160,49 @@ final class DownloaderTests: XCTestCase {
             XCTAssertTrue(error.message.contains("evil.example"), error.message)
         }
         XCTAssertEqual(StubServer.requests.count, 1)
+        #endif
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
     }
 
     func testRedirectToHttpIsRefused() async throws {
         #if os(Linux)
-        throw XCTSkip("swift-corelibs-foundation aborts when a URLProtocol stub simulates a redirect")
-        #endif
+        let server = try LoopbackHTTPServer { _ in .redirect(to: URL(string: "http://cdn.hf.co/x")!) }
+        addTeardownBlock { server.stop() }
+        do { _ = try await realDownloader().download(realRequest(server.url("/file.bin"), hosts: DownloadHosts.huggingFace)); XCTFail("expected an error") }
+        catch let error as BlackTeamError { XCTAssertTrue(error.message.contains("insecure"), error.message) }
+        XCTAssertEqual(server.requests, ["/file.bin"])
+        #else
         StubServer.reset { req in
             req.url?.host == "example.test" ? .redirect(to: URL(string: "http://cdn.hf.co/x")!) : .data(status: 200, body: self.body)
         }
         do { _ = try await downloader().download(request(hosts: DownloadHosts.huggingFace)); XCTFail("expected an error") }
         catch is BlackTeamError {}
+        #endif
     }
 
     func testRedirectToAllowedCdnWorks() async throws {
         #if os(Linux)
-        throw XCTSkip("swift-corelibs-foundation aborts when a URLProtocol stub simulates a redirect")
-        #endif
+        // The server can only speak plain HTTP, and a redirect must be https, so the redirect goes to this same server over
+        // https (the starting host is always allowed). The downloader must accept it (no refusal) and really try to connect;
+        // the connection then fails because nothing here speaks TLS.
+        let box = Box<Int>(0)
+        let server = try LoopbackHTTPServer { _ in .redirect(to: URL(string: "https://127.0.0.1:\(box.value)/blob")!) }
+        addTeardownBlock { server.stop() }
+        box.update { $0 = server.port }
+        do { _ = try await realDownloader().download(realRequest(server.url("/file.bin"), sha: sha(body), hosts: DownloadHosts.huggingFace)); XCTFail("TLS cannot work here") }
+        catch {
+            let message = (error as? BlackTeamError)?.message ?? ""
+            XCTAssertFalse(message.contains("insecure") || message.contains("unexpected server"), "the redirect was refused: \(message)")
+        }
+        XCTAssertEqual(server.requests.first, "/file.bin")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+        #else
         StubServer.reset { req in
             req.url?.host == "example.test" ? .redirect(to: URL(string: "https://us.aws.cdn.hf.co/blob")!) : .data(status: 200, body: self.body)
         }
         _ = try await downloader().download(request(sha: sha(body), hosts: DownloadHosts.huggingFace))
         XCTAssertEqual(try Data(contentsOf: destination), body)
+        #endif
     }
 
     func testHostSuffixMatchingRespectsDotBoundary() {

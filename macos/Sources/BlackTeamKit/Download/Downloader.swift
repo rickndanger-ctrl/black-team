@@ -76,6 +76,9 @@ public final class Downloader: FileDownloading, @unchecked Sendable {
     private var running = false
     private var currentJob: DownloadJob?
     private var cancelRequested = false
+    /// Tests only (reachable through `@testable`, never set by the app): let the first request go to a plain-HTTP server on
+    /// 127.0.0.1, so a real local server can be used. Redirects must still be https.
+    var allowsPlainLoopbackForTests = false
 
     /// `configuration` and `freeSpace` exist for tests (a stub URLProtocol, a pretend disk).
     public init(configuration: URLSessionConfiguration? = nil, freeSpace: (@Sendable (URL) -> Int64?)? = nil) {
@@ -122,7 +125,8 @@ public final class Downloader: FileDownloading, @unchecked Sendable {
     }
 
     public func download(_ request: DownloadRequest, progress: (@Sendable (DownloadProgress) -> Void)? = nil) async throws -> URL {
-        guard request.url.scheme?.lowercased() == "https", request.url.host != nil else {
+        let plainLoopback = allowsPlainLoopbackForTests && request.url.scheme?.lowercased() == "http" && request.url.host == "127.0.0.1"
+        guard request.url.scheme?.lowercased() == "https" || plainLoopback, request.url.host != nil else {
             throw BlackTeamError("Downloads must use a secure https:// address.")
         }
         try begin()

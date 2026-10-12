@@ -44,7 +44,7 @@ final class RuntimeInstallerTests: XCTestCase {
     }
 
     func testPicksNewestPublishedReleaseAndPlainArm64Asset() throws {
-        let release = try XCTUnwrap(RuntimeInstaller.selectRelease(from: sample, architecture: .arm64))
+        let release = try XCTUnwrap(RuntimeInstaller.selectRelease(from: sample, architecture: .arm64, platform: .macos))
         XCTAssertEqual(release.tag, "b200")
         XCTAssertEqual(release.asset.name, "llama-b200-bin-macos-arm64.tar.gz")
         XCTAssertEqual(release.asset.sha256, String(repeating: "ab", count: 32))
@@ -52,21 +52,21 @@ final class RuntimeInstallerTests: XCTestCase {
     }
 
     func testPicksIntelAsset() throws {
-        XCTAssertEqual(RuntimeInstaller.selectRelease(from: sample, architecture: .x64)?.asset.name, "llama-b200-bin-macos-x64.tar.gz")
+        XCTAssertEqual(RuntimeInstaller.selectRelease(from: sample, architecture: .x64, platform: .macos)?.asset.name, "llama-b200-bin-macos-x64.tar.gz")
     }
 
     func testZipIsUsedWhenThatIsAllThereIsAndSingleObjectIsAccepted() throws {
         let one = Data(release("b150", assets: ["llama-b150-bin-macos-arm64.zip"]).utf8)
-        XCTAssertEqual(RuntimeInstaller.selectRelease(from: one, architecture: .arm64)?.asset.name, "llama-b150-bin-macos-arm64.zip")
+        XCTAssertEqual(RuntimeInstaller.selectRelease(from: one, architecture: .arm64, platform: .macos)?.asset.name, "llama-b150-bin-macos-arm64.zip")
     }
 
     func testStrayLatestReleaseWithoutBinariesIsSkipped() {
         let stray = Data("{\"tag_name\":\"v0.6.0\",\"assets\":[]}".utf8)
-        XCTAssertNil(RuntimeInstaller.selectRelease(from: stray, architecture: .arm64))
+        XCTAssertNil(RuntimeInstaller.selectRelease(from: stray, architecture: .arm64, platform: .macos))
     }
 
     func testLatestAvailableFallsBackToTheList() async throws {
-        let installer = RuntimeInstaller(dataFolder: folder, architecture: .arm64, fetch: { url in
+        let installer = RuntimeInstaller(dataFolder: folder, architecture: .arm64, platform: .macos, fetch: { url in
             url == RuntimeInstaller.latestURL ? Data("{\"tag_name\":\"v0.6.0\",\"assets\":[]}".utf8) : self.sample
         }, downloader: FakeDownloader(archive: folder))
         let latest = try await installer.latestAvailable()
@@ -74,7 +74,7 @@ final class RuntimeInstallerTests: XCTestCase {
     }
 
     func testUpdateAvailableComparesBuildNumbers() async throws {
-        let installer = RuntimeInstaller(dataFolder: folder, architecture: .arm64, fetch: { _ in self.sample }, downloader: FakeDownloader(archive: folder))
+        let installer = RuntimeInstaller(dataFolder: folder, architecture: .arm64, platform: .macos, fetch: { _ in self.sample }, downloader: FakeDownloader(archive: folder))
         let nothing = try await installer.updateAvailable()
         XCTAssertEqual(nothing?.tag, "b200")   // nothing installed yet
     }
@@ -86,10 +86,10 @@ final class RuntimeInstallerTests: XCTestCase {
         let root = folder.appendingPathComponent("src-\(tag)/llama-\(tag)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try Data("dylib".utf8).write(to: root.appendingPathComponent("libllama.dylib"))
-        if asText { try Data("#!/bin/sh\necho hi\n".utf8).write(to: root.appendingPathComponent("llama-server")) }
+        if asText { try Data(("#!/bin/sh\necho hi\n" + String(repeating: "#", count: 100)).utf8).write(to: root.appendingPathComponent("llama-server")) }
         else if let server { try FileManager.default.copyItem(at: server, to: root.appendingPathComponent("llama-server")) }
         let archive = folder.appendingPathComponent("llama-\(tag)-bin-macos-arm64.tar.gz")
-        let (status, out) = try RuntimeInstaller.run("/usr/bin/tar", ["-czf", archive.path, "-C", folder.appendingPathComponent("src-\(tag)").path, "llama-\(tag)"], timeout: 30)
+        let (status, out) = try RuntimeInstaller.run("/usr/bin/env", ["tar", "-czf", archive.path, "-C", folder.appendingPathComponent("src-\(tag)").path, "llama-\(tag)"], timeout: 30)
         XCTAssertEqual(status, 0, out)
         return archive
     }
@@ -99,9 +99,6 @@ final class RuntimeInstallerTests: XCTestCase {
     }
 
     func testInstallExtractsVerifiesAndRecords() async throws {
-        #if os(Linux)
-        throw XCTSkip("The runtime installer checks for a Mac (Mach-O) program; its Linux version comes later")
-        #endif
         let data = folder.appendingPathComponent("data")
         let fake = FakeDownloader(archive: try makeArchive(tag: "b1"))
         let installer = RuntimeInstaller(dataFolder: data, architecture: .current, fetch: { _ in Data() }, downloader: fake)
@@ -129,9 +126,6 @@ final class RuntimeInstallerTests: XCTestCase {
     }
 
     func testBadUpdateKeepsThePreviousVersion() async throws {
-        #if os(Linux)
-        throw XCTSkip("The runtime installer checks for a Mac (Mach-O) program; its Linux version comes later")
-        #endif
         let data = folder.appendingPathComponent("data")
         let fake = FakeDownloader(archive: try makeArchive(tag: "b1"))
         let installer = RuntimeInstaller(dataFolder: data, architecture: .current, fetch: { _ in Data() }, downloader: fake)
@@ -139,16 +133,13 @@ final class RuntimeInstallerTests: XCTestCase {
 
         fake.archive = try makeArchive(tag: "b2", asText: true)   // not a Mac program
         do { _ = try await installer.install(release("b2")); XCTFail("expected an error") }
-        catch let error as BlackTeamError { XCTAssertTrue(error.message.contains("not a Mac program"), error.message) }
+        catch let error as BlackTeamError { XCTAssertTrue(error.message.contains("not a Mac program") || error.message.contains("native Linux"), error.message) }
         XCTAssertEqual(installer.installedRuntime(), first)
         XCTAssertFalse(FileManager.default.fileExists(atPath: data.appendingPathComponent("runtime/b2").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: first.executable))
     }
 
     func testGoodUpdateRecordsPreviousAndPrunesOlder() async throws {
-        #if os(Linux)
-        throw XCTSkip("The runtime installer checks for a Mac (Mach-O) program; its Linux version comes later")
-        #endif
         let data = folder.appendingPathComponent("data")
         let fake = FakeDownloader(archive: try makeArchive(tag: "b1"))
         let installer = RuntimeInstaller(dataFolder: data, architecture: .current, fetch: { _ in Data() }, downloader: fake)
@@ -174,7 +165,7 @@ final class RuntimeInstallerTests: XCTestCase {
 
     func testMachOCheckRejectsWrongArchitectureAndScripts() throws {
         #if os(Linux)
-        throw XCTSkip("The runtime installer checks for a Mac (Mach-O) program; its Linux version comes later")
+        throw XCTSkip("Mach-O programs exist only on the Mac; the Linux check is testELFCheckRejectsScriptsAndWrongMachines")
         #endif
         let program = URL(fileURLWithPath: "/usr/bin/true")
         let other: MacArchitecture = MacArchitecture.current == .arm64 ? .x64 : .arm64
@@ -184,6 +175,40 @@ final class RuntimeInstallerTests: XCTestCase {
         let script = folder.appendingPathComponent("script")
         try Data("#!/bin/sh\n".utf8 + Data(count: 100)).write(to: script)
         XCTAssertThrowsError(try RuntimeInstaller.verifyMachO(script, architecture: .current))
+    }
+
+    func testELFCheckRejectsScriptsAndWrongMachines() throws {
+        #if !os(Linux)
+        throw XCTSkip("This checks Linux (ELF) programs; the Mac one is checked with Mach-O programs")
+        #else
+        let good = folder.appendingPathComponent("good/llama-server")
+        try FileManager.default.createDirectory(at: good.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"), to: good)
+        XCTAssertNoThrow(try RuntimeInstaller.verifyProgram(good, architecture: .current, platform: .ubuntu))
+        // The same program marked as built for the other kind of CPU.
+        var bytes = try Data(contentsOf: good)
+        bytes[18] = bytes[18] == 62 ? 183 : 62
+        let other = folder.appendingPathComponent("other/llama-server")
+        try FileManager.default.createDirectory(at: other.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try bytes.write(to: other)
+        chmod(other.path, 0o755)
+        XCTAssertThrowsError(try RuntimeInstaller.verifyProgram(other, architecture: .current, platform: .ubuntu))
+        let script = folder.appendingPathComponent("script/llama-server")
+        try FileManager.default.createDirectory(at: script.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("#!/bin/sh\n".utf8 + Data(count: 100)).write(to: script)
+        chmod(script.path, 0o755)
+        XCTAssertThrowsError(try RuntimeInstaller.verifyProgram(script, architecture: .current, platform: .ubuntu))
+        #endif
+    }
+
+    func testLinuxAssetIsThePlainCPUBuildForThisArchitecture() throws {
+        let names = ["cudart-llama-b9-bin-ubuntu-cuda-12.8-x64.tar.gz", "llama-b9-bin-ubuntu-vulkan-x64.tar.gz", "llama-b9-bin-ubuntu-rocm-10.0-x64.tar.gz",
+                     "llama-b9-bin-ubuntu-arm64.tar.gz", "llama-b9-bin-linux-arm64-snapdragon.tar.gz", "llama-b9-bin-ubuntu-x64.tar.gz", "llama-b9-bin-macos-x64.tar.gz"]
+        let data = Data("[\(release("b9", assets: names))]".utf8)
+        XCTAssertEqual(RuntimeInstaller.selectRelease(from: data, architecture: .x64, platform: .ubuntu)?.asset.name, "llama-b9-bin-ubuntu-x64.tar.gz")
+        XCTAssertEqual(RuntimeInstaller.selectRelease(from: data, architecture: .arm64, platform: .ubuntu)?.asset.name, "llama-b9-bin-ubuntu-arm64.tar.gz")
+        let onlyVariants = Data("[\(release("b9", assets: ["llama-b9-bin-ubuntu-vulkan-x64.tar.gz"]))]".utf8)
+        XCTAssertNil(RuntimeInstaller.selectRelease(from: onlyVariants, architecture: .x64, platform: .ubuntu))
     }
 
     func testQuarantineAttributeIsCleared() throws {

@@ -126,7 +126,6 @@ func rawExchange(host: String = "127.0.0.1", port: Int, _ pieces: [Data], pause:
     return (String(decoding: reply, as: UTF8.self), true)
 }
 
-#if canImport(Network)
 final class PhoneServerTests: XCTestCase {
     private func started(_ rig: PhoneRig) async throws -> PhoneServer {
         let server = PhoneServer(router: rig.router, port: 0)
@@ -228,22 +227,36 @@ final class PhoneServerTests: XCTestCase {
         XCTAssertFalse(rawExchange(port: port, [Data(request(rig, "GET", "/").utf8)]).connected)
     }
 
+    #if canImport(Network)
     func testThePeerAddressIsReadFromTheConnection() {
         XCTAssertEqual(PhoneServer.peerAddress(.hostPort(host: .ipv4(.loopback), port: 1)), "127.0.0.1")
         XCTAssertEqual(PhoneServer.peerAddress(.hostPort(host: .ipv6(.loopback), port: 1)), "::1")
         XCTAssertEqual(PhoneServer.peerAddress(.hostPort(host: IPv4Address("100.64.1.2").map { .ipv4($0) } ?? "x", port: 1)), "100.64.1.2")
         XCTAssertNil(PhoneServer.peerAddress(.hostPort(host: "example.com", port: 1)))
     }
+    #endif
+    #if !canImport(Network)
+    func testThePeerAddressIsReadFromTheConnection() {
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        inet_pton(AF_INET, "127.0.0.1", &address.sin_addr)
+        XCTAssertEqual(PhoneServer.peerAddress(address), "127.0.0.1")
+        inet_pton(AF_INET, "100.64.1.2", &address.sin_addr)
+        XCTAssertEqual(PhoneServer.peerAddress(address), "100.64.1.2")
+    }
+
+    /// Nothing listens on any address but 127.0.0.1, so a connection from another address cannot be made.
+    func testTheListenerIsBoundToLoopbackOnly() async throws {
+        let rig = try PhoneRig(self)
+        let server = try await started(rig)
+        XCTAssertEqual(server.boundAddress, "127.0.0.1")
+        // 0.0.0.0 would reach a wildcard listener; a loopback-range neighbour reaches nothing bound to 127.0.0.1 only.
+        XCTAssertFalse(rawExchange(host: "127.0.0.2", port: server.port, [Data(request(rig, "GET", "/").utf8)]).connected)
+        server.stop()
+        XCTAssertNil(server.boundAddress)
+    }
+    #endif
 }
-#else
-final class PhoneServerTests: XCTestCase {
-    func testItAnswersOnLoopbackAndNowhereElse() throws { throw XCTSkip("The phone server needs Network.framework; its Linux version comes later") }
-    func testAPairedPhoneAndAStrangerOverTheSocket() throws { throw XCTSkip("The phone server needs Network.framework; its Linux version comes later") }
-    func testMalformedAndOversizedRequestsOverTheSocket() throws { throw XCTSkip("The phone server needs Network.framework; its Linux version comes later") }
-    func testAPortInUseIsReportedAndStopClosesTheListener() throws { throw XCTSkip("The phone server needs Network.framework; its Linux version comes later") }
-    func testThePeerAddressIsReadFromTheConnection() throws { throw XCTSkip("The phone server needs Network.framework; its Linux version comes later") }
-}
-#endif
 
 /// A phone against a real Backend: nothing private leaves, and a chat reaches the model and comes back.
 final class PhoneBackendTests: XCTestCase {
