@@ -205,6 +205,7 @@ struct ThemeBackground: View {
 
 private struct Themed: ViewModifier {
     @AppStorage(ThemeSetting.storageKey) private var stored = ThemeSetting.system.rawValue
+    @AppStorage(TextWeightSetting.storageKey) private var plainHeadings = false
     @Environment(\.colorScheme) private var scheme
     let forced: ThemeSetting?
 
@@ -219,6 +220,8 @@ private struct Themed: ViewModifier {
             .background(ThemeBackground(theme: theme))
             // Following the system must not feed back into the scheme it follows.
             .preferredColorScheme(setting == .system ? nil : (theme.isDark ? .dark : .light))
+            // Fonts are chosen when a view is built, so the whole window is rebuilt when the weight choice changes.
+            .id(plainHeadings)
     }
 }
 

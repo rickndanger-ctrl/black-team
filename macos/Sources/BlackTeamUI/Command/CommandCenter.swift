@@ -163,8 +163,12 @@ struct ModelSection: View {
         let cards = model.modelCards
         VStack(alignment: .leading, spacing: 0) {
             SectionHeading(number: "01", title: model.setupComplete || !cards.isEmpty ? "Select your model" : "Select your model") {
+                // Was plain muted text, which did not read as something to press.
                 Button { model.showConfig = true } label: {
-                    Text("Available configurations").font(BTFont.body(12)).foregroundStyle(theme.muted)
+                    Text("Available configurations").font(BTFont.body(11, .medium)).foregroundStyle(theme.ink)
+                        .padding(.horizontal, 12).frame(height: 28)
+                        .overlay(RoundedRectangle(cornerRadius: 5).inset(by: 0.5).stroke(theme.line2, lineWidth: 1))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).accessibilityLabel("Available configurations")
             }

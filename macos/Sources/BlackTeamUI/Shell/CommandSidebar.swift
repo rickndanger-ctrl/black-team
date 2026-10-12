@@ -21,6 +21,7 @@ struct CommandSidebar: View {
                 }
                 Spacer(minLength: 0)
                 ThemePicker(stored: $storedTheme)
+                TextWeightPicker().padding(.top, 6)
                 footer
             }
             .padding(.top, metrics.sidebarTop).padding(.horizontal, metrics.sidebarSide).padding(.bottom, 20)

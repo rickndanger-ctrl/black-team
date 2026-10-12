@@ -67,6 +67,35 @@ struct DailyTitle: View {
 }
 
 /// The Covert / Light / Ghost picker (`.theme-picker`). Each button is named for what it says.
+/// "Bold" / "Plain": whether headings and labels are drawn in the bold face.
+struct TextWeightPicker: View {
+    @AppStorage(TextWeightSetting.storageKey) private var plain = false
+    @Environment(\.btTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach([false, true], id: \.self) { option in
+                let selected = plain == option
+                Button { plain = option } label: {
+                    Text(option ? "PLAIN TEXT" : "BOLD TEXT").font(BTFont.mono(9)).tracking(1.08)
+                        .foregroundStyle(selected ? theme.ink : theme.muted)
+                        .frame(maxWidth: .infinity).frame(height: 28)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(selected ? theme.surface2 : .clear))
+                        .overlay(RoundedRectangle(cornerRadius: 5).inset(by: 0.5).stroke(selected ? theme.line2 : .clear, lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option ? "Plain text" : "Bold text")
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+        .padding(4)
+        .background(RoundedRectangle(cornerRadius: 8).fill(theme.field))
+        .overlay(RoundedRectangle(cornerRadius: 8).inset(by: 0.5).stroke(theme.line, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+    }
+}
+
 struct ThemePicker: View {
     @Binding var stored: String
     @Environment(\.btTheme) private var theme

@@ -117,7 +117,7 @@ struct WorkLogView: View {
             Button { shown.toggle() } label: {
                 HStack(spacing: 6) {
                     Triangle().fill(theme.ink2).frame(width: 7, height: 8).rotationEffect(.degrees(shown || open ? 90 : 0))
-                    Text("\(events.filter { $0.type == "tool_use" }.count) tool actions \u{00B7} View work").font(BTFont.body(12)).foregroundStyle(theme.ink2)
+                    Text("\(events.filter { $0.type == "tool_use" }.count) tool actions \u{00B7} View work").font(BTFont.body(12)).foregroundStyle(theme.ink2).underline(true, color: theme.ink2)
                     Spacer(minLength: 0)
                 }
                 .frame(height: 20.4).contentShape(Rectangle())
@@ -197,7 +197,7 @@ struct FileCard: View {
                     Text(String(format: "%.1f KB", Double(file.size) / 1024) + " \u{00B7} Private attachment").font(BTFont.body(10)).foregroundStyle(theme.muted).padding(.top, 4)
                 }
                 Spacer(minLength: 0)
-                Button { model.open(file: file) } label: { Text("Download").font(BTFont.body(12.5, .semibold)).foregroundStyle(theme.ink).padding(.horizontal, 16).frame(height: 38).contentShape(Rectangle()) }.buttonStyle(.plain)
+                Button { model.open(file: file) } label: { Text("Download").font(BTFont.body(12.5, .semibold)).foregroundStyle(theme.ink).padding(.horizontal, 16).frame(height: 38).overlay(RoundedRectangle(cornerRadius: 5).inset(by: 0.5).stroke(theme.line2, lineWidth: 1)).contentShape(Rectangle()) }.buttonStyle(.plain)
                 Button("Reveal in Finder") { model.reveal(file) }.buttonStyle(.btQuiet)
             }
         }
