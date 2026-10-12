@@ -75,6 +75,8 @@ public final class Backend: @unchecked Sendable {
     /// Phone access (Phone/PhoneService.swift): made on first use, so a Backend that never uses it opens no socket.
     var phoneService: PhoneService?
     var phoneOptions = PhoneOptions()
+    /// The team run in progress (App/BackendTeam.swift); nil when none is running.
+    var teamControl: TeamControl?
 
     private var keeperFile: String { dataFolder + "/keeper.json" }
     private var projectsFile: String { dataFolder + "/projects.json" }
@@ -283,7 +285,8 @@ public final class Backend: @unchecked Sendable {
     @discardableResult
     public func submit(message rawMessage: String, kind: String = "chat", mode: String = "balanced", requestId: String,
                        threadId givenThread: String? = nil, project givenProject: String? = nil,
-                       workspace workspaceOverride: String? = nil, images uploads: [ImageUpload] = [], from origin: SubmitOrigin = .mac) throws -> SubmitResult {
+                       workspace workspaceOverride: String? = nil, images uploads: [ImageUpload] = [], from origin: SubmitOrigin = .mac,
+                       useMemory: Bool = true) throws -> SubmitResult {
         if locked({ closing }) { throw BlackTeamError("Black Team is closing.") }
         // Images are Chat only, and an empty message with images asks for a description, as the daily app does.
         let kinds = try ImageRules.validate(uploads)
@@ -348,6 +351,9 @@ public final class Backend: @unchecked Sendable {
             if cloudModel { thread = thread.setting("provider", .string(cloudHost(config.model.endpoint, rules: cloudRules))) }
         }
         if let agentEngine { thread = thread.setting("engine", .string(agentEngine)) }
+        // A run that must not touch the memory vault (a team with a cloud member passes local members' results on): this conversation
+        // gets no Core, no recalled notes, no memory tools and no journal entry, the same as a conversation that went to a cloud service.
+        if !useMemory { thread = thread.setting("noMemory", .bool(true)) }
         if existing == nil, let project { thread = thread.setting("project", .string(project.id)) }
         // A folder given for this one turn (the command-line tool's --workspace) wins over the project and the setting.
         let workspace = try workspaceOverride.map { try ensureWorkspace($0) } ?? project?.workspace ?? config.workspace
@@ -454,7 +460,7 @@ public final class Backend: @unchecked Sendable {
             return
         }
         // A conversation that went to a cloud service never gets the vault, even when a local model answers it now.
-        let memoryAllowed = ref.value["privacy"]?.string != "cloud"
+        let memoryAllowed = ref.value["privacy"]?.string != "cloud" && ref.value["noMemory"]?.bool != true
         // Core memory is fixed when the conversation starts, and what was recalled for a message stays attached to it,
         // so earlier turns are sent the same way every time and the model server's prompt cache keeps working.
         var thread = ref.value
@@ -806,6 +812,7 @@ public final class Backend: @unchecked Sendable {
         cancel()
         try? await runtime.dispose()
         await waitForIdle()
+        await roomTeamSettle()
         ModelRuntime.terminateOwnedProcesses()
         hub.finish()
     }

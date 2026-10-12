@@ -182,7 +182,8 @@ public final class Engine: @unchecked Sendable {
         let isServer = config.model.source == "server"
         let cloud = config.model.source == "cloud"
         // A conversation that has been sent to a cloud service never gets memory from the vault, whatever model runs it now.
-        let cloudThread = cloud || thread.value["privacy"]?.string == "cloud"
+        // So does a conversation marked `noMemory` (a team run with a cloud member passes local members' results on).
+        let cloudThread = cloud || thread.value["privacy"]?.string == "cloud" || thread.value["noMemory"]?.bool == true
         let model = isServer || cloud ? config.model.id : "black-team-local"
         let source = config.model.source.isEmpty ? "gguf" : config.model.source
         let identity = "\(source):\(isServer || cloud ? config.model.id : (config.model.file as NSString).lastPathComponent)"

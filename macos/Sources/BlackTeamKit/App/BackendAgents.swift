@@ -157,7 +157,10 @@ extension Backend {
         let turn = AgentTurn(service: service)
         // The tool's own stop: the person's Stop, or the reply reaching its limit.
         let stopTool = CancelSignal()
+        // `observe` does not call back for a signal that is already cancelled, so a Stop pressed before this point is passed on here.
+        // Without this the tool's own stop signal was never cancelled and the run (and anything waiting for it) never ended.
         _ = signal.observe { stopTool.cancel() }
+        if signal.isCancelled { stopTool.cancel() }
         let writer = AgentRunWriter(turn: turn, ref: ref, job: job, stopTool: stopTool) { [weak self] thread in try? self?.persist(thread) }
         // Ask for Claude Code runs the tool again after each round of answers; every other level runs it once.
         var exit = AgentExit(status: nil)
@@ -166,6 +169,8 @@ extension Backend {
         var currentTask = task, currentSession = session
         var leftover: [AgentDenial] = []
         while true {
+            // Stop came before the tool launched: it is never started.
+            if signal.isCancelled { exit = AgentExit(status: nil, cancelled: true); break }
             turn.startRound()
             let arguments = AgentTools.arguments(service: service, task: currentTask, session: currentSession, workspace: workspace,
                                                  permission: permission, allowedTools: allowed)
