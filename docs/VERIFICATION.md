@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.13**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.14**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -301,6 +301,37 @@ note. One console error appeared on every load: the page's own inline theme
 script is blocked by its Content Security Policy (`script-src 'self'`), so the
 saved theme is applied a moment later by the app instead of before first paint.
 It does not affect function; a fix is to allow that script's hash.
+
+## Live follow-up — October 11, 2026 (alpha.14)
+
+One change after alpha.13, on macOS only: **image attachments in Chat**. Up to
+four pictures per message, by "+ Files", drag and drop or paste. Each is scaled
+to 1280 on its longer side and stored as a JPEG without metadata under
+`attachments/` in the data folder; the conversation keeps a reference only, and
+a paired phone is sent the text alone. A GGUF model needs its projector file:
+the starter list names one for Ornith 1.5 9B and Qwen3.5 0.8B and 4B, and
+attaching a picture offers the download and restarts the model with it. The
+Linux code is unchanged; the Linux package differs from alpha.13 only in its
+version and documents.
+
+Automated suites at the build: 148 Node and 22 Python tests pass on Linux; 321
+Swift tests pass on macOS, 42 of them for images.
+
+Checked live on a Mac mini. From the command line, Qwen3.5 0.8B answered "A red
+circle." and "blue rectangle"; Ornith 1.5 9B with its own vision file answered
+"A green triangle." and read "HERON 4721" from a picture of text. A 4000×3000
+picture was stored as 1280×960; stored files were JPEG, mode 0600, with no EXIF
+or GPS tags, and the conversation files held no image data. In the app's own
+window with Ornith 1.5 9B: pasting a picture showed its preview, removing it
+worked, sending got "It is a green triangle.", and Code mode had no image
+button. With no vision file, the notice appeared, the 922 MB download ran with
+progress, the running model restarted with the projector, and the next picture
+was read correctly. Image cost on llama.cpp measured about one token per 32×32
+pixels (1,614 for the largest picture sent); 1,700 is allowed per picture.
+
+The owner then used image attachments in the app on a second Mac mini and
+reported that they work. The Qwen3.5 4B vision file has not been downloaded or
+tried. There are no image attachments from a paired phone.
 
 ## Live follow-up — October 11, 2026 (alpha.13)
 
