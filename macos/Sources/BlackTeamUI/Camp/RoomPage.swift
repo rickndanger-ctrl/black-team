@@ -323,13 +323,18 @@ struct RoomBoardCard: View {
     let state: RoomState
     @State private var title = ""
     @State private var assignee = ""
+    @State private var adding = false
     @Environment(\.btTheme) private var theme
 
     private let columns: [RoomStatus] = [.todo, .doing, .review, .done]
 
     var body: some View {
-        WorkCard(label: "BOARD", title: "Tasks") {
+        WorkCard(label: "TASKS", title: "The team\u{2019}s to-do list") {
             VStack(alignment: .leading, spacing: 16) {
+                CardText("In a team run the lead writes the tasks here and each one moves from To do to Done as members finish. You do not need to add anything. Click a task to see what was done.")
+                if state.tasks.isEmpty {
+                    Text("No tasks yet. Give the team a goal above and press Run team.").btBody(12, 1.5, theme.muted)
+                }
                 HStack(alignment: .top, spacing: 10) {
                     ForEach(columns, id: \.self) { status in
                         VStack(alignment: .leading, spacing: 8) {
@@ -341,7 +346,10 @@ struct RoomBoardCard: View {
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
                 }
-                addRow
+                if adding { addRow } else {
+                    Button("Add a task yourself") { adding = true }.buttonStyle(.btQuiet)
+                        .accessibilityLabel("Add a task yourself").disabled(room.running)
+                }
             }
             .padding(.top, 14)
         }
@@ -359,10 +367,17 @@ struct RoomBoardCard: View {
     private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private var addRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Optional: give one member a single job without a team run. Say what should be done, choose who does it, press Add, then press Start on the task.").btBody(12, 1.5, theme.muted)
+            addFields
+        }
+    }
+
+    private var addFields: some View {
         HStack(spacing: 8) {
-            BTTextField("Task title", text: $title, size: 12.5).frame(maxWidth: .infinity)
+            BTTextField("What should be done, in a few words", text: $title, size: 12.5).frame(maxWidth: .infinity)
             RoomSelect(label: "Assignee", selection: $assignee) {
-                Text("Unassigned").tag("")
+                Text("Nobody yet").tag("")
                 ForEach(state.members, id: \.id) { Text($0.name).tag($0.id) }
             }
             Button("Add") {
