@@ -285,6 +285,7 @@ Model weights stay where you selected them.
 ```sh
 npm run build
 npm test
+scripts/build-engine.sh
 npm run package:linux -- --runtime-zip /path/to/electron-v44.7.0-linux-x64.zip --out release
 ```
 

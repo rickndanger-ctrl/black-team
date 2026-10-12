@@ -3,7 +3,11 @@ import BlackTeamTerminal
 #if canImport(Darwin)
 import Darwin
 #else
+#if canImport(Glibc)
 import Glibc
+#else
+import Musl
+#endif
 #endif
 
 // Terminal input and output: raw mode, the terminal being put back however the program ends, and reading keys.

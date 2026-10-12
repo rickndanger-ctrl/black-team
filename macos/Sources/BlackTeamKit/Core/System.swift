@@ -1,8 +1,12 @@
 import Foundation
 #if canImport(Darwin)
 import Darwin
-#elseif canImport(Glibc)
+#elseif canImport(Glibc) || canImport(Musl)
+#if canImport(Glibc)
 import Glibc
+#else
+import Musl
+#endif
 #endif
 
 // What this computer is and how hard it is working, read from the kernel (sysctl and the Mach

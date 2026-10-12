@@ -81,6 +81,8 @@ public final class Backend: @unchecked Sendable {
     var phoneOptions = PhoneOptions()
     /// The team run in progress (App/BackendTeam.swift); nil when none is running.
     var teamControl: TeamControl?
+    /// Set only by the Linux desktop service (Desktop/): where the app's scripts are, and that Hermes is supported. Nil on the Mac.
+    var desktopOptions: DesktopOptions?
 
     private var keeperFile: String { dataFolder + "/keeper.json" }
     private var projectsFile: String { dataFolder + "/projects.json" }
@@ -343,14 +345,18 @@ public final class Backend: @unchecked Sendable {
         let privacy = privacyDecision(config: config, existing: existing, project: project, kind: kind, viaPhone: origin == .phone)
         if let refusal = privacy.refusal { throw BlackTeamError(refusal) }
         let cloudModel = config.model.source == "cloud"
-        // Code runs on Black Team's own engine. Hermes conversations are not available on the Mac.
+        // Code runs on Black Team's own engine. Hermes runs only in the Linux desktop service, started with its scripts and with
+        // Hermes enabled (Desktop/HermesRunner.swift); the Mac and the terminal program never have the scripts, so never use it.
         var agentEngine: String?
         if kind == "agent" {
-            agentEngine = existing.map { $0["engine"]?.string ?? ($0["hermesSession"] != nil ? "hermes" : "black-team") } ?? "black-team"
-            if agentEngine == "hermes" {
+            let hermesSettings = desktopOptions?.scripts == nil ? nil : try? integrations.read()
+            let hermesOn = hermesSettings?.hermes.enabled == true
+            agentEngine = existing.map { $0["engine"]?.string ?? ($0["hermesSession"] != nil ? "hermes" : "black-team") }
+                ?? (hermesOn && hermesSettings?.engine == "hermes" ? "hermes" : "black-team")
+            if agentEngine == "hermes" && !hermesOn {
                 throw BlackTeamError("This conversation uses Hermes. Enable it in desktop Settings, or start a new Code conversation.")
             }
-            if engine == nil { throw BlackTeamError("Code is unavailable in this build.") }
+            if agentEngine != "hermes" && engine == nil { throw BlackTeamError("Code is unavailable in this build.") }
         }
         if !uploads.isEmpty, config.model.source == "gguf", config.model.mmproj.isEmpty { throw BlackTeamError(ImageRules.needsVisionFile) }
         var thread = existing ?? history.create(message)
@@ -420,7 +426,17 @@ public final class Backend: @unchecked Sendable {
                 try await runtime.setBusy(true)
                 headers = try await runtime.requestHeaders()
             }
-            if kind == "agent" {
+            if kind == "agent" && ref.value["engine"]?.string == "hermes" {
+                // The desktop service's Hermes host (lib/server.cjs ran agentRunner here). Submit refuses it anywhere else.
+                guard let scripts = locked({ desktopOptions?.scripts }) else {
+                    throw BlackTeamError("This conversation uses Hermes. Enable it in desktop Settings, or start a new Code conversation.")
+                }
+                job.progress = "Starting Black Team harness with Hermes tools\u{2026}"
+                try await HermesRunner(scripts: scripts, dataFolder: dataFolder, integrations: integrations).run(
+                    thread: ref, config: config, workspace: workspace, runtime: StartedRuntimeHeaders(headers), endpoint: endpoint, job: job,
+                    cancel: signal, save: { [weak self] thread in try self?.persist(thread) })
+                try check()
+            } else if kind == "agent" {
                 job.progress = "Starting Black Team Code\u{2026}"
                 guard let engine else { throw BlackTeamError("Code is unavailable in this build.") }
                 try await engine.run(thread: ref, config: config, runtime: StartedRuntimeHeaders(headers), endpoint: endpoint, job: job, signal: signal,

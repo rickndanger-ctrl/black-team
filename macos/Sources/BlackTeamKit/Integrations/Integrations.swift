@@ -82,6 +82,8 @@ public final class Integrations: @unchecked Sendable {
     public let stateDir: String
     public let file: String
     private let lock = NSLock()
+    /// The Linux desktop service runs Hermes as the Linux app did; on the Mac it cannot be enabled, connected or launched.
+    public var hermesSupported = false
 
     public init(stateDir: String) {
         self.stateDir = stateDir
@@ -129,7 +131,16 @@ public final class Integrations: @unchecked Sendable {
                 if let path = item.string, !path.isEmpty { try requireExecutable(path) }
             }
         }
-        if engine == "hermes" || h["enabled"]?.bool == true { throw BlackTeamError(hermesUnavailable) }
+        if hermesSupported {
+            // As lib/integrations.cjs: an enabled Hermes needs its Python and its source folder.
+            if h["enabled"]?.bool == true {
+                try requireExecutable(h["python"]?.string ?? "")
+                let source = h["source"]?.string ?? ""
+                if !(source.hasPrefix("/") && CoreFS.exists(source + "/hermes_bootstrap.py")) {
+                    throw BlackTeamError("Hermes was not found in this folder. Choose your installed Hermes Agent folder or use Find again.")
+                }
+            }
+        } else if engine == "hermes" || h["enabled"]?.bool == true { throw BlackTeamError(hermesUnavailable) }
         guard let list = next["harnesses"]?.array, list.count <= 20 else { throw BlackTeamError("Configure up to 20 harnesses.") }
         var ids = Set<String>()
         let invalid = BlackTeamError("Invalid harness. Use unique IDs, a name, argument arrays and executable paths.")
@@ -310,7 +321,7 @@ public func launchHarness(id: String, store: Integrations, config: Config, runti
     guard let item = try store.read().harnesses.first(where: { $0.id == id }) else {
         throw BlackTeamError("Configure this harness in Settings first.")
     }
-    if item.id == "hermes" { throw BlackTeamError(hermesUnavailable) }
+    if item.id == "hermes" && !store.hermesSupported { throw BlackTeamError(hermesUnavailable) }
     try requireExecutable(item.executable)
     if let first = item.terminal.first { try requireTerminal(first) }
     let workspace = try ensureWorkspace(config.workspace, defaultWorkspace: defaultWorkspace)
@@ -375,7 +386,7 @@ public struct ConnectResult: Equatable, Sendable {
 /// One step from "found on this computer" to "opens with my model".
 @discardableResult
 public func connectHarness(id: String, store: Integrations, found: DiscoveryResult, terminal chosen: FoundTerminal? = nil) throws -> ConnectResult {
-    if id == "hermes" { throw BlackTeamError(hermesUnavailable) }
+    if id == "hermes" && !store.hermesSupported { throw BlackTeamError(hermesUnavailable) }
     guard let app = found.apps.first(where: { $0.id == id }) else { throw BlackTeamError("That app was not found on this computer.") }
     let current = try store.read()
     if current.harnesses.contains(where: { $0.id == app.id }) { return ConnectResult(connected: true, name: app.name) }

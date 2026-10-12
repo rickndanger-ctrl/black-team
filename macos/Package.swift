@@ -37,7 +37,9 @@ let package = Package(
         .target(name: "BlackTeamTerminal", path: "Sources/BlackTeamTerminal", swiftSettings: [.swiftLanguageMode(.v5)]),
         .executableTarget(name: "BlackTeamCLI", dependencies: ["BlackTeamKit", "BlackTeamTerminal"], path: "Sources/BlackTeamCLI",
                           swiftSettings: [.swiftLanguageMode(.v5)]),
+        // Desktop/Fixtures/node-data is a data folder written by the Node app (lib/*.cjs); make-node-data.cjs makes it again.
         .testTarget(name: "BlackTeamKitTests", dependencies: ["BlackTeamKit"], path: "Tests/BlackTeamKitTests",
+                    exclude: ["Desktop/Fixtures/make-node-data.cjs"], resources: [.copy("Desktop/Fixtures/node-data")],
                     swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "BlackTeamTerminalTests", dependencies: ["BlackTeamTerminal"], path: "Tests/BlackTeamTerminalTests",
                     swiftSettings: [.swiftLanguageMode(.v5)]),

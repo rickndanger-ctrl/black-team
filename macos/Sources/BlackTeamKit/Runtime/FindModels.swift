@@ -4,8 +4,12 @@ import FoundationNetworking
 #endif
 #if canImport(Darwin)
 import Darwin
-#elseif canImport(Glibc)
+#elseif canImport(Glibc) || canImport(Musl)
+#if canImport(Glibc)
 import Glibc
+#else
+import Musl
+#endif
 #endif
 
 // Finds the models already on this computer, so setting up is choosing, not typing.

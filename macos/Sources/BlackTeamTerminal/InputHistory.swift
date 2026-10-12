@@ -2,7 +2,11 @@ import Foundation
 #if canImport(Darwin)
 import Darwin
 #else
+#if canImport(Glibc)
 import Glibc
+#else
+import Musl
+#endif
 #endif
 
 /// The lines typed before, for the up and down keys. Kept for the session and saved privately, newest 500.

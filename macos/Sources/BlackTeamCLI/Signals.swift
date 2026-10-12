@@ -3,7 +3,11 @@ import BlackTeamKit
 #if canImport(Darwin)
 import Darwin
 #else
+#if canImport(Glibc)
 import Glibc
+#else
+import Musl
+#endif
 #endif
 
 /// Ctrl-C and the signals that end the program. While a reply runs in the session, Ctrl-C only stops that reply; anywhere else

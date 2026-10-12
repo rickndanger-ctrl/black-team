@@ -196,7 +196,11 @@ final class ConfigTests: XCTestCase {
         let hardware = await hardwareReport(stateDir: f.stateDir)
         XCTAssertGreaterThan(hardware.cpu.cores, 0)
         XCTAssertGreaterThan(hardware.memory.total, 0)
+        #if os(Linux)
+        XCTAssertEqual(hardware.platform, "linux")
+        #else
         XCTAssertEqual(hardware.platform, "darwin")
+        #endif
         XCTAssertEqual(hardware.memory.free, hardware.memory.available)
         XCTAssertFalse(FileManager.default.fileExists(atPath: f.stateDir))
         XCTAssertGreaterThanOrEqual(hardware.disk?.available ?? 0, 0)

@@ -1,0 +1,24 @@
+{
+  "keys": {
+    "server": "f46e8088dbe16563",
+    "gguf": "5e8633ac633fdfe5"
+  },
+  "threads": {
+    "chat": "510d2c7a-8f23-449a-888a-c2af3fc720a7",
+    "agent": "ad88d1a8-a2b1-467e-ab0f-b521ccbdc3bc",
+    "cut": "1cab87a1-a90c-4b4a-b395-627540d6de63"
+  },
+  "requests": {
+    "chat": "9ec6694d-6abd-4537-9d9f-47701ee7d635",
+    "cut": "b9062036-ac2e-4438-9faa-243d1c7681a4"
+  },
+  "project": "7c319763-029c-4cba-a2c1-ff89e2c669e9",
+  "artifact": "f663a07f5c9ed66f15ad3d866a20c352",
+  "phone": {
+    "pair": "14356e539fe736a421318f01b341ea5504fbd60d905ee696b8b496170818c2f7",
+    "session": "a04d03443007dfef7ead8cca1735624067e00db3d9058fc1c4b6f098f6415bb1",
+    "hostname": "bt-laptop.tail1234.ts.net",
+    "owner": "rïck@example.com"
+  },
+  "undoId": "a580644037c2aa62d1849e34"
+}

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "name": "Ornith 1.5 ünï",
+      "file": "",
+      "runtime": "",
+      "source": "server",
+      "endpoint": "http://127.0.0.1:18081/v1",
+      "id": "ornith-1.5-ünï",
+      "apiKey": "",
+      "mmproj": "",
+      "draft": "",
+      "context": 32768,
+      "gpuLayers": 0,
+      "threads": 6
+    },
+    {
+      "name": "Qwén 27B Q4",
+      "file": "/home/rick/Modèles/qwén 27b \"Q4\"/model-ü.gguf",
+      "runtime": "/opt/llama.cpp/llama-server",
+      "source": "gguf",
+      "endpoint": "http://127.0.0.1:11434/v1",
+      "id": "",
+      "apiKey": "",
+      "mmproj": "",
+      "draft": "",
+      "context": 16384,
+      "gpuLayers": 0,
+      "threads": 8
+    }
+  ],
+  "ignored": [
+    "0123456789abcdef"
+  ]
+}

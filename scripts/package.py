@@ -82,13 +82,24 @@ def archive_tree(source, destination, root_name=None):
                     archive.addfile(info, contents)
 
 
-def build(project, runtime_zip, out):
+DEFAULT_ENGINE = Path('macos/.build/engine/black-team')
+
+
+def build(project, runtime_zip, out, engine):
     package = json.loads((project / 'package.json').read_text())
     version = package['version']
     if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?', version):
         raise ValueError('Unsafe application version.')
     if not (project / 'dist/index.html').is_file():
         raise ValueError('Run npm run build before packaging.')
+    # The engine is the Swift program that answers the window (black-team desktop-service). It is copied, not read as a tree.
+    if not engine.is_file():
+        raise ValueError(f'Engine binary is missing: {engine}. Build it with scripts/build-engine.sh, or pass --engine <path>.')
+    # A program that needs this computer's system libraries would not start on an older Linux.
+    with engine.open('rb') as handle:
+        head = handle.read(65536)
+    if head.startswith(b'\x7fELF') and b'/ld-linux' in head:
+        raise ValueError(f'Engine binary is not self-contained: {engine}. Build it with scripts/build-engine.sh.')
     out.mkdir(parents=True, exist_ok=True)
     stem = f'black-team-{version}-linux-x64'
     with tempfile.TemporaryDirectory(prefix='black-team-package-') as temporary:
@@ -100,15 +111,13 @@ def build(project, runtime_zip, out):
         app.mkdir(parents=True, exist_ok=True)
         # Explicit allowlist: never package a home profile, node_modules, caches,
         # source checkout, model weights, or a prior distribution directory.
-        for name in ('main.cjs', 'preload.cjs', 'dist'):
+        for name in ('main.cjs', 'preload.cjs', 'engine-client.cjs', 'dist'):
             copy_tree(project / name, app / name)
         for name in ('scripts/agent-runner.py', 'plugins/companion-tools/__init__.py', 'plugins/companion-tools/plugin.yaml'):
             copy_tree(project / name, app / name)
-        modules = sorted((project / 'lib').glob('*.cjs'))
-        if not modules:
-            raise ValueError('Application lib/*.cjs modules are missing.')
-        for module in modules:
-            copy_tree(module, app / 'lib' / module.name)
+        (app / 'bin').mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(engine, app / 'bin/black-team')
+        (app / 'bin/black-team').chmod(0o755)
         app_package = {key: package[key] for key in ('name', 'version', 'description', 'productName') if key in package}
         app_package['main'] = 'main.cjs'
         (app / 'package.json').write_text(json.dumps(app_package, indent=2) + '\n')
@@ -159,5 +168,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime-zip', type=Path, required=True)
     parser.add_argument('--out', type=Path, default=Path('release'))
+    parser.add_argument('--engine', type=Path, default=None,
+                        help='the black-team engine binary (default: macos/.build/engine/black-team, made by scripts/build-engine.sh)')
     args = parser.parse_args()
-    build(Path(__file__).resolve().parents[1], args.runtime_zip.resolve(), args.out.resolve())
+    project = Path(__file__).resolve().parents[1]
+    engine = args.engine.resolve() if args.engine else project / DEFAULT_ENGINE
+    build(project, args.runtime_zip.resolve(), args.out.resolve(), engine)

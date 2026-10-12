@@ -25,13 +25,15 @@ class InstallerTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.project = self.root / 'project'
         self.project.mkdir()
-        for folder in ('scripts', 'docs', 'lib', 'dist', 'node_modules'):
+        for folder in ('scripts', 'docs', 'dist', 'node_modules'):
             (self.project / folder).mkdir()
         for source in ('scripts/install.sh', 'docs/DISTRIBUTION.md', 'THIRD-PARTY-NOTICES.md', 'LICENSE'):
             shutil.copyfile(PROJECT / source, self.project / source)
         (self.project / 'main.cjs').write_text('// Fixture only.\n')
         (self.project / 'preload.cjs').write_text('// Fixture only.\n')
-        (self.project / 'lib/config.cjs').write_text('module.exports = {};\n')
+        (self.project / 'engine-client.cjs').write_text('// Fixture only.\n')
+        self.engine = self.root / 'black-team'
+        self.engine.write_bytes(b'\x7fELF fixture engine')
         (self.project / 'dist/index.html').write_text('<title>Fixture</title>')
         (self.project / 'dist/black-team-512.png').write_bytes(b'fixture icon')
         for dependency in ('react', 'react-dom', 'scheduler', 'qrcode', 'dijkstrajs'):
@@ -61,10 +63,10 @@ class InstallerTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def distribution(self, version):
+    def distribution(self, version, engine=None):
         (self.project / 'package.json').write_text(json.dumps({'name': 'black-team', 'version': version, 'main': 'main.cjs'}))
         with contextlib.redirect_stdout(io.StringIO()):
-            artifact = PACKAGER.build(self.project, self.runtime, self.root / 'out')
+            artifact = PACKAGER.build(self.project, self.runtime, self.root / 'out', engine or self.engine)
         extract = self.root / f'extracted-{version}'
         extract.mkdir()
         with tarfile.open(artifact) as archive:
@@ -188,7 +190,10 @@ class InstallerTests(unittest.TestCase):
         self.install(first)
         payload = self.prefix / 'share/black-team/current'
         manifest = json.loads((payload / 'MANIFEST.json').read_text())
-        self.assertTrue(any(name.endswith('lib/config.cjs') for name in manifest))
+        self.assertIn('resources/app/bin/black-team', manifest)
+        self.assertIn('resources/app/engine-client.cjs', manifest)
+        self.assertFalse(any('/lib/' in name for name in manifest))
+        self.assertTrue(os.access(payload / 'resources/app/bin/black-team', os.X_OK))
         for name in ('scripts/agent-runner.py', 'plugins/companion-tools/__init__.py', 'plugins/companion-tools/plugin.yaml'):
             self.assertIn('resources/app/'+name,manifest)
         self.assertFalse(any('node_modules' in name or 'personal-config' in name for name in manifest))
@@ -196,6 +201,11 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn(str(self.home), (payload / 'BUILD.json').read_text())
         for name, expected in manifest.items():
             self.assertEqual(PACKAGER.digest(payload / name), expected)
+
+    def test_missing_engine_is_refused_with_a_clear_message(self):
+        with self.assertRaisesRegex(ValueError, 'Engine binary is missing: .*black-team-missing.*--engine'):
+            self.distribution('0.1.0-alpha.1', engine=self.root / 'black-team-missing')
+        self.assertFalse((self.root / 'out').exists())
 
     def test_rejects_symlink_in_app_payload_and_unsafe_runtime(self):
         (self.project / 'dist/private').symlink_to(self.home)

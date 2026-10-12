@@ -24,9 +24,18 @@ public protocol PhoneBackend: AnyObject, Sendable {
     func memoryDelete(_ id: String) throws
     func memoryRemember(title: String, text: String, project: String?) throws -> String
     func memoryTidy() async -> String
+    /// The full status the desktop window reads (`status('desktop')`). Only the Linux desktop service has one.
+    func desktopStatus() async throws -> JSONValue
+    /// Toggles the system dictation tool. Only the Linux desktop window may.
+    func dictate() throws
 }
 
-enum PhoneAccess: Equatable { case pairing, phone, unpaired }
+extension PhoneBackend {
+    func desktopStatus() async throws -> JSONValue { try await phoneStatus() }
+    func dictate() throws { throw BlackTeamError("No system dictation tool is set up on this computer.") }
+}
+
+enum PhoneAccess: Equatable { case pairing, phone, unpaired, bootstrap, desktop }
 
 final class PhoneRouter: @unchecked Sendable {
     static let cookieName = "black_team_phone"
@@ -35,6 +44,8 @@ final class PhoneRouter: @unchecked Sendable {
     private let keys: PhoneKeys
     private let isConnected: @Sendable () async -> Bool
     private let files: PhoneStaticFiles
+    /// The Linux desktop window's session (lib/server.cjs `bootstrapKey` / `sessionKey`). Nil on the Mac, where the local address grants nothing.
+    private let desktop: DesktopSession?
     private let lock = NSLock()
     private var _localPort: Int
 
@@ -45,8 +56,8 @@ final class PhoneRouter: @unchecked Sendable {
 
     /// `isConnected` says the Tailscale route is Black Team's own, private, and points at a server that is running.
     init(backend: PhoneBackend, config: PhoneConfigStoring, keys: PhoneKeys, webRoot: String, localPort: Int = Phone.localPort,
-         isConnected: @escaping @Sendable () async -> Bool) {
-        self.backend = backend; self.config = config; self.keys = keys; self.isConnected = isConnected
+         desktop: DesktopSession? = nil, isConnected: @escaping @Sendable () async -> Bool) {
+        self.backend = backend; self.config = config; self.keys = keys; self.isConnected = isConnected; self.desktop = desktop
         files = PhoneStaticFiles(folder: webRoot); _localPort = localPort
     }
 
@@ -80,7 +91,12 @@ final class PhoneRouter: @unchecked Sendable {
         let origin = head.headers["origin"]
         if let origin, !origin.isEmpty, origin != expectedOrigin { throw HTTPFailure("Origin is not allowed.", 403) }
         if !["GET", "HEAD"].contains(head.method) && origin != expectedOrigin { throw HTTPFailure("A same-origin request is required.", 403) }
-        // The Mac has no desktop browser session: the local address grants nothing.
+        // The Mac has no desktop browser session: the local address grants nothing. The Linux desktop service has one:
+        // the window opens /bootstrap?key= once and keeps a session cookie.
+        if local, let desktop {
+            if head.path == "/bootstrap" && head.method == "GET" && phoneEqual(head.queryValue("key"), desktop.bootstrapKey) { return .bootstrap }
+            if phoneEqual(Self.cookie(head, named: DesktopSession.cookieName), desktop.sessionKey) { return .desktop }
+        }
         if remote, phoneEqual(head.headers["tailscale-user-login"], phone.owner), await isConnected() {
             if phoneEqual(Self.cookie(head), keys.secret("session", hostname: phone.hostname, owner: phone.owner)) { return .phone }
             if head.path == "/api/pair" && head.method == "POST" { return .pairing }
@@ -90,8 +106,8 @@ final class PhoneRouter: @unchecked Sendable {
     }
 
     /// The first `black_team_phone=` cookie, as server.cjs reads it.
-    static func cookie(_ head: HTTPHead) -> String? {
-        let prefix = cookieName + "="
+    static func cookie(_ head: HTTPHead, named name: String? = nil) -> String? {
+        let prefix = (name ?? cookieName) + "="
         return (head.headers["cookie"] ?? "").split(separator: ";", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }.first { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
     }
@@ -154,12 +170,18 @@ final class PhoneRouter: @unchecked Sendable {
             response.set("Set-Cookie", "\(Self.cookieName)=\(keys.secret("session", hostname: phone.hostname, owner: phone.owner)); Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000")
             return response
         }
+        if access == .bootstrap, let desktop {
+            var response = HTTPResponse(status: 303)
+            response.set("Set-Cookie", "\(DesktopSession.cookieName)=\(desktop.sessionKey); Path=/; HttpOnly; SameSite=Strict")
+            response.set("Location", "/")
+            return response
+        }
         // Everything below needs a paired phone. An unpaired visitor gets the page shell and nothing else.
         if access == .unpaired {
             if path.hasPrefix("/api/") || !["GET", "HEAD"].contains(method) { throw HTTPFailure("Not found.", 404) }
             return try served(head)
         }
-        guard access == .phone else { throw HTTPFailure("Not found.", 404) }
+        guard access == .phone || access == .desktop else { throw HTTPFailure("Not found.", 404) }
 
         if path == "/api/approval" && method == "POST" {
             let input = try bodyJSON(head, body)
@@ -172,7 +194,7 @@ final class PhoneRouter: @unchecked Sendable {
             return .json(200, ["sent": true])
         }
         if path.hasPrefix("/api/file/") && method == "GET" { return try artifact(String(path.dropFirst("/api/file/".count))) }
-        if path == "/api/status" && method == "GET" { return .json(200, try await backend.phoneStatus()) }
+        if path == "/api/status" && method == "GET" { return .json(200, access == .desktop ? try await backend.desktopStatus() : try await backend.phoneStatus()) }
         if path == "/api/project-create" && method == "POST" {
             let input = try bodyJSON(head, body)
             let made = try mine { try backend.createProject(name: input["name"]?.string ?? "") }
@@ -186,7 +208,9 @@ final class PhoneRouter: @unchecked Sendable {
         }
         if path == "/api/dictate" && method == "POST" {
             _ = try bodyJSON(head, body)
-            throw HTTPFailure("Use your phone keyboard\u{2019}s microphone to dictate.", 403)
+            if access != .desktop { throw HTTPFailure("Use your phone keyboard\u{2019}s microphone to dictate.", 403) }
+            do { try backend.dictate() } catch let known as BlackTeamError { throw HTTPFailure(known.message, 404) }
+            return .json(200, ["toggled": true])
         }
         if path.hasPrefix("/api/memory") { return try await memoryRoute(head, body) }
         if path.hasPrefix("/api/thread/") && method == "GET" {

@@ -2,7 +2,11 @@ import Foundation
 #if canImport(Darwin)
 import Darwin
 #else
+#if canImport(Glibc)
 import Glibc
+#else
+import Musl
+#endif
 #endif
 
 /// A phrase that is inside every Black Team command-line program and nothing else, so `install-command` can tell a link to one

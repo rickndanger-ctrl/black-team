@@ -1,0 +1,1 @@
+{"hermes":{"enabled":false,"python":"","source":"","browserExecutable":"","desktopDriver":"","coding":true,"browser":false,"desktop":false},"harnesses":[{"id":"claude","name":"Claude Code","executable":"/bin/sh","args":["--x","{model}"],"terminal":["/bin/sh","-e"],"preset":"claude"}],"engine":"black-team","dictation":""}

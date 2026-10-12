@@ -4,8 +4,12 @@ import FoundationNetworking
 #endif
 #if canImport(Darwin)
 import Darwin
-#elseif canImport(Glibc)
+#elseif canImport(Glibc) || canImport(Musl)
+#if canImport(Glibc)
 import Glibc
+#else
+import Musl
+#endif
 #endif
 
 // Starts and stops Black Team's own llama-server, or connects to a model server that is
@@ -66,7 +70,7 @@ public func runtimeEnvironment(_ source: [String: String] = ProcessInfo.processI
 /// A free loopback port: bound, read and released again.
 public func reserveLoopbackPort() async throws -> Int {
     #if os(Linux)
-    let fd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+    let fd = socket(AF_INET, posixSockStream, 0)
     #else
     let fd = socket(AF_INET, SOCK_STREAM, 0)
     #endif

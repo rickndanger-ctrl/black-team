@@ -162,8 +162,12 @@ public final class PhoneServer: @unchecked Sendable {
         await send(connection, response.serialized(head: isHead))
     }
 }
-#elseif canImport(Glibc)
+#elseif canImport(Glibc) || canImport(Musl)
+#if canImport(Glibc)
 import Glibc
+#else
+import Musl
+#endif
 
 /// The Linux version of the phone server, on POSIX sockets. Same rules as the Mac one: it listens on 127.0.0.1 only,
 /// takes connections from loopback only, and runs only while phone access is on. The request is read and answered by the
@@ -200,7 +204,7 @@ public final class PhoneServer: @unchecked Sendable {
 
     public func start() async throws {
         if isRunning { return }
-        let fd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+        let fd = socket(AF_INET, posixSockStream, 0)
         guard fd >= 0 else { throw Self.busy(requestedPort) }
         var yes: Int32 = 1
         // Lets a restart reuse the port while old connections wind down; it does not let two listeners share a port.
@@ -346,7 +350,7 @@ final class LinuxConnection: @unchecked Sendable {
 
     func close() {
         lock.lock(); let was = closed; closed = true; lock.unlock()
-        if !was { Glibc.close(fd) }
+        if !was { posixClose(fd) }
     }
 
     /// Waits for the socket to be ready, in short slices so a cancel is noticed. False when the deadline passed.
@@ -387,7 +391,7 @@ final class LinuxConnection: @unchecked Sendable {
                 data.withUnsafeBytes { raw in
                     while offset < data.count, !self.isCancelled {
                         guard self.wait(for: Int16(POLLOUT), until: deadline) else { return }
-                        let wrote = Glibc.send(self.fd, raw.baseAddress! + offset, data.count - offset, Int32(MSG_NOSIGNAL))
+                        let wrote = posixSend(self.fd, raw.baseAddress! + offset, data.count - offset, Int32(MSG_NOSIGNAL))
                         if wrote > 0 { offset += wrote }
                         else if wrote < 0 && errno != EINTR && errno != EAGAIN { return }
                     }
