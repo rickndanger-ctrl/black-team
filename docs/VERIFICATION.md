@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.15**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.16**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -301,6 +301,40 @@ note. One console error appeared on every load: the page's own inline theme
 script is blocked by its Content Security Policy (`script-src 'self'`), so the
 saved theme is applied a moment later by the app instead of before first paint.
 It does not affect function; a fix is to allow that script's hash.
+
+## Live follow-up — October 11, 2026 (alpha.16)
+
+Two changes after alpha.15, both on macOS. The Linux code is unchanged; the
+Linux package differs from alpha.15 only in its version and documents.
+
+**OpenRouter models work.** In alpha.15 every message to an OpenRouter model
+failed with "not a valid model ID": the model search sent Anthropic-style
+headers to every service, and OpenRouter answers those with a list whose names
+its chat route rejects. The headers now go to Anthropic only. Checked live with
+the owner's key: the search returned real ids, and a free model (Nemotron 3.5
+Lightning) answered a Chat message and completed a Code step that edited a
+file. The owner then used the same free model in the app on a second Mac mini;
+a completed cloud conversation with it was found in that app's data before this
+release was made. A model saved with alpha.15 has the wrong id and must be
+chosen again.
+
+**Subscription agents.** Black Team can hand a task to the person's own Claude
+Code or Codex command-line app, under their subscription and its own saved
+login. A run counts as a cloud conversation and passes the same gate (local-only
+projects, no silent conversion, not from a phone, nothing from the memory
+vault). The project folder is archived first so a task can be rolled back.
+Checked live on a Mac mini from the command line with the real tools: Claude
+Code fixed a file, a follow-up resumed the same session and roll back restored
+the file; Codex fixed a file and ran it to confirm; both were saved as cloud; a
+run from a local conversation was refused before any tool started.
+
+Automated suites at the build: 148 Node and 22 Python tests pass on Linux; 409
+Swift tests pass on macOS.
+
+Not checked: the app's own screens for subscription agents (the model select
+entries, the notice and the roll back button) have not been looked at or
+driven by anyone; the 30-minute run limit; OpenAI, Anthropic and Google cloud
+models directly; image attachments to a cloud model.
 
 ## Live follow-up — October 11, 2026 (alpha.15)
 
