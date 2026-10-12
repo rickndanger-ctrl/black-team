@@ -98,7 +98,7 @@ Tailscale's command-line tool is not on the PATH for the App Store or standalone
 for `/Applications/Tailscale.app/Contents/MacOS/Tailscale` first, then `tailscale` in `/opt/homebrew/bin`,
 `/usr/local/bin` and the PATH. The ports, the route rule and the checks are the same as above. The Mac has no desktop
 browser session, so only a paired phone can reach the server. Keep the Mac awake. For headless use,
-`black-team-cli phone enable`, `black-team-cli serve` and `black-team-cli phone link` do the same.
+`black-team phone enable`, `black-team serve` and `black-team phone link` do the same.
 
 References: [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve),
 [iPhone Home Screen](https://support.apple.com/guide/iphone/turn-a-website-into-an-app-iph42ab2f3a7/ios),

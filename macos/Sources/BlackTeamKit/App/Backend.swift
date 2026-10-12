@@ -55,6 +55,8 @@ public final class Backend: @unchecked Sendable {
     let home: String
     let harness: HarnessRuntimeAdapter
     let hub = ChangeHub()
+    /// Shared with the other Black Team on this data folder (the app or the command): who may run the local model.
+    public let engineLock: EngineLock
     let cpuSampler = CPUSampler()
 
     let lock = NSLock()
@@ -91,7 +93,8 @@ public final class Backend: @unchecked Sendable {
                 discover: @escaping @Sendable () -> DiscoveryResult = { discoverInstalled() },
                 runtimeInstaller: RuntimeProviding? = nil, downloader: @escaping @Sendable () -> FileDownloading = { Downloader() },
                 terminal: @escaping TerminalOpener = openInTerminal, now: @escaping @Sendable () -> Date = { Date() }, home: String = NSHomeDirectory(),
-                keeperInterval: TimeInterval = 60, cloud: CloudRules = .standard, agents: AgentLauncher = ProcessAgentLauncher()) throws {
+                keeperInterval: TimeInterval = 60, cloud: CloudRules = .standard, agents: AgentLauncher = ProcessAgentLauncher(),
+                program: String? = nil) throws {
         self.dataFolder = dataFolder
         self.version = version
         self.cloudRules = cloud
@@ -114,7 +117,12 @@ public final class Backend: @unchecked Sendable {
         memory = try customMemory ?? Memory(vault: dataFolder + "/vault")
         let cache = DiscoveryCache(discover)
         discovery = cache
-        let backendRuntime = customRuntime ?? ModelRuntime(configStore: configStore)
+        let sharedLock = EngineLock(dataFolder: dataFolder, program: program ?? EngineLock.defaultProgram())
+        sharedLock.acquire()
+        engineLock = sharedLock
+        let backendRuntime = customRuntime ?? ModelRuntime(configStore: configStore, launchGuard: {
+            if let refusal = sharedLock.refusalForLocalModel() { throw BlackTeamError(refusal) }
+        })
         runtime = backendRuntime
         engine = try customEngine ?? Engine(stateDir: dataFolder, vault: memory, fetch: stream, graph: { cache.get().graph }, cloud: cloud)
         self.fetch = fetch
@@ -816,6 +824,7 @@ public final class Backend: @unchecked Sendable {
         await waitForIdle()
         await roomTeamSettle()
         ModelRuntime.terminateOwnedProcesses()
+        engineLock.release()
         hub.finish()
     }
 }

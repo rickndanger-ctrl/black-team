@@ -32,6 +32,10 @@ else
     touch "$stage/Sources/BlackTeamUI/Resources/.keep"
     echo 'print("placeholder")' > "$stage/Sources/BlackTeam/main.swift"
   fi
+  # The terminal library has no dependencies, so it is always sent whole; the command itself stays a stand-in.
+  cp -r "$here/Sources/BlackTeamTerminal" "$stage/Sources/"
+  mkdir -p "$stage/Tests/BlackTeamTerminalTests"
+  cp -r "$here/Tests/BlackTeamTerminalTests/." "$stage/Tests/BlackTeamTerminalTests/"
   mkdir -p "$stage/Sources/BlackTeamCLI"
   echo 'print("placeholder")' > "$stage/Sources/BlackTeamCLI/main.swift"
 fi

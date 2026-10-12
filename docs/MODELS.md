@@ -57,7 +57,7 @@ Budgets: Code does not ration by measured reading speed for a cloud model. Its w
 the configured window, and one tool result may be larger in proportion. Step and time limits are the
 same. See [PRIVACY.md](PRIVACY.md) for what leaves the Mac.
 
-Command line: `black-team-cli cloud add --url https://api.openai.com/v1 --key-env OPENAI_API_KEY
+Command line: `black-team cloud add --url https://api.openai.com/v1 --key-env OPENAI_API_KEY
 --model <id> [--name ..] [--context N]` (the key is read from the named environment variable, never the
 command line), `cloud models`, and `chat`/`code ... --allow-cloud` to answer the question asked before a
 private conversation is sent to a service.
