@@ -11,12 +11,14 @@ struct MessageView: View, Equatable {
     let busy: Bool
     let canRemember: Bool
     let canRetry: Bool
+    /// The conversation has been sent to a cloud service, so memory plays no part in it.
+    var cloud = false
     unowned let model: AppModel
     var threadId: String?
 
     static func == (a: MessageView, b: MessageView) -> Bool {
         a.message == b.message && a.fallbackModel == b.fallbackModel && a.glowing == b.glowing && a.liveLabel == b.liveLabel
-            && a.busy == b.busy && a.canRemember == b.canRemember && a.canRetry == b.canRetry && a.threadId == b.threadId
+            && a.busy == b.busy && a.canRemember == b.canRemember && a.canRetry == b.canRetry && a.threadId == b.threadId && a.cloud == b.cloud
     }
 
     @Environment(\.btTheme) private var theme
@@ -39,7 +41,10 @@ struct MessageView: View, Equatable {
             if message.isUser, !message.images.isEmpty {
                 ImagePreviews(items: message.images.map { PreviewItem(id: $0.id, name: $0.name, image: model.sentImage(threadId: threadId, $0)) })
             }
-            if !message.recalled.isEmpty {
+            if cloud, message.isUser {
+                Text("Memory is not used in cloud conversations.")
+                    .font(BTFont.mono(10)).tracking(0.4).foregroundStyle(theme.faint).padding(.top, 10)
+            } else if !message.recalled.isEmpty {
                 Text("Memory used: \(unique(message.recalled.map(\.title)).joined(separator: ", "))")
                     .font(BTFont.mono(10)).tracking(0.4).foregroundStyle(theme.faint).padding(.top, 10)
                     .help(message.recalled.map { "\($0.title): \($0.text)" }.joined(separator: "\n"))

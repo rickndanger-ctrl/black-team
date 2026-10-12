@@ -15,6 +15,7 @@ extension Fmt {
 
     /// "35B · A3B · Q4_K_M" for a model file, "Local server · 127.0.0.1:18081" for a server.
     static func modelDetail(_ item: SavedModelSummary) -> String {
+        if item.isCloud { return "Cloud \u{00B7} \(item.provider)" }
         if item.source == "server" { return "Local server \u{00B7} \(item.location)" }
         let found = tokens(item).filter { isSize($0) || isActive($0) || isQuant($0) }
         return found.isEmpty ? "Model file \u{00B7} \((item.location as NSString).lastPathComponent)" : found.joined(separator: " \u{00B7} ")
@@ -42,12 +43,13 @@ extension AppModel {
         let runtime = status?.runtime
         return (status?.models ?? []).map { item in
             var state = "off"
-            if item.active {
+            // A cloud model has no server to start: it is reached when a message is sent.
+            if item.active, item.isCloud { state = "ready" } else if item.active {
                 if runtime?.ready == true { state = "ready" }
                 else if runtime?.state == "starting" { state = "starting" }
                 else if runtime?.state == "error" { state = "error" }
             }
-            return ModelCardInfo(id: item.key, name: item.name, detail: Fmt.modelDetail(item), active: item.active, state: state)
+            return ModelCardInfo(id: item.key, name: item.name, detail: Fmt.modelDetail(item), active: item.active, state: state, cloud: item.isCloud, provider: item.provider)
         }
     }
 
@@ -55,6 +57,7 @@ extension AppModel {
 
     /// "Ornith 1.5 online" in the header pill, or "Models offline".
     var pillText: String {
+        if let card = activeCard, card.cloud { return "Cloud \u{00B7} \(card.provider)" }
         if let card = activeCard, card.state == "ready" { return "\(card.name) online" }
         if let card = activeCard, card.state == "starting" { return "\(card.name) starting" }
         return "Models offline"

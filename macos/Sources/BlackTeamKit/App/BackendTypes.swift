@@ -22,6 +22,12 @@ public protocol CodeEngine: AnyObject, Sendable {
     func run(thread: ThreadRef, config: Config, runtime: EngineRuntime, endpoint: String, job: JobState, signal: CancelSignal?,
              save: @escaping @Sendable (JSONValue) throws -> Void, mode: String, workspace: String?) async throws
     func undo(_ id: String?) throws -> UndoResult
+    /// Takes the vault's contents out of a Code conversation before it is sent to a cloud service.
+    func scrubForCloud(_ threadId: String) throws
+}
+
+extension CodeEngine {
+    public func scrubForCloud(_ threadId: String) throws {}
 }
 
 extension Engine: CodeEngine {}
@@ -85,6 +91,10 @@ public struct RuntimeSummary: Codable, Equatable, Sendable {
     public var name: String
     public var error: String?
     public var features: [String]
+    /// "local", or "cloud" when the model in use is a service reached over the internet.
+    public var kind: String = "local"
+    /// For a cloud model, the service's host name.
+    public var provider: String = ""
 }
 
 public struct ApprovalSummary: Codable, Equatable, Sendable {
@@ -119,6 +129,20 @@ public struct ProjectSummary: Codable, Equatable, Sendable {
     public var workspace: String
     public var exists: Bool
     public var notes: String
+    /// A project is "local only" (the default: cloud models are refused for conversations in it) until the person allows cloud models.
+    public var cloudAllowed: Bool = false
+
+    public init(id: String, name: String, workspace: String, exists: Bool, notes: String, cloudAllowed: Bool = false) {
+        self.id = id; self.name = name; self.workspace = workspace; self.exists = exists; self.notes = notes; self.cloudAllowed = cloudAllowed
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, workspace, exists, notes, cloudAllowed }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id); name = try c.decode(String.self, forKey: .name); workspace = try c.decode(String.self, forKey: .workspace)
+        exists = try c.decode(Bool.self, forKey: .exists); notes = try c.decode(String.self, forKey: .notes)
+        cloudAllowed = try c.decodeIfPresent(Bool.self, forKey: .cloudAllowed) ?? false
+    }
 }
 
 public struct PerformanceMemory: Codable, Equatable, Sendable {
@@ -152,6 +176,9 @@ public struct PublicModelConfig: Codable, Equatable, Sendable {
     public var threads: Int
     public var mmproj: String
     public var draft: String
+    /// "local" or "cloud". For a cloud model `endpoint` is its address and `provider` its host; the key is never here.
+    public var kind: String = "local"
+    public var provider: String = ""
 }
 
 public struct PublicConfig: Codable, Equatable, Sendable {
@@ -192,6 +219,23 @@ public struct BackendStatus: Codable, Equatable, Sendable {
     public var downloadedRuntime: InstalledRuntime?
     /// Whether the model in use can read images.
     public var vision: VisionStatus
+    /// What the interface needs to say plainly where a conversation's words go.
+    public var cloud: CloudStatus = CloudStatus()
+}
+
+/// The facts behind "Cloud · host", the refusal choices and the cloud tag on a model card.
+public struct CloudStatus: Codable, Equatable, Sendable {
+    /// The model in use is a cloud model.
+    public var selected = false
+    /// Its service's host name ("" when a local model is in use).
+    public var provider = ""
+    public var modelName = ""
+    /// A saved local model to switch back to, if there is one.
+    public var localModelName = ""
+    public var localModelKey = ""
+    public init(selected: Bool = false, provider: String = "", modelName: String = "", localModelName: String = "", localModelKey: String = "") {
+        self.selected = selected; self.provider = provider; self.modelName = modelName; self.localModelName = localModelName; self.localModelKey = localModelKey
+    }
 }
 
 /// Whether the current model can see images, and if not, what would make it able to.
@@ -414,4 +458,7 @@ struct Project: Codable, Equatable, Sendable {
     var name: String
     var workspace: String
     var created: String
+    /// Cloud models may be used for conversations in this project. Off unless the person turned it on.
+    var cloud: Bool?
+    var cloudAllowed: Bool { cloud == true }
 }

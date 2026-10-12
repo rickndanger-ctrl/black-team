@@ -110,6 +110,16 @@ struct ServersPage: View {
         VStack(alignment: .leading, spacing: 0) {
             PhoneAccessCard(model: model, phone: model.phone)
             ForEach(model.status?.models ?? [], id: \.key) { item in
+              if item.isCloud {
+                // No server to start: it is reached over the internet when a message is sent.
+                WorkCard(label: "CLOUD", title: item.name) {
+                    CardText("Reached over the internet at \(item.provider). Conversations with it leave this Mac, and memory is not used in them.").padding(.bottom, 4)
+                    HStack(spacing: 10) {
+                        Button("Open agent workspace") { Task { await model.openAgentWorkspace(item.key) } }.buttonStyle(.btSecondary).disabled(model.busy)
+                    }
+                    .padding(.top, 4)
+                }
+              } else {
                 let ready = item.active && runtime?.ready == true
                 let starting = item.active && runtime?.state == "starting"
                 let on = ready || starting
@@ -121,6 +131,7 @@ struct ServersPage: View {
                     }
                     .padding(.top, 4)
                 }
+              }
             }
             PhoneAppCard()
         }

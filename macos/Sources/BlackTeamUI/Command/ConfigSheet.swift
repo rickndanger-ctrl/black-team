@@ -52,8 +52,11 @@ struct ModelListPanel: View {
                             HStack(alignment: .center, spacing: 18) {
                                 VStack(alignment: .leading, spacing: 0) {
                                     Text(item.name).font(BTFont.body(13, .semibold)).foregroundStyle(theme.ink).frame(height: 19.5, alignment: .leading)
-                                    Text("\(item.source == "server" ? "Local server" : "Model file") \u{00B7} \(item.location) \u{00B7} \(Fmt.number(item.context)) tokens")
-                                        .btBody(11, 1.5, theme.muted, floor: 19.5)
+                                    HStack(spacing: 8) {
+                                        Text("\(item.isCloud ? "Cloud" : item.source == "server" ? "Local server" : "Model file") \u{00B7} \(item.location) \u{00B7} \(Fmt.number(item.context)) tokens")
+                                            .btBody(11, 1.5, theme.muted, floor: 19.5)
+                                        if item.isCloud { CloudTag() }
+                                    }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 if item.active {

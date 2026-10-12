@@ -4,9 +4,50 @@ Black Team has no analytics integration, hosted chat backend, advertising script
 online license check, or automatic cloud model fallback. Fonts and artwork are
 packaged locally. A Black Team account is not needed.
 
+## Cloud models on the Mac (the Linux app is local only)
+
+The native Mac app can use a **cloud model**: an OpenAI-compatible service you name, reached over
+HTTPS with your own API key. The Linux app cannot; everything below this section describes it and
+stays true for it. On the Mac, nothing changes until you save a cloud model. Privacy then travels with
+the work, not with a section of the app, and the rule is enforced by the engine:
+
+- **Every conversation has a level**, shown at all times: `local` (nothing in it is sent off this Mac,
+  the default) or `cloud` (it may be sent to the service named on it). The level is fixed by the model
+  a conversation is started with. Before the first send of a new cloud conversation the app lists what
+  will leave: your messages and pictures, and in Code the contents of any file the agent reads, the
+  output of any command it runs and the path of the workspace folder.
+- **Local never silently becomes cloud.** A message in a local conversation is refused while a cloud
+  model is selected. You may start a new cloud conversation, switch back to a local model, or send the
+  conversation to the service after a confirmation that names it and says all of it will be sent. A
+  cloud conversation continued with a local model runs locally but stays marked cloud, because its
+  history was sent. A cloud conversation is also refused for a different service until converted again.
+- **Projects** are local only until you allow cloud models in one (its menu, confirmed once). Cloud
+  models are refused for conversations inside a local-only project.
+- **Memory stays local.** A cloud conversation gets no Core, no recalled notes and no `remember` or
+  `recall` tools; nothing is written to the vault from it, including the Code journal. Converting a
+  conversation removes the Core and recalled notes already in it. Memory tidying (which asks a model to
+  rewrite notes) refuses to run while a cloud model is selected.
+- **A phone** may continue conversations but cannot start one with a cloud model, convert one, or choose
+  a model; it is refused with the same words as the Mac.
+- **Keys** live in the private `config.json` and saved-models file (owner-only), are never shown again,
+  never sent to a phone, never put in conversations or logs, and are removed from error messages. A key
+  is sent only to the host it was entered for; if the saved address's host changes the key is cleared.
+  A local server's key never becomes a cloud key. Redirects are refused.
+- **Addresses** must be `https` with a real host name: not `localhost`, not an IP address in any
+  spelling, not a name ending `.local`, `.lan`, `.internal` and the like, and no credentials, query or
+  fragment. Local sources still accept only loopback.
+- **Requests** carry standard fields only (no llama.cpp extras). Token counts from the service's own
+  `usage` are shown per cloud conversation. Prices are not.
+- **Harnesses** (Claude Code, DeepSeek Harness and the rest) are not launched against a cloud model.
+
+What this does not cover: the service's own retention and training policy (read it); what a model says
+back, which is saved locally; and a model that quotes vault text it was shown in a *local* turn before a
+conversation was converted (only the vault text Black Team itself attached is removed). A host name that
+resolves to a private address is not detected. Anyone with your OS account can read the key file.
+
 ## Models and harnesses
 
-The app sends model requests only to configured loopback HTTP endpoints. Its
+On Linux, and on the Mac for every model that is not a cloud model, the app sends model requests only to configured loopback HTTP endpoints. Its
 owned llama.cpp process uses a fresh private key and is checked for model identity
 and authentication. Startup clears inherited inference overrides; stop affects
 only that owned child. A selected executable is trusted software running as you.

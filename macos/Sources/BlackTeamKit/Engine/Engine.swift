@@ -92,18 +92,42 @@ public final class Engine: @unchecked Sendable {
     private let graph: @Sendable () -> String
     private let home: String
     private let useRtk: Bool
+    private let cloudRules: CloudRules
 
     /// graph: returns the graphify executable when one is installed, so Code can ask a map of the workspace.
     public init(stateDir: String, vault: Memory? = nil, fetch: @escaping HTTPStreamFetch = LocalHTTP.stream,
                 now: @escaping @Sendable () -> Date = { Date() }, graph: @escaping @Sendable () -> String = { "" },
-                home: String = NSHomeDirectory(), useRtk: Bool = true) throws {
+                home: String = NSHomeDirectory(), useRtk: Bool = true, cloud: CloudRules = .standard) throws {
         self.stateDir = stateDir; self.vault = vault; self.fetch = fetch; self.now = now; self.graph = graph; self.home = home; self.useRtk = useRtk
+        self.cloudRules = cloud
         dir = stateDir + "/engine"; undoDir = dir + "/undo"; artifacts = stateDir + "/artifacts"
         try privateDirectory(dir); try privateDirectory(undoDir); try privateDirectory(artifacts)
     }
 
     /// Puts a file back as it was before one edit.
     public func undo(_ id: String?) throws -> UndoResult { try Tools.undoChange(undoDir, id) }
+
+    /// What a cloud model has learned to refuse, kept in the private state folder.
+    var capabilities: CloudCapabilities { CloudCapabilities(dataFolder: stateDir) }
+
+    /// Before a local Code conversation is sent to a cloud service: takes the vault out of what the engine would send.
+    /// Core memory goes, the results of `recall` go, and so do the work-log lines that name recalled or saved notes.
+    public func scrubForCloud(_ threadId: String) throws {
+        guard !threadId.contains("/"), let data = FileManager.default.contents(atPath: memoryFile(threadId)), let saved = try? JSONValue.parse(data), var object = saved.object else { return }
+        var recalledCalls = Set<String>()
+        for message in object["messages"]?.array ?? [] {
+            for call in message["tool_calls"]?.array ?? [] where ["recall", "remember"].contains(call["function"]?["name"]?.string ?? "") {
+                if let id = call["id"]?.string { recalledCalls.insert(id) }
+            }
+        }
+        object["messages"] = .array((object["messages"]?.array ?? []).map { message in
+            guard message["role"]?.string == "tool", let id = message["tool_call_id"]?.string, recalledCalls.contains(id) else { return message }
+            return message.setting("content", "[Memory result removed: memory is not used in cloud conversations.]")
+        })
+        object["log"] = .array((object["log"]?.array ?? []).filter { !($0.string ?? "").hasPrefix("recall ") && !($0.string ?? "").hasPrefix("remember ") })
+        object["core"] = nil
+        try writeJSON(memoryFile(threadId), JSONValue.object(object))
+    }
 
     private func memoryFile(_ threadId: String) -> String { "\(dir)/\(threadId).json" }
     // Each model's measured speed is remembered, so a new conversation starts calibrated.
@@ -156,12 +180,18 @@ public final class Engine: @unchecked Sendable {
         }
         try ensureWorkspace(workspace)
         let isServer = config.model.source == "server"
-        let model = isServer ? config.model.id : "black-team-local"
+        let cloud = config.model.source == "cloud"
+        // A conversation that has been sent to a cloud service never gets memory from the vault, whatever model runs it now.
+        let cloudThread = cloud || thread.value["privacy"]?.string == "cloud"
+        let model = isServer || cloud ? config.model.id : "black-team-local"
         let source = config.model.source.isEmpty ? "gguf" : config.model.source
-        let identity = "\(source):\(isServer ? config.model.id : (config.model.file as NSString).lastPathComponent)"
+        let identity = "\(source):\(isServer || cloud ? config.model.id : (config.model.file as NSString).lastPathComponent)"
         let headers = runtime.requestHeaders()
         let key = headers["Authorization"].map { String($0.dropFirst(7)) } ?? ""
-        let redact: @Sendable (String) -> String = { value in key.isEmpty ? value : EText.replaceAll(value, key, "[redacted]") }
+        let redact: @Sendable (String) -> String = { value in redactSecrets(value, keys: [key]) }
+        // The address was checked when the model was saved and is checked again here, so the key goes only to a cloud host.
+        let cloudTarget: CloudEndpoint?
+        if cloud { cloudTarget = try cloudRules(endpoint) } else { cloudTarget = nil }
         let now = self.now
 
         let threadValue = thread.value
@@ -201,20 +231,21 @@ public final class Engine: @unchecked Sendable {
         defer { unobserveStop(); job.withdraw() }
 
         var memory = loadMemory(threadId, identity)
-        var limits = Engine.budgets(memory.readSpeed, contextWindow)
+        if cloudThread { memory.core = nil }
+        var limits = Engine.budgets(memory.readSpeed, contextWindow, cloud: cloud)
         let resultLimit = LimitBox(limits.resultChars)
         let mapper = graph()
         let tools = try Tools(workspace: workspace, artifacts: artifacts, undoDir: undoDir, home: home, deny: [stateDir], limit: { resultLimit.value }, ask: ask,
                               signal: stop, useRtk: useRtk, graph: mapper, graphDir: mapper.isEmpty ? "" : stateDir + "/graphs")
         // The todo list belongs to the tools; a saved one is put back through the todo tool.
         if !memory.todo.isEmpty { _ = await tools.call("todo", ["items": .array(memory.todo.map { ["text": .string($0.text), "done": .bool($0.done)] })]) }
-        let vault = self.vault
+        let vault = cloudThread ? nil : self.vault
         let remembers = vault != nil
         var schemas = tools.schemas.array ?? []
         if remembers { schemas += MEMORY_TOOLS.array ?? [] }
         // Core memory is read once per conversation and then left alone, so the cached prompt stays valid.
         if let vault, memory.core == nil { memory.core = vault.core() }
-        var system = Engine.SYSTEM(workspace)
+        var system = Engine.SYSTEM(workspace, cloud: cloud)
         if !mapper.isEmpty { system += "\nThe map tool knows this code: ask it which files and functions matter before reading many files. It answers with paths and line numbers." }
         if remembers {
             system += "\nYou have a memory that lasts across conversations. Use recall when a task refers to earlier work or to the user's preferences, and remember to save a lasting fact once you have verified it."
@@ -240,12 +271,15 @@ public final class Engine: @unchecked Sendable {
         }
         memory.requests.append(request)
         memory.messages.append(["role": "user", "content": .string(request)])
-        note("Black Team engine", "Ready \u{00B7} reads about \(EText.round(memory.readSpeed)) tokens/s \u{00B7} working budget \(EText.grouped(limits.working)) of \(EText.grouped(contextWindow)) tokens")
+        note("Black Team engine", cloud
+            ? "Ready \u{00B7} cloud model at \(cloudTarget?.host ?? "") \u{00B7} working budget \(EText.grouped(limits.working)) of \(EText.grouped(contextWindow)) tokens \u{00B7} memory is not used"
+            : "Ready \u{00B7} reads about \(EText.round(memory.readSpeed)) tokens/s \u{00B7} working budget \(EText.grouped(limits.working)) of \(EText.grouped(contextWindow)) tokens")
         job.progress = "Reading the task\u{2026}"
 
         // Shown live beside the mode switch: measured speeds, and how full the working budget is.
         func gauge(_ used: Int) {
-            job.meter = JobMeter(read: EText.round(memory.readSpeed), write: EText.round(memory.writeSpeed), used: used, budget: limits.working, window: contextWindow, trims: memory.trims)
+            job.meter = cloud ? JobMeter(used: used, budget: limits.working, window: contextWindow, trims: memory.trims)
+                : JobMeter(read: EText.round(memory.readSpeed), write: EText.round(memory.writeSpeed), used: used, budget: limits.working, window: contextWindow, trims: memory.trims)
         }
         gauge(memory.promptTokens)
         let maxTokens = min(Engine.OUTPUT_TOKENS[mode] ?? 4096, contextWindow / 4)
@@ -273,17 +307,41 @@ public final class Engine: @unchecked Sendable {
                 }
                 let expected = Engine.estimate(memory.messages) + 900
                 // Allow for a cold read of everything at half the measured speed, plus slack.
-                let idleMs = EText.round(max(180, min(180 + Double(expected) / max(5, memory.readSpeed / 2), 2700)) * 1000)
-                var body: [String: JSONValue] = [
-                    "model": .string(model), "messages": .array([["role": "system", "content": .string(system)]] + memory.messages), "tools": .array(schemas),
-                    "stream": true, "stream_options": ["include_usage": true], "max_tokens": .number(Double(maxTokens)), "temperature": 0.7,
-                ]
-                for (name, value) in thinkingOptions(mode) { body[name] = value }
-                let result: Completion
+                // A cloud service answers at its own pace; five silent minutes is stuck.
+                let idleMs = cloud ? 300_000 : EText.round(max(180, min(180 + Double(expected) / max(5, memory.readSpeed / 2), 2700)) * 1000)
+                let sending = [["role": "system", "content": .string(system)]] + memory.messages
+                var result: Completion
                 do {
-                    result = try await Engine.complete(endpoint: endpoint, headers: headers, body: .object(body), signal: stop, idleMs: idleMs, fetch: fetch, onText: { text in
-                        turn.set("content", .string(redact(text))); job.progress = "Writing a reply\u{2026}"; try turn.persist()
-                    }, now: now)
+                    var learned = 0
+                    while true {
+                        // A cloud request carries the standard fields only, shaped by what this model has refused before.
+                        let body: JSONValue
+                        if let cloudTarget {
+                            body = CloudRequest.body(model: model, messages: sending, tools: schemas, maxTokens: maxTokens, mode: mode, caps: capabilities.caps(host: cloudTarget.host, model: model))
+                        } else {
+                            var local: [String: JSONValue] = [
+                                "model": .string(model), "messages": .array(sending), "tools": .array(schemas),
+                                "stream": true, "stream_options": ["include_usage": true], "max_tokens": .number(Double(maxTokens)), "temperature": 0.7,
+                            ]
+                            for (name, value) in thinkingOptions(mode) { local[name] = value }
+                            body = .object(local)
+                        }
+                        do {
+                            result = try await Engine.complete(endpoint: cloudTarget?.base ?? endpoint, headers: headers, body: body, signal: stop, idleMs: idleMs, fetch: fetch, onText: { text in
+                                turn.set("content", .string(redact(text))); job.progress = "Writing a reply\u{2026}"; try turn.persist()
+                            }, now: now)
+                            break
+                        } catch let failure as ModelRequestError {
+                            // The service said which field it refuses: leave it out, remember that, and ask again.
+                            if let cloudTarget, learned < 4, let next = CloudRequest.learn(status: failure.status, message: failure.detail, param: failure.param,
+                                                                                            from: capabilities.caps(host: cloudTarget.host, model: model)) {
+                                capabilities.record(host: cloudTarget.host, model: model, next)
+                                learned += 1
+                                continue
+                            }
+                            throw failure
+                        }
+                    }
                 } catch {
                     // The server's count is exact and ours is an estimate; if it says too long, trim harder once.
                     if let failure = error as? ModelRequestError, failure.overflow, Engine.trim(&memory, limits.working / 2) {
@@ -293,11 +351,12 @@ public final class Engine: @unchecked Sendable {
                     }
                     throw error
                 }
-                if let timings = result.timings {
+                if cloud, let usage = result.usage { thread.addUsage(CloudUsage(prompt: usage.promptTokens, completion: usage.completionTokens, cached: usage.cachedTokens)); try turn.persist() }
+                if !cloud, let timings = result.timings {
                     if timings.promptN >= 300 && timings.promptPerSecond > 0 { memory.readSpeed = memory.readSpeed * 0.5 + timings.promptPerSecond * 0.5 }
                     if timings.predictedN >= 20 && timings.predictedPerSecond > 0 { memory.writeSpeed = memory.writeSpeed * 0.5 + timings.predictedPerSecond * 0.5 }
                 }
-                limits = Engine.budgets(memory.readSpeed, contextWindow)
+                limits = Engine.budgets(memory.readSpeed, contextWindow, cloud: cloud)
                 resultLimit.value = limits.resultChars
                 let reported = result.usage.flatMap { $0.promptTokens != 0 ? $0.promptTokens + $0.completionTokens : nil }
                 gauge(reported ?? expected)
@@ -353,8 +412,9 @@ public final class Engine: @unchecked Sendable {
             if !unfinished.isEmpty { turn.set("note", "This turn stopped before the task was finished.") }
             if let meter = job.meter { turn.set("meter", meter.json) }
             // A journal entry is a convenience; the turn itself succeeded.
+            // No journal entry for a cloud conversation: nothing is written to the vault from it.
             if let vault { _ = try? vault.journal(workspace, request: request, log: Array(memory.log.dropFirst(logStart)), outcome: answer) }
-            try saveMemory(threadId, memory); try saveProfile(identity, memory)
+            try saveMemory(threadId, memory); if !cloud { try saveProfile(identity, memory) }
         } catch {
             try? saveMemory(threadId, memory) // The original failure is the one to report.
             if stop.isCancelled || Task.isCancelled || error is CancellationError { throw CancellationError() }

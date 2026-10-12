@@ -77,15 +77,16 @@ private func requireInteger(_ value: JSONValue?, _ label: String, _ low: Int, _ 
     }
 }
 
-private func validateShape(_ config: JSONValue) throws {
+private func validateShape(_ config: JSONValue, cloud: CloudRules) throws {
     try requireKeys(config, topKeys, "configuration")
     if config["schemaVersion"]?.double != 1 { throw BlackTeamError("Unsupported configuration version. Install a compatible Black Team version.") }
     try requireKeys(config["model"], modelKeys, "model")
     let model = config["model"]!
-    guard let source = model["source"]?.string, ["gguf", "server"].contains(source) else {
-        throw BlackTeamError("Choose a GGUF file or an existing local server.")
+    guard let source = model["source"]?.string, ["gguf", "server", "cloud"].contains(source) else {
+        throw BlackTeamError("Choose a GGUF file, an existing local server or a cloud model.")
     }
-    _ = try localEndpoint(model["endpoint"]?.string ?? "")
+    // A cloud model's address is checked as a cloud address; every other source still only ever talks to this Mac.
+    if source == "cloud" { _ = try cloud(model["endpoint"]?.string ?? "") } else { _ = try localEndpoint(model["endpoint"]?.string ?? "") }
     guard let key = model["apiKey"]?.string else { throw BlackTeamError("The server API key must contain only printable characters without spaces.") }
     _ = try serverHeaders(key)
     try requireText(model["id"], "Server model ID", max: 256)
@@ -96,7 +97,7 @@ private func validateShape(_ config: JSONValue) throws {
         let value = model[field]!.string!
         if !value.isEmpty && !value.hasPrefix("/") { throw BlackTeamError("Model \(field) must be an absolute local path.") }
     }
-    try requireInteger(model["context"], "Context size", 512, 131072)
+    try requireInteger(model["context"], "Context size", 512, source == "cloud" ? 2_000_000 : 131072)
     try requireInteger(model["gpuLayers"], "GPU layers", 0, 999)
     try requireInteger(model["threads"], "CPU threads", 1, 1024)
     try requireText(config["workspace"], "Workspace")
@@ -223,7 +224,15 @@ public struct ModelValidation: Equatable, Sendable {
     public var memory: MemoryEstimate?
 }
 
-public func validateModelFiles(_ model: ModelConfig) throws -> ModelValidation {
+public func validateModelFiles(_ model: ModelConfig, cloud: CloudRules = .standard) throws -> ModelValidation {
+    if model.source == "cloud" {
+        _ = try cloud(model.endpoint)
+        if model.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.id.utf16.count > 256 || model.id.utf8.contains(where: { $0 < 0x20 || $0 == 0x7f }) {
+            throw BlackTeamError("Choose or type the model id of this cloud service.")
+        }
+        _ = try cloudHeaders(model.apiKey)
+        return ModelValidation(server: true)
+    }
     if model.source == "server" {
         _ = try localEndpoint(model.endpoint)
         if model.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.id.utf16.count > 256 || model.id.utf8.contains(where: { $0 < 0x20 || $0 == 0x7f }) {
@@ -262,12 +271,15 @@ public final class ConfigStore: @unchecked Sendable {
     public let filename: String
     private let defaultWorkspace: String
     private let lock = NSLock()
+    /// How a cloud model's address is checked. Always `.standard` in the app.
+    public let cloud: CloudRules
 
-    public init(stateDir: String, defaultWorkspace: String = AppPaths.defaultWorkspace()) throws {
+    public init(stateDir: String, defaultWorkspace: String = AppPaths.defaultWorkspace(), cloud: CloudRules = .standard) throws {
         guard stateDir.hasPrefix("/") else { throw BlackTeamError("State directory must be an absolute path.") }
         self.stateDir = stateDir
         self.filename = stateDir + "/config.json"
         self.defaultWorkspace = defaultWorkspace
+        self.cloud = cloud
     }
 
     private func defaults() -> Config { Config(workspace: defaultWorkspace) }
@@ -281,7 +293,7 @@ public final class ConfigStore: @unchecked Sendable {
             next[section] = .object(combined)
         }
         let value = JSONValue.object(next)
-        try validateShape(value)
+        try validateShape(value, cloud: cloud)
         let config = try JSONDecoder().decode(Config.self, from: Data(value.text().utf8))
         return (value, config)
     }
@@ -319,7 +331,7 @@ public final class ConfigStore: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         let object = try checkInput(input)
         let (value, next) = try merged(try read(), object)
-        if next.model.source != "server" {
+        if next.model.source == "gguf" {
             if !next.model.file.isEmpty { _ = try inspectModel(next.model.file) }
             if !next.model.runtime.isEmpty { _ = try inspectRuntime(next.model.runtime) }
             for path in [next.model.mmproj, next.model.draft] where !path.isEmpty { _ = try inspectModel(path) }

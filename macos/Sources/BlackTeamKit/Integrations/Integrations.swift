@@ -235,9 +235,13 @@ public struct LaunchResult: Equatable, Sendable {
     public var name: String
 }
 
+/// What starting a harness says while a cloud model is selected.
+public let cloudHarnessRefusal = "Agent apps use your local model. Select a local model to launch one."
+
 public func launchHarness(id: String, store: Integrations, config: Config, runtime: HarnessRuntime, stateDir: String,
                           defaultWorkspace: String = AppPaths.defaultWorkspace(),
                           searchPath: [String]? = nil, open: TerminalOpener = openInTerminal) async throws -> LaunchResult {
+    if config.model.source == "cloud" { throw BlackTeamError(cloudHarnessRefusal) }
     guard let item = try store.read().harnesses.first(where: { $0.id == id }) else {
         throw BlackTeamError("Configure this harness in Settings first.")
     }

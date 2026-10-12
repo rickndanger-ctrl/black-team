@@ -63,8 +63,19 @@ extension Engine {
     static let CHARS_PER_TOKEN = 3.5
 
     /// The system prompt. The sentences are the Linux app's, word for word.
-    public static func SYSTEM(_ workspace: String) -> String {
-        """
+    public static func SYSTEM(_ workspace: String, cloud: Bool = false) -> String {
+        if cloud {
+            return """
+            You are Black Team Code, a coding agent. Your tools run on the user's own computer; your workspace is \(workspace). What you read and write is processed by a cloud service.
+
+            Work with the tools. Never state a result you have not seen in a tool result.
+            Give file paths relative to the workspace, such as notes.txt or src/app.js.
+            Search before you read, and read only the lines you need.
+            Keep your todo list current. As a task grows, older tool output is trimmed from your memory; your todo list and a log of what you did are what remain, and you can read any file again.
+            After a change, run its check and read the result. When the task is done, reply with a short summary of what changed and what you verified.
+            """
+        }
+        return """
         You are Black Team Code, a coding agent running on the user's own computer. Your workspace is \(workspace).
 
         Work with the tools. Never state a result you have not seen in a tool result.
@@ -78,7 +89,14 @@ extension Engine {
     /// Budgets derived from how fast this model reads. Twelve minutes is the longest cold re-read
     /// worth risking; one minute is the most a single tool result should cost. The working budget
     /// never passes 60% of the model's window, whatever the speed.
-    public static func budgets(_ readSpeed: Double, _ contextWindow: Int) -> Budgets {
+    ///
+    /// A cloud model is not rationed by reading speed (that exists because local models read slowly): the working budget is the
+    /// 60% ceiling of its configured window, and one tool result may be larger, in proportion to that window.
+    public static func budgets(_ readSpeed: Double, _ contextWindow: Int, cloud: Bool = false) -> Budgets {
+        if cloud {
+            let working = EText.round(Double(contextWindow) * 0.6)
+            return Budgets(working: working, resultChars: EText.round(min(400_000, max(12_000, Double(working) * CHARS_PER_TOKEN * 0.25))))
+        }
         let working = EText.round(min(Double(contextWindow) * 0.6, max(12000, readSpeed * 720)))
         // A single tool result is also kept to under a third of the working budget.
         let result = EText.round(min(max(6000, min(readSpeed * 60 * CHARS_PER_TOKEN, 48000)), Double(working) * CHARS_PER_TOKEN * 0.3))

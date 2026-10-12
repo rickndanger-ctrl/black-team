@@ -13,6 +13,23 @@ private let providers = [
     Provider(id: "lmstudio", name: "LM Studio", summary: "Use its running local server", endpoint: "http://127.0.0.1:1234/v1"),
     Provider(id: "gguf", name: "Model file", summary: "Choose a GGUF on this computer", endpoint: nil),
     Provider(id: "custom", name: "Another server", summary: "Enter a local address", endpoint: nil),
+    Provider(id: "cloud", name: "Cloud model", summary: "Use a service with your own API key. What you send leaves this Mac.", endpoint: nil),
+]
+
+/// Presets only fill in the address. Each base address and its models route (`GET <base>/models`) was checked against the provider\u{2019}s
+/// own documentation; "Another service" is any OpenAI-compatible API reached over https.
+private struct CloudPreset: Identifiable {
+    var id: String
+    var name: String
+    var address: String
+}
+
+private let cloudPresets = [
+    CloudPreset(id: "openrouter", name: "OpenRouter", address: "https://openrouter.ai/api/v1"),
+    CloudPreset(id: "openai", name: "OpenAI", address: "https://api.openai.com/v1"),
+    CloudPreset(id: "anthropic", name: "Anthropic", address: "https://api.anthropic.com/v1"),
+    CloudPreset(id: "google", name: "Google", address: "https://generativelanguage.googleapis.com/v1beta/openai"),
+    CloudPreset(id: "other", name: "Another service", address: ""),
 ]
 
 /// The manual paths of ModelSetup.jsx: Ollama, LM Studio, another server, or a GGUF file; advanced settings folded away.
@@ -20,6 +37,29 @@ struct ModelSetupForm: View {
     @ObservedObject var model: AppModel
     var settings = false
     @Environment(\.btTheme) private var theme
+
+    init(model: AppModel, settings: Bool = false) {
+        _model = ObservedObject(wrappedValue: model)
+        self.settings = settings
+    }
+
+    /// The cloud form filled in as it looks when a key was pasted and the service listed its models, for the screen renders.
+    init(model: AppModel, settings: Bool = false, previewCloud: Bool) {
+        self.init(model: model, settings: settings)
+        guard previewCloud else { return }
+        _provider = State(initialValue: "cloud")
+        _cloudPreset = State(initialValue: "openai")
+        _endpoint = State(initialValue: "https://api.openai.com/v1")
+        _apiKey = State(initialValue: String(repeating: "x", count: 51))
+        _apiKeyEdited = State(initialValue: true)
+        _found = State(initialValue: ["gpt-5.1", "gpt-5.1-mini", "gpt-4.1", "o4-mini"])
+        _message = State(initialValue: "4 models from api.openai.com. Choose one below.")
+        _modelID = State(initialValue: "gpt-5.1")
+        _name = State(initialValue: "GPT 5.1")
+        _context = State(initialValue: 400_000)
+        _workspace = State(initialValue: "/Users/me/Black Team")
+        _loaded = State(initialValue: true)
+    }
 
     @State private var provider = "ollama"
     @State private var endpoint = "http://127.0.0.1:11434/v1"
@@ -36,27 +76,41 @@ struct ModelSetupForm: View {
     @State private var gpuLayers = 0
     @State private var workspace = ""
     @State private var found: [String] = []
+    @State private var cloudPreset = "openai"
+    @State private var cloudContexts: [String: Int] = [:]
+    @State private var freeAgents: Set<String> = []
+    @State private var freeOnly = false
     @State private var checking = false
     @State private var failure = ""
     @State private var message = ""
     @State private var loaded = false
 
+    private var cloud: Bool { provider == "cloud" }
     private var server: Bool { provider != "gguf" }
-    private var running: Bool { model.status?.runtime.ready == true || ["starting", "running"].contains(model.status?.runtime.state ?? "") }
+    /// A local model that is loaded or loading. A cloud model has nothing loaded, so it never blocks the form.
+    private var running: Bool { model.status?.runtime.kind != "cloud" && (model.status?.runtime.ready == true || ["starting", "running"].contains(model.status?.runtime.state ?? "")) }
     private var hasRuntime: Bool { !runtime.isEmpty || model.status?.downloadedRuntime != nil }
-    private var canSave: Bool { server ? !modelID.trimmingCharacters(in: .whitespaces).isEmpty && !endpoint.isEmpty : !file.isEmpty && hasRuntime }
+    /// The saved key is kept only for the address it was entered for.
+    private var keepsSavedKey: Bool {
+        guard let saved = model.status?.config.model, saved.source == "cloud", model.status?.serverKeyConfigured == true, !apiKeyEdited else { return false }
+        return saved.endpoint == endpoint
+    }
+    private var canSave: Bool {
+        if cloud { return !modelID.trimmingCharacters(in: .whitespaces).isEmpty && !endpoint.isEmpty && (!apiKey.isEmpty || keepsSavedKey) }
+        return server ? !modelID.trimmingCharacters(in: .whitespaces).isEmpty && !endpoint.isEmpty : !file.isEmpty && hasRuntime
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             BTEyebrow(settings ? "Add a model" : "Your models")
             Text(settings ? "Add or change a model" : "Connect a model. Start a conversation.").font(BTFont.body(18, .semibold)).tracking(-0.27)
                 .foregroundStyle(theme.ink).btLines(18, 1.5).padding(.top, 8)
-            Text("Choose where your model lives. Black Team fills in the connection details. Use a downloaded model to keep inference on this computer.")
+            Text("Choose where your model lives. Black Team fills in the connection details. Use a downloaded model to keep inference on this computer; a cloud model needs your own key and sends what you write to its service.")
                 .btBody(12.5, 1.8, theme.muted).frame(maxWidth: 680, alignment: .leading).padding(.top, 14).padding(.bottom, 22)
             if running { runningCard.padding(.bottom, 20) }
             VStack(alignment: .leading, spacing: 20) {
                 providerGrid
-                if server { serverFields } else { fileFields }
+                if cloud { cloudFields } else if server { serverFields } else { fileFields }
                 advanced
                 saveRow
             }
@@ -67,7 +121,7 @@ struct ModelSetupForm: View {
                     .buttonStyle(.btQuiet).disabled(model.busy || checking); Spacer(minLength: 0) }.padding(.top, 20)
             }
             if !failure.isEmpty {
-                BTInlineNote { Text(failure + " If your server uses a key, add it under Advanced connection and performance, then choose Find models again.").btBody(12, 1.8, theme.bad) }
+                BTInlineNote { Text(failure + (cloud ? "" : " If your server uses a key, add it under Advanced connection and performance, then choose Find models again.")).btBody(12, 1.8, theme.bad) }
                     .padding(.top, 20)
             }
         }
@@ -101,13 +155,61 @@ struct ModelSetupForm: View {
 
     private var providerGrid: some View {
         VStack(spacing: 10) {
-            ForEach(0..<2, id: \.self) { row in
+            ForEach(0..<3, id: \.self) { row in
                 BTTwoColumns(gap: 10) {
-                    ForEach(providers[(row * 2)..<(row * 2 + 2)]) { item in
+                    ForEach(providers[(row * 2)..<min(providers.count, row * 2 + 2)]) { item in
                         BTProviderCard(name: item.name, summary: item.summary, selected: provider == item.id) { choose(item) }
                     }
+                    if row * 2 + 2 > providers.count { Color.clear.frame(height: 1) }
                 }
             }
+        }
+    }
+
+    // MARK: Cloud model
+
+    @ViewBuilder private var cloudFields: some View {
+        BTInlineNote {
+            Text("Conversations with a cloud model leave this Mac: Black Team sends your messages, and in Code the contents of files the agent reads and the output of commands it runs, to the service you name. Memory is not used. Your key stays on this Mac and goes only to this service\u{2019}s address.")
+                .btBody(12, 1.8, theme.warn)
+        }
+        BTFormField(label: "Service") {
+            BTSelect(options: cloudPresets.map { ($0.id, $0.name) }, selection: Binding(get: { cloudPreset }, set: { chooseCloud($0) }), height: 38, fontSize: 13, fill: true)
+        }
+        BTFormField(label: "Service address", hint: "https only. The key is sent here and nowhere else.") {
+            BTTextField("https://api.example.com/v1", text: Binding(get: { endpoint }, set: { cloudAddressChanged($0) }))
+        }
+        BTFormField(label: "API key") {
+            BTSecureField(title: keepsSavedKey ? "Saved key \u{2014} leave unchanged to keep" : "Paste your key. It is not shown again.",
+                          text: Binding(get: { apiKey }, set: { apiKey = $0; apiKeyEdited = true; found = []; message = "" }))
+        }
+        HStack(spacing: 10) {
+            Button(checking ? "Finding models\u{2026}" : "Find models") { Task { await discoverCloud() } }.buttonStyle(.btSecondary)
+                .disabled(endpoint.isEmpty || (apiKey.isEmpty && !keepsSavedKey))
+            Text("Asks the service for the models your key can use. You can also type a model id.").btBody(12, 1.5, theme.ink)
+            Spacer(minLength: 0)
+        }
+        if checking { Text("Asking the service\u{2026}").btBody(13, 1.5, theme.ink) }
+        if !message.isEmpty { Text(message).btBody(13, 1.5, theme.ink) }
+        if !found.isEmpty {
+            if !freeAgents.isEmpty {
+                BTCheckbox(title: "Free models that can use tools (\(freeAgents.count))", isOn: $freeOnly)
+                    .accessibilityLabel("Free models that can use tools")
+                if freeOnly {
+                    Text("Free models have daily limits, and the service may use what you send to train its models. Do not send anything private through one.").btBody(12, 1.5, theme.muted)
+                }
+            }
+            BTFormField(label: "Models from the service") {
+                BTSelect(options: found.filter { !freeOnly || freeAgents.contains($0) }.map { ($0, $0) }, selection: Binding(get: { found.contains(modelID) ? modelID : "" }, set: { pickCloudModel($0) }),
+                         placeholder: "Choose a model", height: 38, fontSize: 13, fill: true)
+            }
+        }
+        BTFormField(label: "Model id") {
+            BTTextField("For example gpt-5.1 or anthropic/claude-sonnet", text: Binding(get: { modelID }, set: { modelID = $0; if name.isEmpty { name = Fmt.modelLabel($0) } }))
+        }
+        BTTwoColumns(gap: 18) {
+            BTFormField(label: "Display name") { BTTextField("Uses the model id automatically", text: Binding(get: { name }, set: { name = String($0.prefix(120)) })) }
+            BTFormField(label: "Context window", hint: "The most the model can read at once. Code works within 60% of it.") { BTNumberField(value: $context) }
         }
     }
 
@@ -154,7 +256,15 @@ struct ModelSetupForm: View {
         BTFileRow(title: title, value: detail) { Button("Leave out", action: leaveOut).buttonStyle(.btQuiet) }
     }
 
-    private var advanced: some View {
+    @ViewBuilder private var advanced: some View {
+        if !cloud { advancedLocal } else {
+            BTFileRow(title: "Workspace", value: workspace) {
+                Button("Change folder") { if let path = model.choose("workspace") { workspace = path } }.buttonStyle(.btSecondary)
+            }
+        }
+    }
+
+    private var advancedLocal: some View {
         BTPlainDetails(title: "Advanced connection and performance") {
             VStack(alignment: .leading, spacing: 18) {
                 BTFormField(label: "Display name (optional)") {
@@ -201,8 +311,8 @@ struct ModelSetupForm: View {
 
     private var saveRow: some View {
         BTFormActions {
-            Button(model.busy ? "Saving\u{2026}" : "Save and open chat") { save() }.buttonStyle(.btPrimary).disabled(!canSave)
-            Text("Your first message connects the model automatically.").btBody(12, 1.5, theme.muted)
+            Button(model.busy ? "Saving\u{2026}" : cloud ? "Save cloud model" : "Save and open chat") { save() }.buttonStyle(.btPrimary).disabled(!canSave)
+            Text(cloud ? "The key is stored on this Mac and never shown again." : "Your first message connects the model automatically.").btBody(12, 1.5, theme.muted)
         }
     }
 
@@ -219,12 +329,20 @@ struct ModelSetupForm: View {
         file = current.file; runtime = current.runtime; mmproj = current.mmproj; draft = current.draft
         context = current.context; threads = current.threads; gpuLayers = current.gpuLayers
         workspace = config.workspace
-        provider = fresh ? "ollama" : current.source == "gguf" ? "gguf" : providers.first { $0.endpoint == current.endpoint }?.id ?? "custom"
+        provider = fresh ? "ollama" : current.source == "cloud" ? "cloud" : current.source == "gguf" ? "gguf" : providers.first { $0.endpoint == current.endpoint }?.id ?? "custom"
+        if current.source == "cloud" { cloudPreset = cloudPresets.first { $0.address == current.endpoint }?.id ?? "other" }
     }
 
     private func choose(_ item: Provider) {
+        let before = provider
         provider = item.id
         failure = ""; found = []; message = ""
+        if item.id == "cloud" {
+            // A local server's key never becomes a cloud key, and the other way round.
+            if before != "cloud" { apiKey = ""; apiKeyEdited = true; modelID = ""; name = ""; endpoint = cloudPresets.first { $0.id == cloudPreset }?.address ?? ""; context = max(context, 128_000) }
+            return
+        }
+        if before == "cloud" { apiKey = ""; apiKeyEdited = true; modelID = ""; name = ""; endpoint = "http://127.0.0.1:11434/v1"; context = 4096 }
         if let target = item.endpoint {
             if target != endpoint { apiKey = ""; apiKeyEdited = true }
             endpoint = target; modelID = ""; name = ""
@@ -249,6 +367,37 @@ struct ModelSetupForm: View {
         } catch { failure = plainMessage(error) }
     }
 
+    private func chooseCloud(_ id: String) {
+        cloudPreset = id
+        failure = ""; found = []; message = ""; modelID = ""; name = ""; apiKey = ""; apiKeyEdited = true
+        endpoint = cloudPresets.first { $0.id == id }?.address ?? ""
+    }
+
+    /// Typing a new address makes the key, the list and the model start again: a key goes only to the address it was entered for.
+    private func cloudAddressChanged(_ value: String) {
+        if value != endpoint { found = []; message = ""; failure = ""; modelID = ""; apiKey = ""; apiKeyEdited = true }
+        endpoint = value
+        cloudPreset = cloudPresets.first { $0.address == value }?.id ?? "other"
+    }
+
+    private func pickCloudModel(_ id: String) {
+        guard !id.isEmpty else { return }
+        modelID = id; name = Fmt.modelLabel(id)
+        if let reported = cloudContexts[id] { context = min(reported, 2_000_000) }
+    }
+
+    private func discoverCloud() async {
+        failure = ""; message = ""; checking = true; found = []
+        defer { checking = false }
+        do {
+            let result = try await model.backend.discoverCloud(endpoint: endpoint, apiKey: apiKeyEdited ? apiKey : nil)
+            found = result.models.map(\.id)
+            cloudContexts = Dictionary(result.models.compactMap { item in item.context.map { (item.id, $0) } }, uniquingKeysWith: { first, _ in first })
+            freeAgents = Set(result.models.filter(\.freeAgent).map(\.id)); freeOnly = false
+            message = "\(result.models.count) \(result.models.count == 1 ? "model" : "models") from \(result.host). Choose one below."
+        } catch { failure = plainMessage(error) }
+    }
+
     private func pickModel() {
         guard let path = model.choose("model") else { return }
         file = path
@@ -265,6 +414,14 @@ struct ModelSetupForm: View {
 
     private func save() {
         let label = String((name.trimmingCharacters(in: .whitespaces).isEmpty ? (server ? modelID : Fmt.basename(file)) : name).prefix(120))
+        if cloud {
+            var fields: [String: JSONValue] = ["source": "cloud", "endpoint": .string(endpoint.trimmingCharacters(in: .whitespacesAndNewlines)),
+                                               "id": .string(modelID.trimmingCharacters(in: .whitespaces)), "name": .string(label), "context": .number(Double(context))]
+            if apiKeyEdited { fields["apiKey"] = .string(apiKey) }
+            let form: JSONValue = ["model": .object(fields), "workspace": .string(workspace)]
+            Task { await model.saveModel(form); apiKey = ""; apiKeyEdited = false }
+            return
+        }
         var fields: [String: JSONValue] = [
             "source": .string(server ? "server" : "gguf"), "endpoint": .string(endpoint), "id": .string(modelID), "name": .string(label),
             "file": .string(file), "runtime": .string(runtime), "context": .number(Double(context)), "gpuLayers": .number(Double(gpuLayers)),

@@ -63,15 +63,24 @@ extension Backend {
         var merged = JSONValue.encoded(previous).object ?? [:]
         let given = top["model"]?.object ?? [:]
         for (key, value) in given { merged[key] = value }
-        if let endpoint = merged["endpoint"]?.string, endpoint != previous.endpoint, given["apiKey"] == nil { merged["apiKey"] = "" }
-        if merged["source"]?.string != "server", (merged["runtime"]?.string ?? "").isEmpty {
+        // A saved key belongs to the address it was entered for. When the address changes, or the kind of model does (a local server
+        // key must never become a cloud key, nor the other way round), the key is cleared unless a new one is given.
+        if let endpoint = merged["endpoint"]?.string, given["apiKey"] == nil {
+            let nowCloud = merged["source"]?.string == "cloud", wasCloud = previous.source == "cloud"
+            if nowCloud != wasCloud { merged["apiKey"] = "" }
+            else if nowCloud { if cloudHost(endpoint, rules: cloudRules) != cloudHost(previous.endpoint, rules: cloudRules) { merged["apiKey"] = "" } }
+            else if endpoint != previous.endpoint { merged["apiKey"] = "" }
+        }
+        if merged["source"]?.string == "gguf", (merged["runtime"]?.string ?? "").isEmpty {
             let path = downloadedRuntimePath()
             if !path.isEmpty { merged["runtime"] = .string(path) }
         }
+        // A cloud model has no file, runtime or projector of its own; none carries over from the model before it.
+        if merged["source"]?.string == "cloud" { for field in ["file", "runtime", "mmproj", "draft"] where given[field] == nil { merged[field] = "" } }
         let model: ModelConfig
         do { model = try JSONDecoder().decode(ModelConfig.self, from: Data(JSONValue.object(merged).text().utf8)) }
         catch { throw BlackTeamError("These model settings are not valid.") }
-        _ = try validateModelFiles(model)
+        _ = try validateModelFiles(model, cloud: cloudRules)
         var save = top
         save["model"] = .object(merged)
         let next = try configStore.save(.object(save))
@@ -116,6 +125,8 @@ extension Backend {
     /// Starts the selected model in the background; the answer is the state at this moment.
     @discardableResult
     public func startModel() async throws -> RuntimeSummary {
+        // A cloud model has nothing to start on this Mac.
+        if try configStore.read().model.source == "cloud" { return try await runtimeSummary() }
         _ = try await exclusive {
             Task { [self] in
                 _ = try? await runtime.start()
@@ -137,6 +148,11 @@ extension Backend {
     }
 
     func runtimeSummary() async throws -> RuntimeSummary {
+        let config = try configStore.read()
+        if config.model.source == "cloud" {
+            return RuntimeSummary(state: setupComplete(config) ? "ready" : "off", ready: setupComplete(config), busy: isBusy, name: config.model.name, error: nil, features: [],
+                                  kind: "cloud", provider: cloudHost(config.model.endpoint, rules: cloudRules))
+        }
         let state = await runtime.status()
         return RuntimeSummary(state: state.state.rawValue, ready: state.ready, busy: state.busy, name: try configStore.read().model.name,
                               error: state.error, features: state.features)
@@ -200,7 +216,9 @@ extension Backend {
 
     /// Starts the model if needed and opens the app in a terminal, pointed at it.
     public func launch(harness id: String) async throws -> LaunchResult {
-        try await exclusive {
+        // Agent apps are pointed at the local model; none is launched against a cloud one for now.
+        if try configStore.read().model.source == "cloud" { throw BlackTeamError(cloudHarnessRefusal) }
+        return try await exclusive {
             if isBusy { throw BlackTeamError("Wait for the current task before launching another harness.") }
             return try await launchHarness(id: id, store: integrations, config: try configStore.read(), runtime: harness, stateDir: dataFolder, open: terminal)
         }

@@ -14,9 +14,13 @@ Usage: black-team-cli [--json] <command>
   find                                look for running model servers and model files
   models                              the saved models
   use <key>                           make a saved model the one in use
-  chat "<message>" [--image <path>]... [--thread <id>] [--mode fast|balanced|deep|extended]
+  cloud add --url <https address> --key-env <NAME> --model <id> [--name <text>] [--context <tokens>]
+                                      save a cloud model; the key is read from the environment variable NAME
+  cloud models [--url <address> --key-env <NAME>]
+                                      ask the service which models it offers (the saved cloud model's, by default)
+  chat "<message>" [--image <path>]... [--thread <id>] [--mode fast|balanced|deep|extended] [--allow-cloud]
   vision status | install             can the model read images; download a starter model's vision file
-  code "<message>" [--workspace <folder>] [--thread <id>] [--mode ...] [--approve once|deny]
+  code "<message>" [--workspace <folder>] [--thread <id>] [--mode ...] [--approve once|deny] [--allow-cloud]
   memory core | list | search <query>
   phone status | enable | disable | link | reset
   serve [--web <folder>]              keep Black Team and phone access running until Ctrl-C
@@ -56,10 +60,25 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
 // MARK: Turns
 
 /// Runs one Chat or Code turn and prints it. Returns the exit status.
-@MainActor func runTurn(_ backend: Backend, message: String, kind: String, mode: String, thread: String?, workspace: String?, approve: String, images: [ImageUpload] = []) async -> Int32 {
+/// `allowCloud` answers the one question the Backend asks before a private conversation goes to a cloud service.
+@MainActor func runTurn(_ backend: Backend, message: String, kind: String, mode: String, thread: String?, workspace: String?, approve: String, images: [ImageUpload] = [],
+                        allowCloud: Bool = false) async -> Int32 {
+    if allowCloud, let thread {
+        let check = backend.privacyCheck(threadId: thread, project: nil, kind: kind)
+        if check.outcome == .needsChoice {
+            do { try backend.convertToCloud(threadId: thread, confirmingProvider: check.provider) } catch { fail(describe(error)) }
+            if !asJSON { print("[cloud] This conversation was sent to \(check.provider) because --allow-cloud was given.") }
+        }
+    }
     let sent: SubmitResult
     do { sent = try backend.submit(message: message, kind: kind, mode: mode, requestId: UUID().uuidString.lowercased(), threadId: thread, workspace: workspace, images: images) }
-    catch { fail(describe(error)) }
+    catch {
+        var text = describe(error)
+        if backend.privacyCheck(threadId: thread, project: nil, kind: kind).outcome == .needsChoice {
+            text += "\nOn the command line: add --allow-cloud to send this conversation, omit --thread to start a new one, or run `black-team-cli use <key>` to select a local model."
+        }
+        fail(text)
+    }
     var printed = ""
     var steps = 0
     var answered = Set<String>()
@@ -115,6 +134,10 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
             if !parts.isEmpty { print("meter: " + parts.joined(separator: ", ")) }
         }
         print("state: \(state)")
+        if let usage = finalThread?["usage"] {
+            print("usage: \(usage["prompt"]?.int ?? 0) tokens in, \(usage["completion"]?.int ?? 0) out" + ((usage["cached"]?.int ?? 0) > 0 ? ", \(usage["cached"]!.int!) cached" : ""))
+        }
+        if finalThread?["privacy"]?.string == "cloud" { print("privacy: leaves this Mac, sent to \(finalThread?["provider"]?.string ?? "a cloud service")") }
         if let error = reply?["error"]?.string { FileHandle.standardError.write(Data(("error: " + error + "\n").utf8)) }
     }
     return state == "done" ? 0 : 1
@@ -133,6 +156,7 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
             print("version: \(status.version)")
             print("setup complete: \(status.setupComplete ? "yes" : "no")")
             print("model: \(status.config.model.name) (\(status.config.model.source))")
+            if status.cloud.selected { print("privacy: cloud model; conversations with it leave this Mac for \(status.cloud.provider)") }
             print("runtime: \(status.runtime.state)\(status.runtime.error.map { " - \($0)" } ?? "")")
             print("saved models: \(status.models.count)")
             print("downloaded llama.cpp: \(status.downloadedRuntime.map { $0.tag + " at " + $0.executable } ?? "none")")
@@ -183,7 +207,7 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
             let list = backend.savedModels.list(active: config.model)
             if asJSON { printJSON(list); return 0 }
             if list.isEmpty { print("No saved models.") }
-            for item in list { print("\(item.active ? "*" : " ") \(item.key)\t\(item.name)\t\(item.source)\t\(item.context) tokens") }
+            for item in list { print("\(item.active ? "*" : " ") \(item.key)\t\(item.name)\t\(item.source)\t\(item.context) tokens\(item.isCloud ? "\tcloud: \(item.provider)" : "")") }
             return 0
 
         case "use":
@@ -191,6 +215,38 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
             let result = try await backend.switchTo(key: arguments.removeFirst())
             if asJSON { printJSON(["switched": JSONValue.bool(result.switched), "name": JSONValue.string(result.name)]) } else { print("Now using \(result.name).") }
             return 0
+
+        case "cloud":
+            let action = arguments.isEmpty ? "" : arguments.removeFirst()
+            if arguments.contains("--key") { fail("A key is never taken from the command line. Put it in an environment variable and pass --key-env NAME.", code: 2) }
+            func key(_ name: String?) -> String? {
+                guard let name else { return nil }
+                guard let value = ProcessInfo.processInfo.environment[name], !value.isEmpty else { fail("The environment variable \(name) is empty or not set.", code: 2) }
+                return value
+            }
+            if action == "add" {
+                guard let url = option("--url"), let keyName = option("--key-env"), let id = option("--model") else {
+                    fail("cloud add needs --url, --key-env and --model.\n\n\(usage)", code: 2)
+                }
+                let name = option("--name") ?? id
+                let context = Int(option("--context") ?? "") ?? 128_000
+                let form: JSONValue = ["model": ["source": "cloud", "endpoint": .string(url), "id": .string(id), "apiKey": .string(key(keyName) ?? ""), "name": .string(name),
+                                                 "context": .number(Double(context))]]
+                _ = try await backend.saveSetup(form)
+                let status = try await backend.status()
+                if asJSON { printJSON(status.cloud) } else { print("Saved cloud model \(name) at \(status.cloud.provider). It is now the model in use. Conversations with it leave this Mac.") }
+                return 0
+            }
+            if action == "models" {
+                let url = option("--url"), keyName = option("--key-env")
+                let found: DiscoveredCloud
+                if let url { found = try await backend.discoverCloud(endpoint: url, apiKey: key(keyName) ?? "") }
+                else { found = try await backend.discoverCloud(endpoint: try backend.configStore.read().model.endpoint) }
+                if asJSON { printJSON(found.models.map { ["id": JSONValue.string($0.id)] }); return 0 }
+                for item in found.models { print(item.id + (item.context.map { "\t\($0) tokens" } ?? "")) }
+                return 0
+            }
+            fail(usage, code: 2)
 
         case "vision":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()
@@ -224,9 +280,11 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
             let thread = option("--thread"), mode = option("--mode") ?? "balanced"
             let workspace = command == "code" ? option("--workspace") : nil
             let approve = option("--approve") ?? "deny"
+            let allowCloud = arguments.contains("--allow-cloud")
+            arguments.removeAll { $0 == "--allow-cloud" }
             guard ["once", "deny"].contains(approve) else { fail("--approve takes once or deny.", code: 2) }
             guard let message = arguments.first, arguments.count == 1 else { fail("Give one message in quotes.\n\n\(usage)", code: 2) }
-            return await runTurn(backend, message: message, kind: command == "chat" ? "chat" : "agent", mode: mode, thread: thread, workspace: workspace, approve: approve, images: uploads)
+            return await runTurn(backend, message: message, kind: command == "chat" ? "chat" : "agent", mode: mode, thread: thread, workspace: workspace, approve: approve, images: uploads, allowCloud: allowCloud)
 
         case "memory":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()
@@ -322,8 +380,29 @@ final class ProgressMemory: @unchecked Sendable {
 
 // MARK: Main
 
+// A stand-in for a cloud service, for testing the wire format without a real key. BLACK_TEAM_CLOUD_TEST_HOST=<host:port> lets
+// THIS command-line tool accept `http://<host:port>/v1` as a cloud address, and only when the host is 127.0.0.1 or localhost.
+// The check lives here, in the black-team-cli target: BlackTeamKit's default (`CloudRules.standard`) never reads the variable, and
+// the Black Team app does not contain this file or the variable's name. Real https addresses are still checked as usual.
+func cloudRulesForThisRun() -> CloudRules {
+    guard let hostPort = ProcessInfo.processInfo.environment["BLACK_TEAM_CLOUD_TEST_HOST"], !hostPort.isEmpty else { return .standard }
+    let pieces = hostPort.split(separator: ":").map(String.init)
+    guard pieces.count == 2, ["127.0.0.1", "localhost"].contains(pieces[0]), let port = Int(pieces[1]), (1...65535).contains(port) else {
+        fail("BLACK_TEAM_CLOUD_TEST_HOST must be 127.0.0.1:<port> or localhost:<port>.", code: 2)
+    }
+    FileHandle.standardError.write(Data("NOTE: BLACK_TEAM_CLOUD_TEST_HOST is set. http://\(hostPort)/v1 is accepted as a cloud address in this run. No real cloud service should be in use.\n".utf8))
+    return CloudRules { value in
+        if let real = try? cloudEndpoint(value) { return real }
+        guard let parts = URLComponents(string: value), parts.scheme == "http", parts.host == pieces[0], parts.port == port, ["/v1", "/v1/"].contains(parts.path),
+              parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil else {
+            throw BlackTeamError("In this test run a cloud address must be http://\(hostPort)/v1 or a real https address.")
+        }
+        return CloudEndpoint(base: "http://\(hostPort)/v1", host: hostPort)
+    }
+}
+
 let backend: Backend
-do { backend = try Backend() } catch { fail(describe(error)) }
+do { backend = try Backend(cloud: cloudRulesForThisRun()) } catch { fail(describe(error)) }
 
 // Ctrl-C stops the job and shuts the model down cleanly instead of leaving llama-server running.
 var interrupts: [DispatchSourceSignal] = []

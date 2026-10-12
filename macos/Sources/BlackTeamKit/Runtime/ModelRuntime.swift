@@ -386,7 +386,9 @@ public actor ModelRuntime {
         do {
             if let previous = self.launch, !previous.exited { throw BlackTeamError("The previous model process has not stopped.") }
             let config = try configStore.read()
-            _ = try validateModelFiles(config.model)
+            // A cloud model runs at its service; the Backend never asks this runtime to start one.
+            if config.model.source == "cloud" { throw BlackTeamError("A cloud model runs at its service, so there is nothing to start on this Mac.") }
+            _ = try validateModelFiles(config.model, cloud: configStore.cloud)
             name = config.model.name
             if config.model.source == "server" {
                 let found = try await discoverModels(endpoint: config.model.endpoint, apiKey: config.model.apiKey, fetch: fetch)
