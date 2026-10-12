@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.11**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.12**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -301,6 +301,35 @@ note. One console error appeared on every load: the page's own inline theme
 script is blocked by its Content Security Policy (`script-src 'self'`), so the
 saved theme is applied a moment later by the app instead of before first paint.
 It does not affect function; a fix is to allow that script's hash.
+
+## Live follow-up — October 11, 2026 (alpha.12)
+
+One change after alpha.11, on macOS only: **private phone access**. The Mac app
+serves the web interface on 127.0.0.1:18199 while phone access is on, and
+Tailscale Serve publishes it on the tailnet on HTTPS port 8449, as on Linux. The
+Linux code is unchanged; the Linux package differs from alpha.11 only in its
+version and documents.
+
+Automated suites at the build: 148 Node and 22 Python tests pass on Linux; 279
+Swift tests pass on macOS, 53 of them for phone access (wrong Host, wrong
+Origin, non-loopback peer, missing or wrong Tailscale login, unpaired cookie,
+wrong pairing secret, route not connected, access off, oversized body, path
+traversal, and a phone calling a route it must not).
+
+Checked live on a Mac mini with a throwaway data folder, from a laptop on the
+same tailnet: the page loaded; an unpaired `/api/status` was refused (401); a
+wrong pairing secret was refused (401); a request without an Origin was refused
+(403); the right secret paired; the paired status held no model key, file path
+or desktop setting. A phone-sized headless Chromium paired from the link, the
+fragment left the address bar, and a chat message got the model's reply. After
+a pairing reset the old cookie and old link were refused. From the real app
+bundle, Enable private phone access created the route and a listener on
+127.0.0.1 only, and Turn off, after its confirmation, removed both. The Mac's
+other Tailscale Serve routes were identical before and after.
+
+The owner then paired a physical iPhone with the app on a second Mac mini and
+reported that it works. Android has not been tried. Notifications and sending
+files by Taildrop are not part of the Mac app.
 
 ## Live follow-up — October 11, 2026 (alpha.11)
 
