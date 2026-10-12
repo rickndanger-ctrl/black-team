@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.12**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.13**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -301,6 +301,22 @@ note. One console error appeared on every load: the page's own inline theme
 script is blocked by its Content Security Policy (`script-src 'self'`), so the
 saved theme is applied a moment later by the app instead of before first paint.
 It does not affect function; a fix is to allow that script's hash.
+
+## Live follow-up — October 11, 2026 (alpha.13)
+
+One change after alpha.12: the Thinking selector in the web interface names its
+levels as the Mac's "Set the pace" does, Fast, Balanced, Deep and Extended. It
+used to say "Off · fastest" and "Standard". The values sent to the model are
+unchanged. The web interface is shared, so this shows in the Linux window and
+on a phone paired with either a Linux computer or a Mac.
+
+Automated suites at the build: 148 Node and 22 Python tests pass on Linux; 279
+Swift tests pass on macOS.
+
+Checked: the interface a Mac serves to a paired phone was fetched over the
+tailnet and carried the new names; the owner then confirmed on a physical
+iPhone that the selector reads Fast. The Linux package was installed as an
+update over alpha.12 and its window opened on the first-run screen.
 
 ## Live follow-up — October 11, 2026 (alpha.12)
 
