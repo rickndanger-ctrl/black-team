@@ -3,48 +3,15 @@ import BlackTeamKit
 
 // The panels under and beside a reply (Panels.jsx and ContextReport in App.jsx).
 
-/// How much of the model's window the conversation takes, and what was left out (`ContextReport` in App.jsx).
-struct ContextReportView: View {
+/// What the context held for this reply, as a warm line under it (`.message-note`).
+struct ContextNote: View {
     let info: ContextInfo
-    var open = false
     @Environment(\.btTheme) private var theme
-
     var body: some View {
-        let used = max(0, min(100, Double(info.measured) / Double(info.context) * 100))
-        let reserve = info.maxTokens.map { max(0, min(100 - used, Double($0) / Double(info.context) * 100)) } ?? 0
-        BTDisclosure("Context control", detail: "\(Int(used.rounded()))% used\(info.omitted > 0 ? " \u{00B7} Adjusted" : " \u{00B7} Within budget")", open: open) {
-            GeometryReader { geo in
-                HStack(spacing: 0) {
-                    Rectangle().fill(theme.accent).frame(width: geo.size.width * CGFloat(used / 100))
-                    Rectangle().fill(theme.line2).frame(width: geo.size.width * CGFloat(reserve / 100))
-                    Spacer(minLength: 0)
-                }
-                .background(theme.line)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
-            .frame(height: 4).padding(.top, 1).padding(.bottom, 16)
-            .accessibilityElement()
-            .accessibilityLabel("Input context used")
-            .accessibilityValue("\(Fmt.number(info.measured)) input tokens of \(Fmt.number(info.context))")
-            WrapRow(spacing: 30, lineSpacing: 14) {
-                stat(info.estimated ? "Estimated conversation input" : "Conversation input", "\(Fmt.number(info.measured)) tokens")
-                stat("Reserved for reply", info.maxTokens.map { "\(Fmt.number($0)) tokens" } ?? "\u{2014}")
-                stat("Model context", "\(Fmt.number(info.context)) tokens")
-            }
-            Text(info.omitted > 0
-                 ? "\(info.omitted) older \(info.omitted == 1 ? "message was" : "messages were") left out of this reply\u{2019}s context. The full conversation stays saved on your computer."
-                 : "This reply includes all eligible completed turns. Your current message and system instructions are preserved.")
-                .btBody(11, 1.8, theme.muted).padding(.top, 12)
-            Text(info.estimated ? "Estimated locally, not a tokenizer measurement. Match context settings to your server; its template and truncation behavior can differ." : "Measured locally \u{00B7} No hosted context service")
-                .font(BTFont.body(9)).foregroundStyle(theme.faint).fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func stat(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(label).font(BTFont.body(10)).foregroundStyle(theme.muted).frame(height: 15, alignment: .leading).padding(.bottom, 5)
-            Text(value).font(BTFont.mono(11)).foregroundStyle(theme.ink)
-        }
+        Text("Context: \(Fmt.number(info.measured)) / \(Fmt.number(info.context)) tokens"
+             + (info.maxTokens.map { " \u{00B7} \(Fmt.number($0)) reserved for reply" } ?? "")
+             + (info.omitted > 0 ? " \u{00B7} Older turns excluded from this reply; full history stays saved." : ""))
+            .btBody(11, 1.8, theme.warn).textSelection(.enabled).padding(.top, 10)
     }
 }
 
@@ -138,28 +105,42 @@ private struct ChangeRow: View {
     }
 }
 
-/// Every tool step the agent took, in order (`WorkLog`).
+/// `.tool-timeline`: "N tool actions · View work", opening onto every step in order.
 struct WorkLogView: View {
     let events: [ToolEvent]
     var open = false
+    @State private var shown = false
     @Environment(\.btTheme) private var theme
 
     var body: some View {
-        BTDisclosure("Work log", detail: "\(events.filter { $0.type == "tool_use" }.count) tool actions", open: open) {
-            ForEach(events) { event in
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(prefix(event) + event.name).font(BTFont.body(12, .semibold)).foregroundStyle(event.error ? theme.bad : theme.ink)
-                        .btLines(12, 1.5)
-                    if !event.output.isEmpty {
-                        Text(event.output).font(BTFont.mono(10)).foregroundStyle(theme.ink2).lineLimit(14)
-                            .padding(.horizontal, 17).padding(.vertical, 15).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: Theme.radius).fill(theme.field))
-                            .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(theme.line, lineWidth: 1))
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            Button { shown.toggle() } label: {
+                HStack(spacing: 6) {
+                    Triangle().fill(theme.ink2).frame(width: 7, height: 8).rotationEffect(.degrees(shown || open ? 90 : 0))
+                    Text("\(events.filter { $0.type == "tool_use" }.count) tool actions \u{00B7} View work").font(BTFont.body(12)).foregroundStyle(theme.ink2)
+                    Spacer(minLength: 0)
                 }
-                .padding(.top, 12)
+                .frame(height: 20.4).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(events.filter { $0.type == "tool_use" }.count) tool actions, View work")
+            if shown || open {
+                ForEach(events) { event in
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(prefix(event) + event.name).font(BTFont.mono(10)).foregroundStyle(event.error ? theme.bad : theme.ink2)
+                            .frame(height: 15, alignment: .leading).padding(.bottom, 6)
+                        Text(event.output.isEmpty ? "Finished" : event.output).font(BTFont.mono(10)).foregroundStyle(theme.ink2).lineLimit(14)
+                            .lineSpacing(max(0, 10 * 1.6 - BTFont.natural(10, mono: true)))
+                            .padding(.horizontal, 16).padding(.vertical, 14).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: Theme.radius).fill(theme.field))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.radius).inset(by: 0.5).stroke(theme.line, lineWidth: 1))
+                    }
+                    .padding(.top, 12)
+                }
             }
         }
+        .padding(.top, 12)
+        .overlay(alignment: .top) { Rectangle().fill(theme.line).frame(height: 1) }
     }
 
     private func prefix(_ event: ToolEvent) -> String {
@@ -168,6 +149,14 @@ struct WorkLogView: View {
         case "tool_result": return event.error ? "! " : "\u{2713} "
         default: return ""
         }
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY)); p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY)); p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY)); p.closeSubpath()
+        return p
     }
 }
 
@@ -194,55 +183,32 @@ struct TodoView: View {
     }
 }
 
-/// Files the agent published: a link to open each one, as the web app offers a download (`{name} · Download`).
-struct PublishedFilesView: View {
-    let files: [PublishedFile]
+/// `.file-card`: a file the agent published, with a download and the transfer row the Mac does not have yet.
+struct FileCard: View {
+    let file: PublishedFile
     let model: AppModel
     @Environment(\.btTheme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(files) { file in
-                HStack(spacing: 6) {
-                    Button { model.open(file: file) } label: {
-                        Text("\(file.name) \u{00B7} Open").font(BTFont.body(13)).underline().foregroundStyle(theme.ink2)
-                    }
-                    .buttonStyle(.plain)
-                    Button("Reveal in Finder") { model.reveal(file) }.buttonStyle(.btQuiet)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("\u{21A7} \(file.name)").font(BTFont.body(12.5, .semibold)).foregroundStyle(theme.ink).lineLimit(1)
+                    Text(String(format: "%.1f KB", Double(file.size) / 1024) + " \u{00B7} Private attachment").font(BTFont.body(10)).foregroundStyle(theme.muted).padding(.top, 4)
                 }
-                .padding(.vertical, 6)
+                Spacer(minLength: 0)
+                Button { model.open(file: file) } label: { Text("Download").font(BTFont.body(12.5, .semibold)).foregroundStyle(theme.ink).padding(.horizontal, 16).frame(height: 38).contentShape(Rectangle()) }.buttonStyle(.plain)
+                Button("Reveal in Finder") { model.reveal(file) }.buttonStyle(.btQuiet)
             }
-        }
-    }
-}
-
-/// A command the agent wants to run, waiting for the person's answer (`.approval-card`).
-struct ApprovalCard: View {
-    let approval: ApprovalSummary
-    let disabled: Bool
-    let answer: (String) -> Void
-    @Environment(\.btTheme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Your decision").font(BTFont.body(14, .semibold)).foregroundStyle(theme.ink).padding(.bottom, 8)
-            Text(approval.description).btBody(12, 1.6, theme.ink2).padding(.bottom, 12)
-            Text(approval.command)
-                .font(BTFont.mono(11)).foregroundStyle(theme.ink2)
-                .textSelection(.enabled)
-                .padding(.horizontal, 17).padding(.vertical, 15).frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: Theme.radius).fill(theme.field))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(theme.line, lineWidth: 1))
-                .padding(.bottom, 14)
-            HStack(spacing: 10) {
-                Button("Approve once") { answer("once") }.buttonStyle(.btPrimary).disabled(disabled)
-                Button("Deny") { answer("deny") }.buttonStyle(.btSecondary).disabled(disabled)
+            HStack(spacing: 8) {
+                BTSelect(options: [("", "Choose your device\u{2026}")], selection: .constant(""), height: 38, fontSize: 12, fill: true).disabled(true)
+                Button {} label: { Text("Send with Taildrop") }.buttonStyle(.btSecondary).disabled(true)
             }
+            NotYet()
         }
-        .padding(21)
+        .padding(.horizontal, 16).padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: Theme.radius + 4, style: .continuous).fill(theme.warnBg))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius + 4, style: .continuous).stroke(theme.warnLine, lineWidth: 1))
-        .accessibilityElement(children: .contain)
+        .background(RoundedRectangle(cornerRadius: Theme.radius).fill(theme.surface2))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius).inset(by: 0.5).stroke(theme.line2, lineWidth: 1))
     }
 }

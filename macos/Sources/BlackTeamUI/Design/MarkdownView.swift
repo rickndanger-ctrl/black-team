@@ -34,7 +34,33 @@ struct MarkdownInlineStyle {
     var strike = false
     var color: Color?
 
-    func text(_ nodes: [MarkdownInline]) -> Text { Text(attributed(nodes)) }
+    /// Inline code is drawn as a chip (a field-coloured box with a hairline and rounded corners, as `.md code` is),
+    /// so the text is built from runs of styled text and chip images joined together.
+    func text(_ nodes: [MarkdownInline]) -> Text {
+        var parts: [Text] = []
+        var run = AttributedString()
+        func flush() { if !run.characters.isEmpty { parts.append(Text(run)); run = AttributedString() } }
+        func walk(_ nodes: [MarkdownInline], _ style: MarkdownInlineStyle) {
+            for node in nodes {
+                switch node {
+                case .code(let s):
+                    flush()
+                    parts.append(Text(Image(nsImage: CodeChip.image(s, theme: theme, strike: style.strike))).baselineOffset(-5.5))
+                case .strong(let c):
+                    var inner = style; inner.bold = true; walk(c, inner)
+                case .em(let c):
+                    var inner = style; inner.italic = true; walk(c, inner)
+                case .strike(let c):
+                    var inner = style; inner.strike = true; walk(c, inner)
+                default:
+                    run.append(style.attributed([node]))
+                }
+            }
+        }
+        walk(nodes, self)
+        flush()
+        return parts.reduce(Text("")) { $0 + $1 }
+    }
 
     func attributed(_ nodes: [MarkdownInline]) -> AttributedString {
         var out = AttributedString()
@@ -203,33 +229,99 @@ private struct MarkdownTable: View {
     let rows: [[[MarkdownInline]]]
     let size: CGFloat
     @Environment(\.btTheme) private var theme
-    @Environment(\.btFlatLayout) private var flat
 
     var body: some View {
-        if flat { grid } else { ScrollView(.horizontal, showsIndicators: false) { grid } }
-    }
-
-    private var grid: some View {
-        Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
-            GridRow {
-                ForEach(head.indices, id: \.self) { cell(head[$0], header: true) }
-            }
+        let columns = max(1, head.count)
+        TableLayout(columns: columns) {
+            ForEach(head.indices, id: \.self) { cell(head[$0], header: true) }
             ForEach(rows.indices, id: \.self) { r in
-                GridRow {
-                    ForEach(rows[r].indices, id: \.self) { cell(rows[r][$0], header: false) }
-                }
+                ForEach(0..<columns, id: \.self) { c in cell(c < rows[r].count ? rows[r][c] : [], header: false) }
             }
         }
-        .overlay(Rectangle().stroke(theme.line, lineWidth: 1))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func cell(_ nodes: [MarkdownInline], header: Bool) -> some View {
         var style = MarkdownInlineStyle(theme: theme, size: 12)
         style.bold = header
-        return style.text(nodes)
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        let hasCode = nodes.contains { if case .code = $0 { return true } else { return false } }
+        let extra = max(0, 12 * 1.8 - BTFont.natural(12))
+        return style.text(nodes).lineSpacing(hasCode ? 1.6 : extra).fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10).padding(.vertical, 5 + (hasCode ? 0 : extra / 2))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(header ? theme.field : .clear)
-            .overlay(Rectangle().stroke(theme.line, lineWidth: 0.5))
+            .overlay(Rectangle().stroke(theme.line, lineWidth: 1))
+    }
+}
+
+/// `table` with automatic layout: each column is as wide as its longest line when there is room; otherwise the room is
+/// shared between the columns in proportion to how much each could still shrink, so no column is narrower than its
+/// longest word. Cells are top aligned.
+private struct TableLayout: Layout {
+    var columns: Int
+
+    private func columnWidths(_ subviews: Subviews, available: CGFloat) -> [CGFloat] {
+        var mins = [CGFloat](repeating: 0, count: columns), maxs = mins
+        for (index, view) in subviews.enumerated() {
+            let c = index % columns
+            mins[c] = max(mins[c], view.sizeThatFits(ProposedViewSize(width: 0, height: nil)).width)
+            maxs[c] = max(maxs[c], view.sizeThatFits(.unspecified).width)
+        }
+        let sumMax = maxs.reduce(0, +), sumMin = mins.reduce(0, +)
+        if sumMax <= available { return maxs }
+        if available <= sumMin { return mins }
+        let ratio = (available - sumMin) / (sumMax - sumMin)
+        return zip(mins, maxs).map { $0 + ($1 - $0) * ratio }
+    }
+
+    private func rowHeights(_ subviews: Subviews, _ widths: [CGFloat]) -> [CGFloat] {
+        stride(from: 0, to: subviews.count, by: columns).map { start in
+            (0..<columns).compactMap { c -> CGFloat? in
+                start + c < subviews.count ? subviews[start + c].sizeThatFits(ProposedViewSize(width: widths[c], height: nil)).height : nil
+            }.max() ?? 0
+        }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let widths = columnWidths(subviews, available: proposal.width ?? 600)
+        return CGSize(width: widths.reduce(0, +), height: rowHeights(subviews, widths).reduce(0, +))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let widths = columnWidths(subviews, available: bounds.width)
+        let heights = rowHeights(subviews, widths)
+        var y = bounds.minY
+        for (row, height) in heights.enumerated() {
+            var x = bounds.minX
+            for c in 0..<columns where row * columns + c < subviews.count {
+                subviews[row * columns + c].place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(width: widths[c], height: height))
+                x += widths[c]
+            }
+            y += height
+        }
+    }
+}
+
+/// `.md code`: 12 point mono, 1 by 5 padding, a hairline border and a 5 point radius.
+enum CodeChip {
+    static func image(_ text: String, theme: Theme, strike: Bool) -> NSImage {
+        Fonts.register()
+        let font = NSFont(name: "JetBrainsMono-Regular", size: 12) ?? .monospacedSystemFont(ofSize: 12, weight: .regular)
+        var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor(theme.ink)]
+        if strike { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+        let label = NSAttributedString(string: text, attributes: attributes)
+        let size = label.size()
+        let width = ceil(size.width) + 12, height: CGFloat = 20
+        let fill = NSColor(theme.field), line = NSColor(theme.line)
+        let image = NSImage(size: NSSize(width: width + 2, height: height), flipped: false) { rect in
+            let box = rect.insetBy(dx: 0.5, dy: 0.5)
+            let path = NSBezierPath(roundedRect: box, xRadius: 5, yRadius: 5)
+            fill.setFill(); path.fill()
+            line.setStroke(); path.lineWidth = 1; path.stroke()
+            label.draw(at: NSPoint(x: 7, y: (height - size.height) / 2))
+            return true
+        }
+        image.accessibilityDescription = text
+        return image
     }
 }

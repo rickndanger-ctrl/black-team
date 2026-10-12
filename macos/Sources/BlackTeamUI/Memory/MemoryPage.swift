@@ -28,7 +28,6 @@ struct MemoryContent: View {
                 bar
                 usage(data)
                 if !memory.message.isEmpty { Text(memory.message).btBody(12, 1.5, theme.ink2) }
-                if data.notes.allSatisfy({ $0.kind == .core }) && !data.coreWritten { intro }
                 if let hits = memory.hits { results(hits) }
                 else {
                     switch memory.tab {
@@ -88,24 +87,6 @@ struct MemoryContent: View {
         .background(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).fill(theme.surface))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).stroke(theme.line, lineWidth: 1))
         .help("Everything in the Black Team vault, against its limit")
-    }
-
-    private var intro: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            (Text("Your vault is set up and waiting. ").font(BTFont.body(12.5, .semibold)).foregroundStyle(theme.ink)
-             + Text("Code saves facts here as it works, and writes a journal for each project. Chat looks things up here for every message. ")
-             + Text("Remember this").foregroundStyle(theme.ink)
-             + Text(" under any reply saves it too. Nothing in this folder leaves your computer."))
-                .font(BTFont.body(12.5)).foregroundStyle(theme.ink2).btLines(12.5, 1.7).padding(.bottom, 10)
-            Text("Start with Core: a few lines every conversation is told, such as how you like answers and what you are working on.")
-                .btBody(12.5, 1.7, theme.ink2).padding(.bottom, 10)
-            HStack { Button("Write Core") { Task { await memory.open("Core") } }.buttonStyle(.btPrimary).disabled(memory.busy); Spacer(minLength: 0) }.padding(.top, 4)
-        }
-        .padding(.horizontal, 23).padding(.vertical, 19)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).fill(theme.surface2))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).stroke(theme.line2, lineWidth: 1))
-        .padding(.bottom, 2)
     }
 
     // MARK: Tabs

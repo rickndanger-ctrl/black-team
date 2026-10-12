@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Renders the main screens at 1280 by 800 points (scale 2) on the mini and copies them to the folder given as $1.
-# Uses its own build slot, "parity", so it does not disturb other work.
+# Renders the daily-app screens (1280 points wide, scale 2) on the mini and copies them to the folder given as $1,
+# under the names of the reference screenshots (a0-command-center-full.png, b6-chat-done.png, ...).
+# Uses its own build slot, "daily", so it does not disturb other work.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/../.." && pwd)"
 out="$1"; mkdir -p "$out"
-slot="${BT_SLOT:-parity}"
+slot="${BT_SLOT:-daily}"
 "$here/dev/mini.sh" "$slot" all true
 ssh macmini1 "bash -s $slot" <<'REMOTE'
 cd ~/bt-build/$1

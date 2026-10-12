@@ -2,9 +2,35 @@ import SwiftUI
 import AppKit
 import BlackTeamKit
 
-public enum AppPage: String { case workspace, conversation, memory, settings }
-public enum SettingsSection: String, CaseIterable { case model, agents, data }
-enum Welcome { case models, agents }
+/// The two windows: the Command center ("Black Team") and Camp ("Black Team Camp").
+public enum CommandPage: String { case overview, diagnostics }
+public enum CampPage: String { case chat, memory, plugins, dsh, servers }
+
+/// One line of "Recent activity": a launch or a model start or stop in this session.
+struct ActivityEvent: Equatable, Identifiable {
+    let id = UUID()
+    var text: String
+    var time: String
+}
+
+/// A saved model as the Command center's cards show it.
+struct ModelCardInfo: Equatable, Identifiable {
+    var id: String
+    var name: String
+    var detail: String
+    var active: Bool
+    /// ready, starting, error or off
+    var state: String
+}
+
+/// A card in "Choose your harness".
+struct HarnessCardInfo: Equatable, Identifiable {
+    var id: String
+    var name: String
+    var detail: String
+    var kind: String
+    var builtIn: Bool
+}
 
 /// The words in the composer, kept per conversation so they survive moving around the app.
 struct Draft: Equatable {
@@ -47,6 +73,7 @@ func plainMessage(_ error: Error) -> String {
 @MainActor
 public final class AppModel: ObservableObject {
     public static let shared = AppModel()
+    static let launched = Date()
 
     let backend: Backend
     public let version: String
@@ -54,11 +81,19 @@ public final class AppModel: ObservableObject {
     let starter = StarterDownload()
     let finder = ModelFinder()
     let memory = MemoryModel()
-    let updates = RuntimeUpdates()
+    /// Set by the windows so the model can bring the other one forward.
+    public var openCamp: () -> Void = {}
+    public var openCommand: () -> Void = {}
 
     @Published var status: BackendStatus?
     @Published var statusFailure: String?
-    @Published var page: AppPage = .workspace
+    @Published var commandPage: CommandPage = .overview
+    @Published var campPage: CampPage = .chat
+    @Published var showConfig = false
+    @Published var selectedHarness = "chat"
+    @Published var events: [ActivityEvent] = []
+    @Published var log: [String] = []
+    @Published var launching = false
     @Published var threadId: String?
     @Published var thread: JSONValue?
     @Published var newKind: ChatKind = .chat
@@ -69,13 +104,10 @@ public final class AppModel: ObservableObject {
     @Published var sending = false
     @Published var pending: PendingRequest?
     @Published var chatKey = 0
-    @Published var settingsSection: SettingsSection = .model
-    @Published var welcome: Welcome?
-    @Published var manualSetup = false
     @Published var installed: DiscoveryResult?
     @Published var startupNotice: String?
 
-    private var welcomeDecided = false
+    private var lastRuntimeError = ""
     private var loops: [Task<Void, Never>] = []
     private var refreshing = false
     private var refreshAgain = false
@@ -86,6 +118,7 @@ public final class AppModel: ObservableObject {
 
     /// The real app: opens the data folder (BLACK_TEAM_DATA, or Application Support) and starts watching it.
     public convenience init() {
+        _ = AppModel.launched
         let (backend, notice) = AppModel.openBackend()
         self.init(backend: backend, live: true)
         startupNotice = notice
@@ -161,7 +194,8 @@ public final class AppModel: ObservableObject {
                 lastStatusAt = Date()
                 if next != status { status = next }
                 statusFailure = nil
-                if !welcomeDecided { welcomeDecided = true; if !next.setupComplete { welcome = .models } }
+                let failure = next.runtime.error ?? ""
+                if failure != lastRuntimeError { lastRuntimeError = failure; if !failure.isEmpty { note("\(modelName): \(failure)") } }
             } catch { statusFailure = plainMessage(error) }
             updateThread()
         } while refreshAgain
@@ -205,37 +239,38 @@ public final class AppModel: ObservableObject {
 
     // MARK: Navigation
 
-    func navigate(_ next: AppPage) {
-        page = next
+    func showCamp(_ next: CampPage) {
+        campPage = next
         error = nil
         notice = nil
     }
 
-    func showSettings(_ section: SettingsSection = .model) {
-        settingsSection = section
-        navigate(.settings)
+    func showCommand(_ next: CommandPage) {
+        commandPage = next
+        error = nil
+        notice = nil
     }
 
     func openThread(_ id: String?) {
-        if locked { page = .conversation; return }
+        if locked { campPage = .chat; return }
         threadId = id
         thread = id.flatMap { backend.thread($0) }
-        page = .conversation
+        campPage = .chat
         error = nil
         chatKey += 1
     }
 
     func startChat(_ kind: ChatKind) {
-        if locked { page = .conversation; return }
+        if locked { campPage = .chat; return }
         newKind = kind
         openThread(nil)
     }
 
-    /// The Chat and Code rows and the mode switch: show the open conversation if it is of that kind, else start one.
+    /// The mode switch: show the open conversation if it is of that kind, else start one.
     func showMode(_ kind: ChatKind) {
-        if page == .conversation, currentKind == kind { return }
-        if page != .conversation, currentKind == kind, (threadId != nil || newKind == kind) {
-            page = .conversation; error = nil; notice = nil
+        if campPage == .chat, currentKind == kind { return }
+        if campPage != .chat, currentKind == kind, (threadId != nil || newKind == kind) {
+            campPage = .chat; error = nil; notice = nil
             return
         }
         startChat(kind)
@@ -248,7 +283,7 @@ public final class AppModel: ObservableObject {
 
     /// Opening a project returns to its latest conversation, or starts one in its folder.
     func openProject(_ project: ProjectSummary) {
-        if locked { page = .conversation; return }
+        if locked { campPage = .chat; return }
         projectId = project.id
         if let latest = threads.first(where: { $0.project == project.id }) { openThread(latest.id) } else { startChat(.agent) }
     }
@@ -291,13 +326,17 @@ public final class AppModel: ObservableObject {
             return result
         } catch {
             self.error = plainMessage(error)
+            note("Error: \(plainMessage(error))")
             await refresh()
             return nil
         }
     }
 
     func switchModel(_ key: String) async {
-        if let result = await action({ try await backend.switchTo(key: key) }) { notice = "Now using \(result.name). Your next message starts it." }
+        if let result = await action({ try await backend.switchTo(key: key) }) {
+            notice = "Now using \(result.name). Your next message starts it."
+            record("Switched to \(result.name)")
+        }
     }
 
     func forgetModel(_ key: String) async {
@@ -306,18 +345,40 @@ public final class AppModel: ObservableObject {
 
     func startModel() async {
         let server = status?.config.model.source == "server"
-        await action(success: server ? "Connecting to your local server." : "Starting your local model.") { try await backend.startModel() }
+        let name = modelName
+        if await action(success: server ? "Connecting to your local server." : "Starting your local model.", { try await backend.startModel() }) != nil {
+            record("Started \(name)")
+        }
     }
 
     func stopModel() async {
-        await action(success: "Model stopped.") { try await backend.stopModel() }
+        let name = modelName
+        if await action(success: "Model stopped.", { try await backend.stopModel() }) != nil { record("Stopped \(name)") }
+    }
+
+    /// The Camp "Servers & access" cards act on any saved model: it becomes the model in use first.
+    func setServer(_ key: String, on: Bool) async {
+        if status?.models.first(where: { $0.active })?.key != key {
+            guard await action({ try await backend.switchTo(key: key) }) != nil else { return }
+        }
+        if on { await startModel() } else { await stopModel() }
+    }
+
+    /// "Open agent workspace": the model becomes the one in use, then Code opens in Camp.
+    func openAgentWorkspace(_ key: String) async {
+        if status?.models.first(where: { $0.active })?.key != key {
+            guard await action({ try await backend.switchTo(key: key) }) != nil else { return }
+        }
+        startChat(.agent)
+        openCamp()
+        record("Opened Black Team Code with \(modelName)")
     }
 
     func saveModel(_ form: JSONValue) async {
         if let flag = await action(success: "Model saved. Send a message to begin.", { try await backend.saveSetup(form) }) {
             if let warning = flag.warning { notice = warning }
-            manualSetup = false
-            if welcome != nil { welcome = .agents } else { startChat(.chat) }
+            showConfig = false
+            record("Saved \(modelName)")
         }
     }
 
@@ -338,16 +399,26 @@ public final class AppModel: ObservableObject {
     }
 
     func open(harness: HarnessEntry) async {
-        await action(success: "\(harness.name) opened with \(modelName).") { try await backend.launch(harness: harness.id) }
-    }
-
-    func saveIntegrations(_ settings: IntegrationSettings) async -> Bool {
-        let value = (try? JSONValue.parse(JSONEncoder().encode(settings))) ?? JSONValue.null
-        return await action(success: "Agent connections saved.") { try await backend.saveIntegrations(value) } != nil
+        if await action(success: "\(harness.name) opened with \(modelName).", { try await backend.launch(harness: harness.id) }) != nil {
+            record("\(harness.name) opened with \(modelName)")
+        }
     }
 
     func openDataFolder() {
         do { NSWorkspace.shared.open(URL(fileURLWithPath: try backend.dataFolderPath())) } catch { self.error = plainMessage(error) }
+    }
+
+    /// Adds a line to "Recent activity" and to the diagnostics log.
+    func record(_ text: String) {
+        events.insert(ActivityEvent(text: text, time: Date().formatted(date: .omitted, time: .shortened)), at: 0)
+        if events.count > 6 { events.removeLast(events.count - 6) }
+        note(text)
+    }
+
+    func note(_ text: String) {
+        let stamp = Date().formatted(.dateTime.month(.abbreviated).day().hour(.twoDigits(amPM: .omitted)).minute().second())
+        log.append("\(stamp) \(text)")
+        if log.count > 200 { log.removeFirst(log.count - 200) }
     }
 
     func openHelp(_ topic: String) {
@@ -457,14 +528,20 @@ public final class AppModel: ObservableObject {
 
 /// What the menu bar and the app delegate call.
 extension AppModel {
-    public func showAbout() { AboutPanel.show(version: version, runtime: status?.downloadedRuntime?.tag) }
-    public func openSettings() { showSettings(.model) }
-    public func newChat() { startChat(.chat) }
-    public func newCodeConversation() { startChat(.agent) }
+    public func newConversation() { startChat(currentKind); openCamp() }
     public func stopResponse() { cancel() }
     public var canStopResponse: Bool { activeJob }
-    public func goToWorkspace() { navigate(.workspace) }
-    public func goToChat() { showMode(.chat) }
-    public func goToCode() { showMode(.agent) }
-    public func goToMemory() { navigate(.memory) }
+    public func showAbout() { AboutPanel.show(version: version, runtime: status?.downloadedRuntime?.tag) }
+}
+
+/// The standard About panel, with the version and the runtime in the credits.
+enum AboutPanel {
+    @MainActor static func show(version: String, runtime: String?) {
+        let credits = NSAttributedString(string: "Private AI. Total control.\nEverything runs on this Mac." + (runtime.map { "\nllama.cpp build \($0)" } ?? ""),
+                                         attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+        NSApplication.shared.orderFrontStandardAboutPanel(options: [
+            .applicationName: "Black Team", .applicationVersion: version, .version: "", .credits: credits,
+        ])
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
 }

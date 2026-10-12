@@ -13,36 +13,38 @@ struct BlackTeamApp: App {
 
     var body: some Scene {
         Window("Black Team", id: "main") {
-            RootView(model: model)
+            CommandRoot(model: model)
         }
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1180, height: 780)
+        .defaultSize(width: 1280, height: 860)
         .commands { AppCommands(model: model) }
+
+        Window("Black Team Camp", id: "camp") {
+            CampRoot(model: model)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1280, height: 860)
     }
 }
 
-/// The menu bar: New Chat, New Code conversation, Settings, Stop response and a normal About panel.
+/// The menu bar: New Conversation, Command Center, Base Camp, Stop and a normal About panel.
 struct AppCommands: Commands {
     @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("About Black Team") { model.showAbout() }
         }
-        CommandGroup(replacing: .appSettings) {
-            Button("Settings\u{2026}") { model.openSettings() }.keyboardShortcut(",", modifiers: .command)
-        }
         CommandGroup(replacing: .newItem) {
-            Button("New Chat") { model.newChat() }.keyboardShortcut("n", modifiers: .command)
-            Button("New Code Conversation") { model.newCodeConversation() }.keyboardShortcut("n", modifiers: [.command, .shift])
+            Button("New Conversation") { model.openCamp = { openWindow(id: "camp"); NSApp.activate(ignoringOtherApps: true) }; model.newConversation() }
+                .keyboardShortcut("n", modifiers: .command)
         }
-        CommandMenu("Conversation") {
-            Button("Stop Response") { model.stopResponse() }.keyboardShortcut(".", modifiers: .command).disabled(!model.canStopResponse)
+        CommandMenu("Window") {
+            Button("Command Center") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }.keyboardShortcut("1", modifiers: .command)
+            Button("Base Camp") { openWindow(id: "camp"); NSApp.activate(ignoringOtherApps: true) }.keyboardShortcut("2", modifiers: .command)
             Divider()
-            Button("Workspace") { model.goToWorkspace() }.keyboardShortcut("1", modifiers: .command)
-            Button("Chat") { model.goToChat() }.keyboardShortcut("2", modifiers: .command)
-            Button("Code") { model.goToCode() }.keyboardShortcut("3", modifiers: .command)
-            Button("Memory") { model.goToMemory() }.keyboardShortcut("4", modifiers: .command)
+            Button("Stop") { model.stopResponse() }.keyboardShortcut(".", modifiers: .command).disabled(!model.canStopResponse)
         }
     }
 }

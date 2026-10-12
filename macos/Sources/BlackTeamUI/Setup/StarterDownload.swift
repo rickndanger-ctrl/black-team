@@ -68,12 +68,12 @@ final class StarterDownload: ObservableObject {
 }
 
 extension AppModel {
-    /// The model is saved: on to step 2, the agents found on this Mac.
+    /// The model is saved: its card appears in section 01.
     func finishedStarter(_ result: StarterSetupResult) {
         if let warning = result.warning { notice = warning }
         Task {
             await refresh()
-            welcome = .agents
+            record("\(result.modelName) is ready")
             starter.phase = .idle
             starter.load(backend)
         }

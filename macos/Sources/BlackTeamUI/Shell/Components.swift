@@ -97,6 +97,8 @@ struct BTSelect<Value: Hashable>: View {
     var height: CGFloat = 34
     var fontSize: CGFloat = 12
     var fill = false
+    /// The daily app's Camp menus (a browser `<select>`): text 17 from the edge, 46 clear on the right, arrow 9 from the edge.
+    var browser = false
     @Environment(\.btTheme) private var theme
     @Environment(\.btFlatLayout) private var flat
     @Environment(\.isEnabled) private var enabled
@@ -133,16 +135,16 @@ struct BTSelect<Value: Hashable>: View {
             Text(current).font(BTFont.body(fontSize)).foregroundStyle(theme.ink).lineLimit(1)
             Spacer(minLength: 0)
         }
-        .padding(.leading, fontSize > 12 ? 12 : 12).padding(.trailing, fontSize > 12 ? 32 : 30)
+        .padding(.leading, browser ? 17 : 12).padding(.trailing, browser ? 46 : (fontSize > 12 ? 32 : 30))
         .frame(maxWidth: fill ? .infinity : nil)
-        .frame(minWidth: max(minWidth, fill ? 0 : ceil(widest) + 12 + (fontSize > 12 ? 32 : 30)), minHeight: height, maxHeight: height)
+        .frame(minWidth: max(minWidth, fill ? 0 : ceil(widest) + (browser ? 63 : 12 + (fontSize > 12 ? 32 : 30))), minHeight: height, maxHeight: height)
         .background(RoundedRectangle(cornerRadius: Theme.radius).fill(theme.field))
         .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(theme.line2, lineWidth: 1))
         .overlay(alignment: .trailing) {
             // Chromium's select arrow: a thin chevron, 10 points from the edge.
             Path { path in path.move(to: CGPoint(x: 0, y: 0)); path.addLine(to: CGPoint(x: 4, y: 4)); path.addLine(to: CGPoint(x: 8, y: 0)) }
                 .stroke(theme.ink, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-                .frame(width: 8, height: 4).padding(.trailing, 12)
+                .frame(width: 8, height: 4).padding(.trailing, browser ? 5 : 12)
         }
         .contentShape(Rectangle())
     }

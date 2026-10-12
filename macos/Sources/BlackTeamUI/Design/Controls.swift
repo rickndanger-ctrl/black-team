@@ -268,7 +268,7 @@ struct BTSegmented<Value: Hashable>: View {
                     Text(option.label)
                         .font(BTFont.body(12, .medium))
                         .foregroundStyle(selected ? theme.ink : theme.muted)
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, 15)
                         .frame(height: 32)
                         .background(RoundedRectangle(cornerRadius: 5).fill(selected ? theme.surface2 : .clear))
                         .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? theme.line2 : .clear, lineWidth: 1))

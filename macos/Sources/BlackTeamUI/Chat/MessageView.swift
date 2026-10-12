@@ -40,38 +40,46 @@ struct MessageView: View, Equatable {
                     .font(BTFont.mono(10)).tracking(0.4).foregroundStyle(theme.faint).padding(.top, 10)
                     .help(message.recalled.map { "\($0.title): \($0.text)" }.joined(separator: "\n"))
             }
-            if !message.isUser, let context = message.context { ContextReportView(info: context).padding(.top, 16) }
+            if !message.isUser, let context = message.context { ContextNote(info: context) }
             if !message.changes.isEmpty { ChangesView(changes: message.changes, busy: busy) { model.undo($0) }.padding(.top, 14) }
-            if !message.events.isEmpty { WorkLogView(events: message.events).padding(.top, 16) }
-            if !message.artifacts.isEmpty { PublishedFilesView(files: message.artifacts, model: model).padding(.top, 10) }
+            if !message.events.isEmpty { WorkLogView(events: message.events).padding(.top, 14) }
+            ForEach(message.artifacts) { file in FileCard(file: file, model: model).padding(.top, 14) }
             footer
         }
         .padding(.horizontal, 23).padding(.vertical, 21)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).fill(message.isUser ? theme.surface2 : theme.surface))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).stroke(message.isUser ? theme.line2 : theme.line, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).inset(by: 0.5).stroke(message.isUser ? theme.line2 : theme.line, lineWidth: 1))
         .btShadow(message.isUser ? .none : theme.shadow)
         .onHover { hover = $0 }
         .accessibilityElement(children: .contain)
     }
 
     private var heading: some View {
-        HStack(spacing: 12) {
-            if !message.isUser { AgentAvatar(state: glowing ? .working : .idle, diameter: 30) }
-            Text(message.isUser ? "YOU" : (message.model.isEmpty ? fallbackModel : message.model))
-                .font(BTFont.mono(10)).tracking(0.6).foregroundStyle(theme.ink2).lineLimit(1)
-            Spacer(minLength: 0)
-            if let liveLabel { Text(liveLabel).font(BTFont.mono(9)).foregroundStyle(theme.muted) }
+        Group {
+            if message.isUser {
+                Text("YOU").font(BTFont.mono(10)).tracking(0.6).foregroundStyle(theme.ink2).frame(height: 18, alignment: .leading).padding(.bottom, 10)
+            } else {
+                HStack(spacing: 12) {
+                    AgentAvatar(state: glowing ? .working : .idle, diameter: 30)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("BLACK TEAM / \((message.model.isEmpty ? fallbackModel : message.model).uppercased())")
+                            .font(BTFont.mono(10)).tracking(0.6).foregroundStyle(theme.ink2).lineLimit(1).frame(height: 15, alignment: .leading)
+                        if let liveLabel { Text(liveLabel).font(BTFont.mono(10)).foregroundStyle(theme.muted).frame(height: 14.5, alignment: .leading) }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(minHeight: 36)
+                .padding(.bottom, 12)
+            }
         }
-        .frame(minHeight: 15)
-        .padding(.bottom, 12)
     }
 
     @ViewBuilder private var bodyText: some View {
         if !message.isUser, !message.content.isEmpty {
             MarkdownView(message.content)
         } else {
-            Text(message.content.isEmpty ? (message.state == "writing" ? "\u{2026}" : "") : message.content)
+            Text(message.content.isEmpty ? (message.state == "writing" ? "\u{2026}" : "No response text.") : message.content)
                 .btBody(13, 1.8, theme.ink).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

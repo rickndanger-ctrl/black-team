@@ -185,7 +185,7 @@ struct ThemeBackground: View {
                 theme.bg
                 LinearGradient(stops: theme.hazeBase, startPoint: UnitPoint(x: 0.38, y: 0), endPoint: UnitPoint(x: 0.62, y: 1))
                 Canvas { ctx, size in
-                    for layer in theme.hazeLayers {
+                    for layer in theme.hazeLayers.reversed() {
                         var c = ctx
                         c.translateBy(x: layer.cx * size.width, y: layer.cy * size.height)
                         c.scaleBy(x: 1, y: layer.ry / layer.rx)

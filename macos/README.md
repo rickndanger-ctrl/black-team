@@ -1,8 +1,10 @@
 # Black Team for macOS
 
-A native Swift version of Black Team. It is a port of the Linux app in this
-repository (`lib/*.cjs` and `src/*.jsx`), which stays the reference: behaviour and
-wording should match unless macOS needs something different.
+A native Swift version of Black Team. The engine is a port of `lib/*.cjs` in this
+repository, which stays the reference for behaviour. The interface follows the
+maintainer's daily Black Team app: a Command center window (select your model,
+choose your harness, set the pace, launch) and a Camp window (Chat and Code,
+Memory, Plugins, DSH sessions, Servers & access).
 
 ## Layout
 
@@ -36,7 +38,8 @@ agent apps in Terminal, and the three themes. New on the Mac: first run can
 download the llama.cpp runtime (from its GitHub releases) and a starter model
 (from Hugging Face) into the data folder; `Download/StarterModels.swift` is the list.
 
-Not ported yet: the phone companion, Hermes, dictation.
+Not built yet, and shown greyed out with "Not on the Mac yet.": phone pairing,
+Hermes and its plugins, image attachments, dictation, DSH session listing.
 
 `black-team-cli` runs the same backend from a terminal (`status`, `starter list`,
 `starter install <id>`, `chat`, `code`, `find`, `models`, `use`, `memory`), which is
@@ -44,7 +47,7 @@ how the app is tested on a Mac with nobody at the screen. `BLACK_TEAM_DATA=<fold
 points the app or the CLI at a throwaway data folder.
 
 `Tests/DesignSnapshot` renders every screen to PNG at the size of the Linux
-reference screenshots; the Mac interface is meant to match the Linux one exactly.
+reference screenshots; the Mac interface is meant to match the daily app exactly.
 
 ## Building
 

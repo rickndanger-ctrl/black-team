@@ -49,7 +49,7 @@ struct FoundModelsPanel: View {
     private var list: some View {
         let chosen = finder.items.filter { finder.picked.contains($0.key) }
         return VStack(alignment: .leading, spacing: 0) {
-            intro("Tick the ones you want. You can switch between them at any time, and add or remove models later in Settings.")
+            intro("Tick the ones you want. You can switch between them at any time, and add or remove models later from Available configurations.")
             VStack(spacing: 0) {
                 ForEach(finder.items) { item in
                     Button { finder.toggle(item) } label: {
@@ -58,7 +58,7 @@ struct FoundModelsPanel: View {
                                 .opacity(item.usable ? 1 : 0.6)
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(item.name).font(BTFont.body(13, .semibold)).foregroundStyle(theme.ink).frame(height: 19.5, alignment: .leading)
-                                Text(item.saved ? "Already in your list" : item.detail + (item.ignored ? " \u{00B7} passed over on the home page" : ""))
+                                Text(item.saved ? "Already in your list" : item.detail + (item.ignored ? " \u{00B7} passed over" : ""))
                                     .btBody(11.5, 1.6, theme.muted).padding(.top, 2)
                             }
                             Spacer(minLength: 0)
@@ -82,7 +82,7 @@ struct FoundModelsPanel: View {
                     Task {
                         if await model.addModels(items.map(\.plain)) {
                             await finder.look(model.backend)
-                            if model.welcome == .models { model.welcome = .agents }
+                            
                         }
                     }
                 }
@@ -100,56 +100,5 @@ struct FoundModelsPanel: View {
         var text = "Looked for servers on local ports \(report.looked.ports.map(String.init).joined(separator: ", "))"
         if !report.looked.folders.isEmpty { text += " and for model files in \(report.looked.folders.joined(separator: ", "))" }
         return text + "."
-    }
-}
-
-/// The home page's offer: models found on this computer that are not in the list yet. Add, or not now.
-struct FoundPrompt: View {
-    @ObservedObject var model: AppModel
-    @ObservedObject var finder: ModelFinder
-    @Environment(\.btTheme) private var theme
-
-    var body: some View {
-        let offers = finder.offers
-        Group {
-            if !offers.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    BTEyebrow("Also on this computer")
-                    Text(offers.count == 1 ? "A model you have not connected" : "\(offers.count) models you have not connected")
-                        .font(BTFont.body(17, .medium)).tracking(-0.255).foregroundStyle(theme.ink).btLines(17, 1.5).padding(.top, 6)
-                    VStack(spacing: 0) {
-                        ForEach(offers) { item in
-                            HStack(alignment: .center, spacing: 18) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Text(item.name).font(BTFont.body(13, .semibold)).foregroundStyle(theme.ink).frame(height: 19.5, alignment: .leading)
-                                    Text(item.detail).btBody(11.5, 1.6, theme.muted)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                HStack(spacing: 10) {
-                                    Button("Add") {
-                                        Task {
-                                            if await model.addModels([item.plain]) {
-                                                model.notice = "\(item.name) added. Choose it from the model menu when you want it."
-                                                await finder.look(model.backend, preselect: false)
-                                            }
-                                        }
-                                    }.buttonStyle(.btPrimary).disabled(model.busy)
-                                    Button("Not now") {
-                                        Task { _ = await model.action { try await model.backend.ignore(key: item.key) }; await finder.look(model.backend, preselect: false) }
-                                    }.buttonStyle(.btQuiet).disabled(model.busy)
-                                }
-                            }
-                            .padding(.vertical, 12).btRule()
-                        }
-                    }
-                    .padding(.top, 12)
-                }
-                .padding(.horizontal, 27).padding(.vertical, 23)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).fill(theme.surface2))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous).stroke(theme.line2, lineWidth: 1))
-            }
-        }
-        .task { if finder.report == nil && !finder.looking { await finder.look(model.backend, preselect: false) } }
     }
 }

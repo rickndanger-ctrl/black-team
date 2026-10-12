@@ -1,21 +1,21 @@
 import SwiftUI
 
-/// The sizes the Linux app's media queries give at the current window width (app.css: the 1100 and 1550 point breakpoints).
+/// The sizes the daily app's media queries give at the current window width (app.css: 1050, 760 and 1550 points).
 struct Metrics: Equatable {
     var windowWidth: CGFloat = 1280
     var windowHeight: CGFloat = 800
 
-    /// 761 to 1100 points: the narrow desktop layout.
-    var compact: Bool { windowWidth <= 1100 }
+    /// Up to 1050 points: the narrow desktop layout.
+    var compact: Bool { windowWidth <= 1050 }
     var wide: Bool { windowWidth >= 1550 }
-    var sidebarWidth: CGFloat { compact ? 215 : 248 }
+    var sidebarWidth: CGFloat { compact ? 208 : 240 }
     var sidebarTop: CGFloat { compact ? 24 : 28 }
     var sidebarSide: CGFloat { compact ? 12 : 16 }
-    /// `clamp(24px, 4vw, 64px)`.
-    var mainSide: CGFloat { compact ? 25 : wide ? 56 : min(64, max(24, windowWidth * 0.04)) }
-    var mainTop: CGFloat { compact ? 30 : wide ? 44 : 40 }
-    var mainBottom: CGFloat { compact ? 24 : wide ? 44 : 26 }
-    var maxMain: CGFloat { 1570 }
+    /// `clamp(24px, 4vw, 56px)`; the narrow layout uses 24.
+    var mainSide: CGFloat { compact ? 24 : min(56, max(24, windowWidth * 0.04)) }
+    var mainTop: CGFloat { compact ? 28 : 40 }
+    var mainBottom: CGFloat { compact ? 28 : 26 }
+    var maxMain: CGFloat { 1500 }
 }
 
 private struct ControlHeightKey: EnvironmentKey { static let defaultValue: CGFloat = Theme.control }
@@ -130,6 +130,43 @@ struct WrapRow: Layout {
             if x > bounds.minX, x + size.width > bounds.maxX { y += rowHeight + lineSpacing; x = bounds.minX; rowHeight = 0 }
             view.place(at: CGPoint(x: x, y: y + (rowHeight == 0 ? 0 : 0)), anchor: .topLeading, proposal: .unspecified)
             x += size.width + spacing; rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+
+/// CSS `display: grid` with equal columns: every child gets its column's width, and a row is as tall as its tallest child.
+struct EqualColumns: Layout {
+    var columns: Int
+    var spacing: CGFloat = 10
+    var rowSpacing: CGFloat?
+
+    private func width(_ total: CGFloat) -> CGFloat { (total - spacing * CGFloat(columns - 1)) / CGFloat(columns) }
+
+    private func rows(_ subviews: Subviews, _ w: CGFloat) -> [CGFloat] {
+        stride(from: 0, to: subviews.count, by: columns).map { start in
+            subviews[start..<min(start + columns, subviews.count)].map { $0.sizeThatFits(ProposedViewSize(width: w, height: nil)).height }.max() ?? 0
+        }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let total = proposal.width ?? 600
+        let heights = rows(subviews, width(total))
+        return CGSize(width: total, height: heights.reduce(0, +) + (rowSpacing ?? spacing) * CGFloat(max(0, heights.count - 1)))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let w = width(bounds.width)
+        let heights = rows(subviews, w)
+        var y = bounds.minY
+        for (row, height) in heights.enumerated() {
+            for column in 0..<columns {
+                let index = row * columns + column
+                guard index < subviews.count else { break }
+                subviews[index].place(at: CGPoint(x: bounds.minX + CGFloat(column) * (w + spacing), y: y), anchor: .topLeading,
+                                      proposal: ProposedViewSize(width: w, height: height))
+            }
+            y += height + (rowSpacing ?? spacing)
         }
     }
 }

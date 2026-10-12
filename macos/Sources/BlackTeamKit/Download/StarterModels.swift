@@ -42,7 +42,8 @@ public enum StarterModels {
         modelBytes + max(2 * gib, Int64((Double(modelBytes) * 0.25).rounded(.up)))
     }
 
-    /// Smallest first. Qwen3.5 in unsloth's GGUF conversions and Qwen's own Qwen3 14B; all Apache-2.0, Q4_K_M.
+    /// Smallest first, all Q4_K_M: Qwen3.5 in unsloth's GGUF conversions (Apache-2.0), Ornith 1.5 9B from
+    /// its makers (MIT), which Rick chose as the recommended model for a 16 GB Mac, and Qwen's own Qwen3 14B (Apache-2.0).
     public static let all: [StarterModel] = [
         StarterModel(
             id: "qwen3.5-0.8b", name: "Qwen3.5 0.8B (tiny)",
@@ -57,11 +58,11 @@ public enum StarterModels {
             bytes: 2_740_937_888, sha256: "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
             license: "Apache-2.0", contextSize: 16384, toolCalling: true),
         StarterModel(
-            id: "qwen3.5-9b", name: "Qwen3.5 9B (medium)",
+            id: "ornith-1.5-9b", name: "Ornith 1.5 9B (medium)",
             summary: "Smarter answers and reliable use of tools; the best starting point for the Code agent.",
-            repo: "unsloth/Qwen3.5-9B-GGUF", filename: "Qwen3.5-9B-Q4_K_M.gguf",
-            bytes: 5_680_522_464, sha256: "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8",
-            license: "Apache-2.0", contextSize: 32768, toolCalling: true),
+            repo: "ornith-ai/Ornith-1.5-9B-GGUF", filename: "Ornith-1.5-9B-Q4_K_M.gguf",
+            bytes: 5_780_090_816, sha256: "70c112196e0b7023803c9762752e46d29e612a92c83f995bc3ba1ceb07e8fab6",
+            license: "MIT", contextSize: 32768, toolCalling: true),
         StarterModel(
             id: "qwen3-14b", name: "Qwen3 14B (large)",
             summary: "The most capable of the starter models; needs a Mac with plenty of memory.",
