@@ -36,6 +36,8 @@ struct HarnessCardInfo: Equatable, Identifiable {
 struct Draft: Equatable {
     var message = ""
     var mode = "balanced"
+    /// Prepared pictures, held in memory until the message is sent (they are lost when the app closes).
+    var images: [DraftImage] = []
 }
 
 final class DraftStore: ObservableObject {
@@ -50,7 +52,8 @@ final class DraftStore: ObservableObject {
     func draft(_ key: String) -> Draft { items[key] ?? Draft(message: "", mode: Self.defaultMode) }
     func set(_ key: String, message: String) { var d = draft(key); d.message = message; items[key] = d }
     func set(_ key: String, mode: String) { var d = draft(key); d.mode = mode; items[key] = d }
-    func clear(_ key: String) { var d = draft(key); d.message = ""; items[key] = d }
+    func set(_ key: String, images: [DraftImage]) { var d = draft(key); d.images = images; items[key] = d }
+    func clear(_ key: String) { var d = draft(key); d.message = ""; d.images = []; items[key] = d }
 }
 
 /// A message that may already be saved: retried with the same request id so it is never sent twice.
@@ -61,6 +64,7 @@ struct PendingRequest: Equatable {
     var kind: ChatKind
     var threadId: String?
     var project: String?
+    var images: [DraftImage] = []
 }
 
 func plainMessage(_ error: Error) -> String {
@@ -107,6 +111,10 @@ public final class AppModel: ObservableObject {
     @Published var chatKey = 0
     @Published var installed: DiscoveryResult?
     @Published var startupNotice: String?
+    /// Pictures are being prepared, or the vision file is being fetched.
+    @Published var preparing = false
+    @Published var visionInstall = VisionInstall()
+    let imageCache = NSCache<NSString, NSImage>()
 
     private var lastRuntimeError = ""
     private var loops: [Task<Void, Never>] = []
@@ -440,17 +448,19 @@ public final class AppModel: ObservableObject {
 
     /// Sends a message. `false` leaves the words in the composer so nothing is lost.
     @discardableResult
-    func send(_ text: String, mode: String) -> Bool {
+    func send(_ text: String, mode: String, images given: [DraftImage]? = nil) -> Bool {
         if sending { return false }
         sending = true
         error = nil
         defer { sending = false }
+        let images = given ?? pending?.images ?? drafts.draft(draftKey).images
+        if currentKind == .agent, !images.isEmpty { error = ImageRules.codeRefusal; return false }
         let payload = pending ?? PendingRequest(id: UUID().uuidString.lowercased(), message: text, mode: mode, kind: currentKind,
-                                                threadId: threadId, project: threadId == nil ? projectId : nil)
+                                                threadId: threadId, project: threadId == nil ? projectId : nil, images: images)
         pending = payload
         do {
             let result = try backend.submit(message: payload.message, kind: payload.kind.rawValue, mode: payload.mode, requestId: payload.id,
-                                            threadId: payload.threadId, project: payload.project)
+                                            threadId: payload.threadId, project: payload.project, images: payload.images.map(\.upload))
             pending = nil
             let key = draftKey
             threadId = result.threadId
@@ -477,7 +487,11 @@ public final class AppModel: ObservableObject {
     /// Sends the last question again after a failed or stopped reply.
     func retryLast() {
         guard let last = messages.last(where: { $0.isUser }) else { return }
-        send(last.content, mode: drafts.draft(draftKey).mode)
+        // The pictures of that message are read back from their files, so a retry sends them again.
+        let images = last.images.compactMap { ref in
+            (try? backend.image(threadId: threadId ?? "", imageId: ref.id)).map { DraftImage(ImageUpload(name: ref.name, data: $0.data)) }
+        }
+        send(last.content, mode: drafts.draft(draftKey).mode, images: images)
     }
 
     func cancel() {

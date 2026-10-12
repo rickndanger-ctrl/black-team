@@ -2,6 +2,29 @@ import Foundation
 
 /// A small model offered on first run. Values were read from the Hugging Face API
 /// (`/api/models/<repo>/tree/main`: size and lfs.oid = SHA-256) on 2026-10-11.
+/// The projector file that lets a starter model read images (llama.cpp's `--mmproj`), from the same Hugging Face repository.
+/// Saved under `localName`, so two models whose repositories both call theirs `mmproj-F16.gguf` do not collide in `<data>/models/`.
+public struct StarterVision: Codable, Sendable, Equatable {
+    public var repo: String
+    public var filename: String
+    public var localName: String
+    public var bytes: Int64
+    public var sha256: String
+
+    public var url: URL { URL(string: "https://huggingface.co/\(repo)/resolve/main/\(filename)")! }
+
+    public func destination(in dataFolder: URL) -> URL {
+        dataFolder.appendingPathComponent("models", isDirectory: true).appendingPathComponent(localName)
+    }
+
+    public func isInstalled(in dataFolder: URL) -> Bool { Downloader.fileSize(destination(in: dataFolder)) == bytes }
+
+    public func downloadRequest(dataFolder: URL) -> DownloadRequest {
+        DownloadRequest(url: url, destination: destination(in: dataFolder), expectedSHA256: sha256, expectedSize: bytes,
+                        allowedHostSuffixes: DownloadHosts.huggingFace)
+    }
+}
+
 public struct StarterModel: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
@@ -14,6 +37,8 @@ public struct StarterModel: Codable, Sendable, Equatable, Identifiable {
     public var license: String
     public var contextSize: Int
     public var toolCalling: Bool
+    /// Present when the model can read images and has a projector to download.
+    public var vision: StarterVision? = nil
 
     public var url: URL { URL(string: "https://huggingface.co/\(repo)/resolve/main/\(filename)")! }
 
@@ -50,19 +75,25 @@ public enum StarterModels {
             summary: "A very small model for a quick test that everything works; answers are basic.",
             repo: "unsloth/Qwen3.5-0.8B-GGUF", filename: "Qwen3.5-0.8B-Q4_K_M.gguf",
             bytes: 532_517_120, sha256: "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
-            license: "Apache-2.0", contextSize: 8192, toolCalling: false),
+            license: "Apache-2.0", contextSize: 8192, toolCalling: false,
+            vision: StarterVision(repo: "unsloth/Qwen3.5-0.8B-GGUF", filename: "mmproj-F16.gguf", localName: "Qwen3.5-0.8B-mmproj-F16.gguf",
+                                  bytes: 204_987_232, sha256: "56e4c6cfe73b0c82e3e82bc518d7591997e61d81f723fc41a586f4fa69ea2453")),
         StarterModel(
             id: "qwen3.5-4b", name: "Qwen3.5 4B (small)",
             summary: "A good everyday chat model that runs comfortably on any recent Mac.",
             repo: "unsloth/Qwen3.5-4B-GGUF", filename: "Qwen3.5-4B-Q4_K_M.gguf",
             bytes: 2_740_937_888, sha256: "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
-            license: "Apache-2.0", contextSize: 16384, toolCalling: true),
+            license: "Apache-2.0", contextSize: 16384, toolCalling: true,
+            vision: StarterVision(repo: "unsloth/Qwen3.5-4B-GGUF", filename: "mmproj-F16.gguf", localName: "Qwen3.5-4B-mmproj-F16.gguf",
+                                  bytes: 672_423_616, sha256: "cd88edcf8d031894960bb0c9c5b9b7e1fea6ebee02b9f7ce925a00d12891f864")),
         StarterModel(
             id: "ornith-1.5-9b", name: "Ornith 1.5 9B (medium)",
             summary: "Smarter answers and reliable use of tools; the best starting point for the Code agent.",
             repo: "ornith-ai/Ornith-1.5-9B-GGUF", filename: "Ornith-1.5-9B-Q4_K_M.gguf",
             bytes: 5_780_090_816, sha256: "70c112196e0b7023803c9762752e46d29e612a92c83f995bc3ba1ceb07e8fab6",
-            license: "MIT", contextSize: 32768, toolCalling: true),
+            license: "MIT", contextSize: 32768, toolCalling: true,
+            vision: StarterVision(repo: "ornith-ai/Ornith-1.5-9B-GGUF", filename: "mmproj-Ornith-1.5-9B-BF16.gguf", localName: "Ornith-1.5-9B-mmproj-BF16.gguf",
+                                  bytes: 921_704_672, sha256: "626f9f90627402a6bf4a999111d0fbd69b5fcca7aa8ba089d69e5f10e8858e1d")),
         StarterModel(
             id: "qwen3-14b", name: "Qwen3 14B (large)",
             summary: "The most capable of the starter models; needs a Mac with plenty of memory.",

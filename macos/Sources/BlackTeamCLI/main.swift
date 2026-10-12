@@ -14,7 +14,8 @@ Usage: black-team-cli [--json] <command>
   find                                look for running model servers and model files
   models                              the saved models
   use <key>                           make a saved model the one in use
-  chat "<message>" [--thread <id>] [--mode fast|balanced|deep|extended]
+  chat "<message>" [--image <path>]... [--thread <id>] [--mode fast|balanced|deep|extended]
+  vision status | install             can the model read images; download a starter model's vision file
   code "<message>" [--workspace <folder>] [--thread <id>] [--mode ...] [--approve once|deny]
   memory core | list | search <query>
   phone status | enable | disable | link | reset
@@ -55,9 +56,9 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
 // MARK: Turns
 
 /// Runs one Chat or Code turn and prints it. Returns the exit status.
-@MainActor func runTurn(_ backend: Backend, message: String, kind: String, mode: String, thread: String?, workspace: String?, approve: String) async -> Int32 {
+@MainActor func runTurn(_ backend: Backend, message: String, kind: String, mode: String, thread: String?, workspace: String?, approve: String, images: [ImageUpload] = []) async -> Int32 {
     let sent: SubmitResult
-    do { sent = try backend.submit(message: message, kind: kind, mode: mode, requestId: UUID().uuidString.lowercased(), threadId: thread, workspace: workspace) }
+    do { sent = try backend.submit(message: message, kind: kind, mode: mode, requestId: UUID().uuidString.lowercased(), threadId: thread, workspace: workspace, images: images) }
     catch { fail(describe(error)) }
     var printed = ""
     var steps = 0
@@ -191,13 +192,41 @@ func rate(_ bytesPerSecond: Double) -> String { String(format: "%.1f MB/s", byte
             if asJSON { printJSON(["switched": JSONValue.bool(result.switched), "name": JSONValue.string(result.name)]) } else { print("Now using \(result.name).") }
             return 0
 
+        case "vision":
+            let action = arguments.isEmpty ? "" : arguments.removeFirst()
+            if action == "status" {
+                let status = try backend.visionStatus()
+                if asJSON { printJSON(status); return 0 }
+                print("can read images: \(status.canSee ? "yes" : "no")")
+                print(status.summary)
+                if status.needsFile { print("run: black-team-cli vision install") }
+                return 0
+            }
+            if action == "install" {
+                let last = ProgressMemory()
+                let result = try await backend.installVision { progress in
+                    if asJSON { return }
+                    if let line = last.line(progress) { print(line); fflush(stdout) }
+                }
+                if asJSON { printJSON(result) } else { print("Vision file set: \(result.file)\(result.restarted ? " (model restarted)" : "")") }
+                return 0
+            }
+            fail(usage, code: 2)
+
         case "chat", "code":
+            var imagePaths: [String] = []
+            while let path = option("--image") { imagePaths.append(path) }
+            if command == "code", !imagePaths.isEmpty { fail(ImageRules.codeRefusal) }
+            var uploads: [ImageUpload] = []
+            for path in imagePaths {
+                do { uploads.append(try ImagePreparer.prepare(url: URL(fileURLWithPath: path))) } catch { fail("\((path as NSString).lastPathComponent): \(describe(error))") }
+            }
             let thread = option("--thread"), mode = option("--mode") ?? "balanced"
             let workspace = command == "code" ? option("--workspace") : nil
             let approve = option("--approve") ?? "deny"
             guard ["once", "deny"].contains(approve) else { fail("--approve takes once or deny.", code: 2) }
             guard let message = arguments.first, arguments.count == 1 else { fail("Give one message in quotes.\n\n\(usage)", code: 2) }
-            return await runTurn(backend, message: message, kind: command == "chat" ? "chat" : "agent", mode: mode, thread: thread, workspace: workspace, approve: approve)
+            return await runTurn(backend, message: message, kind: command == "chat" ? "chat" : "agent", mode: mode, thread: thread, workspace: workspace, approve: approve, images: uploads)
 
         case "memory":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()

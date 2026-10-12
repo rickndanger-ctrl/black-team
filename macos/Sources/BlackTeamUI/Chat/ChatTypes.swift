@@ -49,6 +49,8 @@ struct ContextInfo: Equatable {
     var maxTokens: Int?
     var omitted: Int
     var estimated: Bool
+    /// Tokens set aside for pictures, counted in `measured`.
+    var imageReserve: Int?
 
     init?(_ json: JSONValue?) {
         guard let json, let measured = json["measuredInputTokens"]?.int, let context = json["context"]?.int, context > 0 else { return nil }
@@ -56,6 +58,7 @@ struct ContextInfo: Equatable {
         maxTokens = json["maxTokens"]?.int
         omitted = json["omittedMessages"]?.int ?? 0
         estimated = json["method"]?.string == "estimated-bytes"
+        imageReserve = json["imageReserveTokens"]?.int
     }
 }
 
@@ -110,6 +113,7 @@ struct ChatMessage: Equatable, Identifiable {
     var error: String?
     var finishReason: String
     var meter: SpeedInfo?
+    var images: [ImageRef]
 
     var isUser: Bool { role == "user" }
     var changes: [FileChange] { events.compactMap(\.change) }
@@ -129,7 +133,7 @@ struct ChatMessage: Equatable, Identifiable {
     static func == (a: ChatMessage, b: ChatMessage) -> Bool {
         a.id == b.id && a.role == b.role && a.content == b.content && a.state == b.state && a.model == b.model && a.thinking == b.thinking
             && a.context == b.context && a.events == b.events && a.artifacts == b.artifacts && a.note == b.note && a.error == b.error
-            && a.finishReason == b.finishReason && a.meter == b.meter && a.recalled.map(\.title) == b.recalled.map(\.title)
+            && a.finishReason == b.finishReason && a.meter == b.meter && a.images == b.images && a.recalled.map(\.title) == b.recalled.map(\.title)
     }
 
     init(_ json: JSONValue, index: Int) {
@@ -156,6 +160,7 @@ struct ChatMessage: Equatable, Identifiable {
         error = json["error"]?.string
         finishReason = json["finishReason"]?.string ?? ""
         meter = SpeedInfo(json["meter"])
+        images = (json["images"]?.array ?? []).compactMap { ImageRef($0) }
     }
 
     static func messages(of thread: JSONValue?) -> [ChatMessage] {

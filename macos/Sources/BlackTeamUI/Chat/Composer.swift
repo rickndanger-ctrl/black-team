@@ -8,6 +8,8 @@ struct ComposerField: NSViewRepresentable {
     let enabled: Bool
     let theme: Theme
     let onSubmit: () -> Void
+    /// A picture was pasted: handed over instead of inserted.
+    var onPasteImages: (([ImageSource]) -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -51,6 +53,7 @@ struct ComposerField: NSViewRepresentable {
         view.textColor = NSColor(theme.ink)
         view.insertionPointColor = NSColor(theme.accent)
         view.placeholder = placeholder
+        view.onPasteImages = onPasteImages
         view.placeholderColor = NSColor(theme.faint)
         view.needsDisplay = true
     }
@@ -80,6 +83,7 @@ struct ComposerField: NSViewRepresentable {
 final class ComposerTextView: NSTextView {
     var placeholder = ""
     var placeholderColor = NSColor.secondaryLabelColor
+    var onPasteImages: (([ImageSource]) -> Void)?
     private var focused = false
 
     override func draw(_ dirtyRect: NSRect) {
@@ -88,6 +92,24 @@ final class ComposerTextView: NSTextView {
         let attributes: [NSAttributedString.Key: Any] = [.font: font ?? NSFont.systemFont(ofSize: 13), .foregroundColor: placeholderColor, .paragraphStyle: defaultParagraphStyle ?? NSParagraphStyle.default]
         let inset = textContainerInset
         (placeholder as NSString).draw(at: NSPoint(x: inset.width + (textContainer?.lineFragmentPadding ?? 0), y: inset.height), withAttributes: attributes)
+    }
+
+    /// A copied picture (or image files) becomes attachments; anything with words in it pastes as text.
+    // A plain-text view says it cannot paste a picture, which greys out Paste and swallows Cmd+V
+    // before `paste` is ever called. So Paste is allowed whenever the clipboard holds a picture.
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(paste(_:)), onPasteImages != nil, isEditable, ImagePasteboard.hasImage() { return true }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    override var readablePasteboardTypes: [NSPasteboard.PasteboardType] {
+        onPasteImages == nil ? super.readablePasteboardTypes : super.readablePasteboardTypes + [.png, .tiff, .fileURL]
+    }
+
+    override func paste(_ sender: Any?) {
+        let sources = ImagePasteboard.sources()
+        if let onPasteImages, !sources.isEmpty { onPasteImages(sources); return }
+        super.paste(sender)
     }
 
     override func viewDidMoveToWindow() {

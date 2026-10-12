@@ -45,8 +45,21 @@ answers it while access is on, and the phone pairs with a QR code or link. Every
 The Mac has no desktop browser session, so the local address grants nothing. The server serves the built web app from
 `Contents/Resources/web` (`npm run build`; `build-app.sh` copies it). Left out: phone notifications and Taildrop.
 
-Not built yet, and left off the screens until they work: Hermes and its plugins, image attachments, dictation,
-DSH session listing.
+Image attachments are built (`Sources/BlackTeamKit/Images/`, Chat only, as in the daily app): "+ Files", drag and drop and paste
+attach up to 4 pictures a message. Any picture macOS can read (JPEG, PNG, WebP, HEIC, TIFF, GIF) is prepared natively: orientation
+applied, longer side at most 1280 px, flattened onto white, re-encoded as a JPEG at quality 0.85 with no metadata, at most 1 MB
+(a source file may be 20 MB). Each picture is a private file, `<data>/attachments/<conversation id>/<image id>.jpg` (0600, folders
+0700), never inside the conversation JSON; the message keeps `{id, name, bytes, width, height}`. Files stay with their
+conversation (there is no conversation delete yet); a submit that fails leaves none behind. A message with images is sent as
+text plus `image_url` data URLs, and every earlier turn's pictures are sent again. Context is measured on the text, plus 1,700
+tokens per image (measured on llama.cpp with Qwen3.5 projectors: about 1 token per 32x32 pixels, 1,602 for a 1280x1280 picture).
+The starter models Qwen3.5 0.8B and 4B and Ornith 1.5 9B have a vision file (projector) that `Backend.installVision` / the
+interface's "Download vision file" button fetches, sets as `model.mmproj` and loads by restarting the model; a model with none
+(Qwen3 14B, other files) is told so. The phone's web app has no image support: a thread reaches it without image references.
+CLI: `chat "..." --image <path>`, `vision status|install`.
+
+Not built yet, and left off the screens until they work: Hermes and its plugins, dictation, DSH session listing. Not done for
+images: removing a conversation's picture files (no conversation delete yet), and keeping unsent drafts across app launches.
 
 `black-team-cli` runs the same backend from a terminal (`status`, `starter list`,
 `starter install <id>`, `chat`, `code`, `find`, `models`, `use`, `memory`, `phone status|enable|disable|link|reset`,

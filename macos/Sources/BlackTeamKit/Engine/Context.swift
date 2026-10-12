@@ -13,11 +13,28 @@ public struct ContextReport: Codable, Equatable, Sendable {
     public var inputBudget: Int
     public var safetyMargin: Int
     public var decision: String
+    /// Tokens set aside for the images in the prompt, counted in `measuredInputTokens`; nil when there are none.
+    public var imageReserveTokens: Int? = nil
 
     public var json: JSONValue {
-        ["measuredInputTokens": .number(Double(measuredInputTokens)), "context": .number(Double(context)), "maxTokens": .number(Double(maxTokens)),
+        var value: JSONValue = ["measuredInputTokens": .number(Double(measuredInputTokens)), "context": .number(Double(context)), "maxTokens": .number(Double(maxTokens)),
          "omittedMessages": .number(Double(omittedMessages)), "method": .string(method), "inputBudget": .number(Double(inputBudget)),
          "safetyMargin": .number(Double(safetyMargin)), "decision": .string(decision)]
+        if let imageReserveTokens, imageReserveTokens > 0 { value = value.setting("imageReserveTokens", .number(Double(imageReserveTokens))) }
+        return value
+    }
+}
+
+/// What a picture costs the model's context. llama.cpp turns an image into a number of tokens that depends on its size and the
+/// model's projector, and `/apply-template` and `/tokenize` only take text, so each image gets this fixed allowance on top of its
+/// message's text. Measured on llama.cpp with Qwen3.5 projectors: 1 token per 32x32 pixels, so 171 tokens for 400x400, 1,202 for 1280x960 and 1,602 for the largest picture Black Team sends (1280x1280); 1700 covers that.
+public enum ImageCost {
+    public static let tokensPerImage = 1700
+    static func count(in message: JSONValue) -> Int { message["images"]?.array?.count ?? 0 }
+    /// The allowance for every image in these messages, or nil when there are none.
+    static func reserve(_ messages: [JSONValue]) -> Int? {
+        let total = messages.reduce(0) { $0 + count(in: $1) } * tokensPerImage
+        return total > 0 ? total : nil
     }
 }
 
@@ -39,18 +56,32 @@ enum ContextPlanner {
         var originalLength: Int
     }
 
-    static func message(_ role: String, _ content: String) -> JSONValue { ["role": .string(role), "content": .string(content)] }
+    static func message(_ role: String, _ content: String, images: JSONValue? = nil) -> JSONValue {
+        var value: JSONValue = ["role": .string(role), "content": .string(content)]
+        // An image stays with the message it was sent in, so dropping an old turn drops its pictures too and none is left alone.
+        if let images, images.array?.isEmpty == false { value = value.setting("images", images) }
+        return value
+    }
+
+    /// The messages as a text-only server template can take them: the same, without the image references.
+    static func textOnly(_ messages: [JSONValue]) -> [JSONValue] {
+        messages.map { message in
+            var object = message.object ?? [:]
+            object["images"] = nil
+            return .object(object)
+        }
+    }
 
     static func conversationParts(_ messages: [JSONValue]) throws -> Parts {
         if messages.isEmpty || messages.count > 10000 {
             throw BlackTeamError("Context review needs a conversation with a latest user message (maximum 10,000 messages).")
         }
-        var clean: [(role: String, content: String)] = []
+        var clean: [(role: String, content: String, images: JSONValue?)] = []
         for item in messages {
             guard let role = item["role"]?.string, ["system", "user", "assistant"].contains(role), let content = item["content"]?.string else {
                 throw BlackTeamError("Context review supports plain text system, user, and assistant messages.")
             }
-            clean.append((role, content))
+            clean.append((role, content, item["images"]))
         }
         var index = 0
         var system: [JSONValue] = []
@@ -59,7 +90,7 @@ enum ContextPlanner {
         while index < clean.count {
             let item = clean[index]
             if item.role == "system" { throw BlackTeamError("System instructions must precede the conversation for context review.") }
-            if item.role == "user" { turns.append([message("user", item.content)]) }
+            if item.role == "user" { turns.append([message("user", item.content, images: item.images)]) }
             else {
                 if turns.isEmpty { throw BlackTeamError("Conversation history has an assistant response without a user turn.") }
                 turns[turns.count - 1].append(message("assistant", item.content))
@@ -148,7 +179,7 @@ public func prepareContext(messages: [JSONValue], context: Int, mode: String = "
     func measure(_ omitted: Int) async throws -> (messages: [JSONValue], tokens: Int) {
         if let known = measurements[omitted] { return known }
         let selected = parts.system + recent.dropFirst(omitted).flatMap { $0 } + parts.latest
-        let rendered = try await request("/apply-template", ["messages": .array(selected)])
+        let rendered = try await request("/apply-template", ["messages": .array(ContextPlanner.textOnly(selected))])
         guard let prompt = rendered["prompt"]?.string else {
             throw BlackTeamError("The local runtime did not return a chat template. No estimated token count was substituted.")
         }
@@ -156,7 +187,7 @@ public func prepareContext(messages: [JSONValue], context: Int, mode: String = "
         guard let tokens = tokenized["tokens"]?.array, tokens.allSatisfy({ ($0.int ?? -1) >= 0 }) else {
             throw BlackTeamError("The local runtime did not return valid token IDs. No estimated token count was substituted.")
         }
-        let measured = (selected, tokens.count)
+        let measured = (selected, tokens.count + selected.reduce(0) { $0 + ImageCost.count(in: $1) } * ImageCost.tokensPerImage)
         measurements[omitted] = measured
         return measured
     }
@@ -179,7 +210,8 @@ public func prepareContext(messages: [JSONValue], context: Int, mode: String = "
     return PreparedContext(messages: result.messages, maxTokens: maxTokens, report: ContextReport(
         measuredInputTokens: result.tokens, context: effectiveContext, maxTokens: maxTokens,
         omittedMessages: parts.originalLength - result.messages.count, method: "local-tokenizer", inputBudget: inputBudget,
-        safetyMargin: ContextPlanner.safetyMargin, decision: parts.originalLength == result.messages.count ? "keep" : "select_recent"))
+        safetyMargin: ContextPlanner.safetyMargin, decision: parts.originalLength == result.messages.count ? "keep" : "select_recent",
+        imageReserveTokens: ImageCost.reserve(result.messages)))
 }
 
 /// Generic compatible servers do not share llama.cpp's tokenizer API. This estimate is labelled as one
@@ -193,7 +225,7 @@ public func prepareServerContext(messages: [JSONValue], context: Int, mode: Stri
     let inputBudget = context - maxTokens - ContextPlanner.safetyMargin
     var recent = Array(parts.turns.suffix(ContextPlanner.maxHistoryTurns))
     func estimate(_ selected: [JSONValue]) -> Int {
-        128 + selected.reduce(0) { $0 + ($1["content"]?.string ?? "").utf8.count + 32 }
+        128 + selected.reduce(0) { $0 + ($1["content"]?.string ?? "").utf8.count + 32 + ImageCost.count(in: $1) * ImageCost.tokensPerImage }
     }
     func select() -> [JSONValue] { parts.system + recent.flatMap { $0 } + parts.latest }
     var selected = select()
@@ -208,5 +240,6 @@ public func prepareServerContext(messages: [JSONValue], context: Int, mode: Stri
     return PreparedContext(messages: selected, maxTokens: maxTokens, report: ContextReport(
         measuredInputTokens: tokens, context: context, maxTokens: maxTokens, omittedMessages: parts.originalLength - selected.count,
         method: "estimated-bytes", inputBudget: inputBudget, safetyMargin: ContextPlanner.safetyMargin,
-        decision: parts.originalLength == selected.count ? "keep" : "select_recent"))
+        decision: parts.originalLength == selected.count ? "keep" : "select_recent",
+        imageReserveTokens: ImageCost.reserve(selected)))
 }

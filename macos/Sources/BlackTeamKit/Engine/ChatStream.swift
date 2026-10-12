@@ -14,6 +14,14 @@ public enum ChatStream {
         return "\(content)\n\n[From your memory. Use it only if it is relevant.]\n\(lines.joined(separator: "\n"))"
     }
 
+    /// A user message as it is sent: its text with memory, and the references of its images (the bytes are added when the request is made).
+    static func userMessage(_ message: JSONValue) -> JSONValue {
+        var value: JSONValue = ["role": "user", "content": .string(withMemory(message))]
+        let refs = (message["images"]?.array ?? []).compactMap { ImageRef($0) }
+        if !refs.isEmpty { value = value.setting("images", .array(refs.map(\.json))) }
+        return value
+    }
+
     /// The system message, every finished earlier pair, then the newest request.
     public static func messagesFor(_ thread: JSONValue) -> [JSONValue] {
         let core = thread["core"]?.string ?? ""
@@ -25,13 +33,13 @@ public enum ChatStream {
             let user = messages[index], assistant = messages[index + 1]
             if user["role"]?.string == "user", assistant["role"]?.string == "assistant", assistant["state"]?.string == "done",
                let reply = assistant["content"]?.string, !reply.isEmpty {
-                result.append(["role": "user", "content": .string(withMemory(user))])
+                result.append(userMessage(user))
                 result.append(["role": "assistant", "content": .string(reply)])
                 index += 1
             }
             index += 1
         }
-        if messages.count >= 2 { result.append(["role": "user", "content": .string(withMemory(messages[messages.count - 2]))]) }
+        if messages.count >= 2 { result.append(userMessage(messages[messages.count - 2])) }
         return result
     }
 

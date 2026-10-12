@@ -12,10 +12,11 @@ struct MessageView: View, Equatable {
     let canRemember: Bool
     let canRetry: Bool
     unowned let model: AppModel
+    var threadId: String?
 
     static func == (a: MessageView, b: MessageView) -> Bool {
         a.message == b.message && a.fallbackModel == b.fallbackModel && a.glowing == b.glowing && a.liveLabel == b.liveLabel
-            && a.busy == b.busy && a.canRemember == b.canRemember && a.canRetry == b.canRetry
+            && a.busy == b.busy && a.canRemember == b.canRemember && a.canRetry == b.canRetry && a.threadId == b.threadId
     }
 
     @Environment(\.btTheme) private var theme
@@ -35,6 +36,9 @@ struct MessageView: View, Equatable {
                 .padding(.bottom, 14)
             }
             bodyText
+            if message.isUser, !message.images.isEmpty {
+                ImagePreviews(items: message.images.map { PreviewItem(id: $0.id, name: $0.name, image: model.sentImage(threadId: threadId, $0)) })
+            }
             if !message.recalled.isEmpty {
                 Text("Memory used: \(unique(message.recalled.map(\.title)).joined(separator: ", "))")
                     .font(BTFont.mono(10)).tracking(0.4).foregroundStyle(theme.faint).padding(.top, 10)
