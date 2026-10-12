@@ -128,7 +128,7 @@ struct FileFacts { var size: Int; var mtimeMs: Double; var isDirectory: Bool; va
 
 enum FS {
     static func facts(_ path: String, follow: Bool = true) -> FileFacts? {
-        var st = stat()
+        var st = CStat()
         let result = follow ? stat(path, &st) : lstat(path, &st)
         if result != 0 { return nil }
         #if canImport(Darwin)

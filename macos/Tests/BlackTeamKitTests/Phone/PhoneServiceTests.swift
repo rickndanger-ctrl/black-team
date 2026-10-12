@@ -19,6 +19,13 @@ final class PhoneServiceTests: XCTestCase {
         return Setup(fixture: fixture, backend: backend, tailscale: tailscale, rig: rig)
     }
 
+    /// These tests run a real phone server, which needs Network.framework until the Linux server exists.
+    private func needsPhoneServer() throws {
+        #if !canImport(Network)
+        throw XCTSkip("The phone server needs Network.framework; its Linux version comes later")
+        #endif
+    }
+
     private func raw(_ setup: Setup, port: Int, _ path: String, headers: [String: String] = [:]) -> String {
         var lines = ["GET \(path) HTTP/1.1", "Host: \(phoneHost):\(Phone.phonePort)", "Tailscale-User-Login: \(phoneOwner)"]
         for (name, value) in headers { lines.append("\(name): \(value)") }
@@ -26,6 +33,7 @@ final class PhoneServiceTests: XCTestCase {
     }
 
     func testEnableStartsTheServerThenTheRouteAndGivesTheLink() async throws {
+        try needsPhoneServer()
         let s = try setup()
         let state = try await s.backend.phoneEnable()
         XCTAssertTrue(state.enabled)
@@ -42,7 +50,7 @@ final class PhoneServiceTests: XCTestCase {
         XCTAssertEqual(link, "https://\(phoneHost):8449/#pair=" + key.secret("pair", hostname: phoneHost, owner: phoneOwner))
         XCTAssertFalse(String(decoding: try JSONEncoder().encode(state), as: UTF8.self).contains("#pair"))
         // The key file is private.
-        var info = stat()
+        var info = CStat()
         XCTAssertEqual(stat(s.fixture.stateDir + "/phone.key", &info), 0)
         XCTAssertEqual(info.st_mode & 0o777, 0o600)
         // The server answers a phone through the (fake) route: the shell for an unpaired phone, nothing else.
@@ -81,6 +89,7 @@ final class PhoneServiceTests: XCTestCase {
     }
 
     func testEnableWithoutTailscaleChangesNothingAndLeavesNoServer() async throws {
+        try needsPhoneServer()
         let s = try setup(tailscale: PhoneCommandError(notFound: true))
         do { _ = try await s.backend.phoneEnable(); XCTFail("should fail") } catch { XCTAssertTrue((error as? BlackTeamError)?.message.contains("Install Tailscale") ?? false) }
         XCTAssertEqual(try s.fixture.files.store.read().phone, PhoneConfig())
@@ -90,6 +99,7 @@ final class PhoneServiceTests: XCTestCase {
     }
 
     func testAPortInUseStopsEnableBeforeAnyRouteIsMade() async throws {
+        try needsPhoneServer()
         let rig = try PhoneRig(self)
         let squatter = PhoneServer(router: rig.router, port: 0)
         try await squatter.start()
@@ -101,6 +111,7 @@ final class PhoneServiceTests: XCTestCase {
     }
 
     func testAPublicOrForeignRouteIsRefusedAndExplained() async throws {
+        try needsPhoneServer()
         let funnel = privateRoute().setting("AllowFunnel", ["\(phoneHost):8449": true])
         let s = try setup(route: funnel)
         do { _ = try await s.backend.phoneEnable(); XCTFail("should fail") } catch { XCTAssertTrue((error as? BlackTeamError)?.message.contains("will not overwrite") ?? false) }
@@ -114,6 +125,7 @@ final class PhoneServiceTests: XCTestCase {
     }
 
     func testSyncFollowsTheSavedSettingChangedByAnotherProcess() async throws {
+        try needsPhoneServer()
         let s = try setup()
         _ = try await s.backend.phoneEnable()
         XCTAssertTrue(s.backend.phone().serverRunning)
@@ -127,6 +139,7 @@ final class PhoneServiceTests: XCTestCase {
     }
 
     func testStartAtLaunchOnlyWhenEnabledAndShutdownStopsTheServer() async throws {
+        try needsPhoneServer()
         let s = try setup()
         try await s.backend.startPhoneAccess()
         XCTAssertNil(s.backend.phone().server, "off: no socket")
@@ -156,7 +169,7 @@ final class PhoneKeyTests: XCTestCase {
     func testTheKeyIsCreatedPrivateAndSecretsDependOnKindComputerAndOwner() throws {
         let dir = try folder()
         let keys = try PhoneKeys(folder: dir)
-        var info = stat()
+        var info = CStat()
         XCTAssertEqual(stat(dir + "/phone.key", &info), 0)
         XCTAssertEqual(info.st_mode & 0o777, 0o600)
         let text = try String(contentsOfFile: dir + "/phone.key", encoding: .utf8)

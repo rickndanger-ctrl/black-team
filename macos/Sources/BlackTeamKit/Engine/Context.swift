@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 // Context review: pick which saved turns fit the model's window. With llama.cpp the count is exact,
 // asked of the server's own chat template and tokenizer; other servers get a byte estimate.

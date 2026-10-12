@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 // Cloud models: a service other than this Mac, reached over HTTPS with the person's own API key.
 // Everything here is about keeping that door narrow: a strict address check, the key sent only to

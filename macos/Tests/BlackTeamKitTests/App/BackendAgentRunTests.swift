@@ -72,7 +72,7 @@ final class BackendAgentRunTests: XCTestCase {
         let backend = try make(fixture, agents: agents)
         let project = try openProject(backend)
         // A conversation that carries memory: the core, and notes recalled for an earlier message, plus pictures.
-        let vault = BackendCloudTests()
+        let vault = BackendCloudTests.helper()
         var thread = backend.history.create("hello")
         thread = thread.setting("kind", .string("agent")).setting("engine", .string("claude-code")).setting("privacy", .string("cloud"))
             .setting("provider", .string("anthropic.com")).setting("project", .string(project.id)).setting("core", .string(vault.vaultCore))

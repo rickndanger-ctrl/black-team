@@ -28,7 +28,7 @@ final class ConfigTests: XCTestCase {
         let model = dir + "/test model.gguf", runtime = dir + "/llama-server", stateDir = dir + "/state"
         var header = Data("GGUF".utf8); header.append(contentsOf: [3, 0, 0, 0]); header.append(Data(count: 56))
         try header.write(to: URL(fileURLWithPath: model))
-        try machO().write(to: URL(fileURLWithPath: runtime))
+        try Data(nativeProgramHeader()).write(to: URL(fileURLWithPath: runtime))
         chmod(runtime, 0o700)
         let store = try ConfigStore(stateDir: stateDir, defaultWorkspace: dir + "/default-workspace")
         let config: JSONValue = ["model": ["name": "Test model", "file": .string(model), "runtime": .string(runtime)], "workspace": .string(dir)]
@@ -108,6 +108,32 @@ final class ConfigTests: XCTestCase {
         XCTAssertTrue(message { _ = try inspectModel(f.dir) }.contains("not a regular file"))
         XCTAssertTrue(message { _ = try inspectModel(f.dir + "/missing") }.contains("ENOENT"))
         XCTAssertTrue(message { _ = try inspectRuntime("/bin/sh") }.contains("Choose the llama-server"))
+        #if os(Linux)
+        XCTAssertTrue(message { _ = try inspectRuntime("/bin/sh") }.contains("Linux llama.cpp release"))
+        XCTAssertGreaterThan(try inspectRuntime(f.runtime).bytes, 0)
+        // The wrong machine, a relocatable object, a 32-bit or big-endian file, or an unknown header is refused.
+        func elf(machine: UInt16 = ELFMachine.current, type: UInt8 = 2, bits: UInt8 = 2, order: UInt8 = 1) -> Data {
+            var bytes = nativeProgramHeader()
+            bytes[16] = type; bytes[4] = bits; bytes[5] = order
+            bytes[18] = UInt8(machine & 0xff); bytes[19] = UInt8(machine >> 8)
+            return Data(bytes)
+        }
+        let otherMachine: UInt16 = ELFMachine.current == 62 ? 183 : 62
+        try elf(machine: otherMachine).write(to: URL(fileURLWithPath: f.runtime))
+        XCTAssertTrue(message { _ = try inspectRuntime(f.runtime) }.contains("native Linux \(ELFMachine.name)"))
+        try elf(type: 1).write(to: URL(fileURLWithPath: f.runtime))
+        XCTAssertTrue(message { _ = try inspectRuntime(f.runtime) }.contains("native Linux"))
+        try elf(bits: 1).write(to: URL(fileURLWithPath: f.runtime))
+        XCTAssertTrue(message { _ = try inspectRuntime(f.runtime) }.contains("native Linux"))
+        try elf(order: 2).write(to: URL(fileURLWithPath: f.runtime))
+        XCTAssertTrue(message { _ = try inspectRuntime(f.runtime) }.contains("native Linux"))
+        try Data(count: 64).write(to: URL(fileURLWithPath: f.runtime))
+        XCTAssertTrue(message { _ = try inspectRuntime(f.runtime) }.contains("native Linux"))
+        try elf(type: 3).write(to: URL(fileURLWithPath: f.runtime))
+        XCTAssertGreaterThan(try inspectRuntime(f.runtime).bytes, 0, "a position-independent executable is accepted")
+        try machO().write(to: URL(fileURLWithPath: f.runtime))
+        XCTAssertTrue(message { _ = try inspectRuntime(f.runtime) }.contains("native Linux"), "a Mac program is not a Linux one")
+        #else
         XCTAssertTrue(message { _ = try inspectRuntime("/bin/sh") }.contains("macOS llama.cpp release"))
         XCTAssertGreaterThan(try inspectRuntime(f.runtime).bytes, 0)
         // The wrong architecture, wrong file type or an unknown header is refused; a universal binary is accepted when it holds this Mac's.
@@ -125,6 +151,7 @@ final class ConfigTests: XCTestCase {
         try fat([other, other, MachOCPU.current]).write(to: URL(fileURLWithPath: f.runtime))
         XCTAssertGreaterThan(try inspectRuntime(f.runtime).bytes, 0, "an architecture after the first two is found too")
         XCTAssertNoThrow(try inspectRuntime(f.runtime, cpuType: other))
+        #endif
     }
 
     func testUnreadableModelsAndNonExecutableRuntimesAreRejected() throws {
@@ -184,10 +211,19 @@ final class ConfigTests: XCTestCase {
     }
 
     func testAppPaths() {
+        #if os(Linux)
+        XCTAssertEqual(AppPaths.dataFolder(environment: [:], home: "/home/x"), "/home/x/.local/share/black-team-data")
+        XCTAssertEqual(AppPaths.dataFolder(environment: ["XDG_DATA_HOME": "/srv/share"], home: "/home/x"), "/srv/share/black-team-data")
+        XCTAssertEqual(AppPaths.dataFolder(environment: ["XDG_DATA_HOME": "relative"], home: "/home/x"), "/home/x/.local/share/black-team-data")
+        XCTAssertEqual(AppPaths.dataFolder(environment: ["BLACK_TEAM_DATA": "/tmp/clean/", "XDG_DATA_HOME": "/srv/share"], home: "/home/x"), "/tmp/clean")
+        XCTAssertEqual(AppPaths.dataFolder(environment: ["BLACK_TEAM_DATA": "relative"], home: "/home/x"), "/home/x/.local/share/black-team-data")
+        XCTAssertEqual(AppPaths.defaultWorkspace(home: "/home/x"), "/home/x/Black Team")
+        #else
         XCTAssertEqual(AppPaths.dataFolder(environment: [:], home: "/Users/x"), "/Users/x/Library/Application Support/Black Team")
         XCTAssertEqual(AppPaths.dataFolder(environment: ["BLACK_TEAM_DATA": "/tmp/clean/"], home: "/Users/x"), "/tmp/clean")
         XCTAssertEqual(AppPaths.dataFolder(environment: ["BLACK_TEAM_DATA": "relative"], home: "/Users/x"), "/Users/x/Library/Application Support/Black Team")
         XCTAssertEqual(AppPaths.defaultWorkspace(home: "/Users/x"), "/Users/x/Black Team")
+        #endif
     }
 
     private func realpathString(_ path: String) -> String {

@@ -1,5 +1,12 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 // Starts and stops Black Team's own llama-server, or connects to a model server that is
 // already running. Everything that touches the system (the process, the network, the
@@ -58,11 +65,17 @@ public func runtimeEnvironment(_ source: [String: String] = ProcessInfo.processI
 
 /// A free loopback port: bound, read and released again.
 public func reserveLoopbackPort() async throws -> Int {
+    #if os(Linux)
+    let fd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+    #else
     let fd = socket(AF_INET, SOCK_STREAM, 0)
+    #endif
     if fd < 0 { throw BlackTeamError("Could not reserve a local model port.") }
     defer { close(fd) }
     var address = sockaddr_in()
+    #if !os(Linux)
     address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    #endif
     address.sin_family = sa_family_t(AF_INET)
     address.sin_port = 0
     address.sin_addr.s_addr = inet_addr("127.0.0.1")
@@ -162,6 +175,66 @@ private func spawnErrorCode(_ error: Error) -> String {
     }
 }
 
+#if os(Linux)
+private final class PlainProcess: ModelProcess, @unchecked Sendable {
+    let pid: Int32
+    private let lock = NSLock()
+    private var gone = false
+    var watcherPid: Int32 = 0
+    init(pid: Int32) { self.pid = pid }
+    func markGone() { lock.lock(); gone = true; lock.unlock() }
+    func send(signal: Int32) { lock.lock(); let alive = !gone; lock.unlock(); if alive { kill(pid, signal) } }
+}
+
+/// Starts `path` with posix_spawn, standard streams on /dev/null. Returns the process id or the errno.
+private func linuxSpawn(_ path: String, _ arguments: [String], environment: [String: String]) -> (pid: Int32, error: Int32) {
+    var actions = posix_spawn_file_actions_t()
+    posix_spawn_file_actions_init(&actions)
+    defer { posix_spawn_file_actions_destroy(&actions) }
+    posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+    posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0)
+    posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
+    // The program starts with the default signal set, so SIGTERM stops it even when this process blocks or ignores signals.
+    var attributes = posix_spawnattr_t()
+    posix_spawnattr_init(&attributes)
+    defer { posix_spawnattr_destroy(&attributes) }
+    var mask = sigset_t(), defaults = sigset_t()
+    sigemptyset(&mask); sigemptyset(&defaults)
+    for number in Int32(1)..<32 where number != SIGKILL && number != SIGSTOP { sigaddset(&defaults, number) }
+    posix_spawnattr_setsigmask(&attributes, &mask)
+    posix_spawnattr_setsigdefault(&attributes, &defaults)
+    posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF))
+    var argv: [UnsafeMutablePointer<CChar>?] = ([path] + arguments).map { strdup($0) } + [nil]
+    var envp: [UnsafeMutablePointer<CChar>?] = environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
+    defer { for item in argv { free(item) }; for item in envp { free(item) } }
+    var child: pid_t = 0
+    let status = posix_spawn(&child, path, &actions, &attributes, &argv, &envp)
+    return (child, status)
+}
+
+/// Starts a real process (Linux). A small `sh` watcher beside it ends the child within two seconds if Black Team
+/// itself dies without a chance to stop it. A thread waits for the child and reports how it ended.
+public let systemSpawn: ProcessSpawner = { launch, onExit in
+    let started = linuxSpawn(launch.executable, launch.arguments, environment: launch.environment)
+    if started.error != 0 { throw SpawnError(code: CoreFS.errnoName(started.error)) }
+    let handle = PlainProcess(pid: started.pid)
+    ChildRegistry.shared.add(started.pid)
+    let watcher = linuxSpawn("/bin/sh", ["-c", #"while kill -0 "$1" 2>/dev/null && kill -0 "$2" 2>/dev/null; do sleep 2; done; kill -0 "$1" 2>/dev/null || kill "$2" 2>/dev/null"#,
+                                          "black-team-watch", String(getpid()), String(started.pid)], environment: ["PATH": "/usr/bin:/bin"])
+    handle.watcherPid = watcher.error == 0 ? watcher.pid : 0
+    let thread = Thread {
+        var status: Int32 = 0
+        while waitpid(started.pid, &status, 0) < 0 && errno == EINTR {}
+        handle.markGone()
+        ChildRegistry.shared.remove(started.pid)
+        if handle.watcherPid > 0 { kill(handle.watcherPid, SIGTERM); var reaped: Int32 = 0; waitpid(handle.watcherPid, &reaped, 0) }
+        let signal = status & 0x7f
+        if signal != 0 { onExit(ProcessExit(code: nil, signal: signal)) } else { onExit(ProcessExit(code: (status >> 8) & 0xff, signal: nil)) }
+    }
+    thread.start()
+    return handle
+}
+#else
 /// Starts a real process. A small `sh` watcher beside it ends the child within two seconds if Black Team
 /// itself dies without a chance to stop it (a crash or a kill -9), which no normal exit hook could cover.
 public let systemSpawn: ProcessSpawner = { launch, onExit in
@@ -191,6 +264,7 @@ public let systemSpawn: ProcessSpawner = { launch, onExit in
     if (try? watcher.run()) != nil { handle.watcher = watcher }
     return handle
 }
+#endif
 
 func signalName(_ signal: Int32) -> String {
     switch signal {
@@ -483,7 +557,7 @@ public actor ModelRuntime {
     }
 
     private func realPath(_ path: String) -> String? {
-        guard let resolved = Darwin.realpath(path, nil) else { return nil }
+        guard let resolved = realpath(path, nil) else { return nil }
         defer { free(resolved) }
         return String(cString: resolved)
     }

@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 /// Compares two secrets in constant time (`equal` in server.cjs). Different lengths are simply unequal.
 func phoneEqual(_ a: String?, _ b: String?) -> Bool {
@@ -39,7 +38,7 @@ public final class PhoneKeys: @unchecked Sendable {
         let fd = open(file, O_RDONLY | O_NOFOLLOW)
         if fd < 0 { throw BlackTeamError("Phone pairing key must not be a symbolic link.") }
         defer { close(fd) }
-        var info = Darwin.stat()
+        var info = CStat()
         guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG, info.st_size <= 1024 else { throw damaged }
         let data = FileHandle(fileDescriptor: fd, closeOnDealloc: false).readData(ofLength: 1025)
         let text = String(decoding: data, as: UTF8.self)
@@ -51,7 +50,12 @@ public final class PhoneKeys: @unchecked Sendable {
 
     static func randomKey() -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
+        #if os(Linux)
+        var generator = SystemRandomNumberGenerator()
+        for index in bytes.indices { bytes[index] = UInt8.random(in: 0...255, using: &generator) }
+        #else
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { fatalError("No secure random numbers.") }
+        #endif
         return bytes.map { String(format: "%02x", $0) }.joined()
     }
 

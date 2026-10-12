@@ -219,6 +219,9 @@ public func launchScript(workspace: String, environment: [String: String], execu
 public typealias TerminalOpener = @Sendable (_ terminalApp: String, _ script: String) async throws -> Void
 
 public let openInTerminal: TerminalOpener = { app, script in
+    #if os(Linux)
+    throw BlackTeamError("Opening a terminal is not available on Linux in this build yet.")
+    #else
     let failure = BlackTeamError("The harness could not launch. Check its executable, terminal and workspace.")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
@@ -228,6 +231,7 @@ public let openInTerminal: TerminalOpener = { app, script in
     do { try process.run() } catch { throw failure }
     process.waitUntilExit()
     if process.terminationStatus != 0 { throw failure }
+    #endif
 }
 
 public struct LaunchResult: Equatable, Sendable {
@@ -288,7 +292,7 @@ func writeLaunchScript(_ text: String, stateDir: String) throws -> String {
         try? FileManager.default.removeItem(atPath: dir + "/" + name)
     }
     let path = dir + "/" + UUID().uuidString.lowercased() + ".command"
-    let fd = Darwin.open(path, O_WRONLY | O_CREAT | O_EXCL, 0o700)
+    let fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0o700)
     if fd < 0 { throw BlackTeamError("The harness could not launch. Check its executable, terminal and workspace.") }
     defer { close(fd) }
     let bytes = Array(text.utf8)

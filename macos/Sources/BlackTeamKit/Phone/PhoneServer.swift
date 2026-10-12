@@ -1,4 +1,5 @@
 import Foundation
+#if canImport(Network)
 import Network
 
 /// The HTTP server the Tailscale route points at. It listens on 127.0.0.1 only (never any other interface), takes
@@ -161,6 +162,16 @@ public final class PhoneServer: @unchecked Sendable {
         await send(connection, response.serialized(head: isHead))
     }
 }
+#else
+/// Phone access needs Network.framework; the Linux version comes later.
+public final class PhoneServer: @unchecked Sendable {
+    init(router: PhoneRouter, port: Int = Phone.localPort) {}
+    public var isRunning: Bool { false }
+    public var port: Int { 0 }
+    public func start() async throws { throw BlackTeamError("Phone access is not available on Linux in this build yet.") }
+    public func stop() {}
+}
+#endif
 
 /// A flag that can be taken once.
 final class PhoneOnce: @unchecked Sendable {

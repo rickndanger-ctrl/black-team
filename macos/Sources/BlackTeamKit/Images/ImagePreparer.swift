@@ -1,4 +1,5 @@
 import Foundation
+#if canImport(ImageIO)
 import ImageIO
 import CoreGraphics
 import UniformTypeIdentifiers
@@ -13,7 +14,7 @@ public enum ImagePreparer {
     public static let tooBigResult = "This image is too large after resizing. Choose a smaller image."
 
     public static func prepare(url: URL) throws -> ImageUpload {
-        var info = Darwin.stat()
+        var info = CStat()
         if stat(url.path, &info) != 0 || (info.st_mode & S_IFMT) != S_IFREG { throw BlackTeamError("Could not read image.") }
         if Int(info.st_size) > ImageRules.maxSourceBytes { throw BlackTeamError(tooBigSource) }
         guard let data = try? Data(contentsOf: url) else { throw BlackTeamError("Could not read image.") }
@@ -61,3 +62,36 @@ public enum ImagePreparer {
         return (width, height)
     }
 }
+#else
+/// Image attachments need ImageIO; the Linux version comes later.
+public enum ImagePreparer {
+    public static let notAnImage = "Choose an image file (JPEG, PNG, WebP, HEIC, TIFF or GIF)."
+    public static let tooBigSource = "Choose an image smaller than 20 MB."
+    public static let tooBigResult = "This image is too large after resizing. Choose a smaller image."
+    static let unavailable = "Image attachments are not available on Linux in this build yet."
+    public static func prepare(url: URL) throws -> ImageUpload { throw BlackTeamError(unavailable) }
+    public static func prepare(data: Data, name: String) throws -> ImageUpload { throw BlackTeamError(unavailable) }
+    /// Pixel size from the file header of a PNG or JPEG (all that is read without an image library).
+    public static func dimensions(of data: Data) -> (width: Int, height: Int)? {
+        let b = [UInt8](data.prefix(1 << 16))
+        func be(_ at: Int, _ count: Int) -> Int { b[at..<at + count].reduce(0) { $0 << 8 | Int($1) } }
+        if b.count >= 24, Array(b[0..<8]) == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+            let (w, h) = (be(16, 4), be(20, 4))
+            return w > 0 && h > 0 ? (w, h) : nil
+        }
+        guard b.count > 4, b[0] == 0xFF, b[1] == 0xD8 else { return nil }
+        var at = 2
+        while at + 9 < b.count {
+            guard b[at] == 0xFF else { return nil }
+            let marker = b[at + 1]
+            if marker == 0xFF { at += 1; continue }
+            if (0xC0...0xCF).contains(marker) && ![0xC4, 0xC8, 0xCC].contains(marker) {
+                let (h, w) = (be(at + 5, 2), be(at + 7, 2))
+                return w > 0 && h > 0 ? (w, h) : nil
+            }
+            at += 2 + be(at + 2, 2)
+        }
+        return nil
+    }
+}
+#endif

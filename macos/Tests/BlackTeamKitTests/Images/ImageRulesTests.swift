@@ -1,5 +1,7 @@
 import XCTest
+#if canImport(ImageIO)
 import ImageIO
+#endif
 @testable import BlackTeamKit
 
 final class ImageRulesTests: XCTestCase {
@@ -51,6 +53,9 @@ final class ImageRulesTests: XCTestCase {
     // MARK: Preparation
 
     func testALargeImageIsScaledToTheLongSide1280() throws {
+        #if !canImport(ImageIO)
+        throw XCTSkip("Picture preparation needs ImageIO, which Linux does not have in this build yet")
+        #endif
         let wide = try ImagePreparer.prepare(data: TestImage.png(width: 4000, height: 3000), name: "huge.png")
         let size = try XCTUnwrap(ImagePreparer.dimensions(of: wide.data))
         XCTAssertEqual(size.width, 1280)
@@ -63,6 +68,9 @@ final class ImageRulesTests: XCTestCase {
     }
 
     func testASmallImageIsNotEnlarged() throws {
+        #if !canImport(ImageIO)
+        throw XCTSkip("Picture preparation needs ImageIO, which Linux does not have in this build yet")
+        #endif
         let small = try ImagePreparer.prepare(data: TestImage.png(width: 100, height: 50), name: "small.png")
         XCTAssertEqual(ImagePreparer.dimensions(of: small.data)?.width, 100)
         XCTAssertEqual(ImagePreparer.dimensions(of: small.data)?.height, 50)
@@ -70,6 +78,9 @@ final class ImageRulesTests: XCTestCase {
     }
 
     func testExifOrientationIsApplied() throws {
+        #if !canImport(ImageIO)
+        throw XCTSkip("Picture preparation needs ImageIO, which Linux does not have in this build yet")
+        #else
         // 200 wide by 100 high, tagged "rotate 90 clockwise to display": it shows as 100 wide by 200 high.
         let tagged = TestImage.jpeg(width: 200, height: 100, properties: [kCGImagePropertyOrientation: 6])
         let prepared = try ImagePreparer.prepare(data: tagged, name: "phone.jpg")
@@ -78,9 +89,13 @@ final class ImageRulesTests: XCTestCase {
         XCTAssertEqual(size.height, 200)
         // And the result carries no orientation tag that would turn it a second time.
         XCTAssertNil(TestImage.properties(prepared.data)[kCGImagePropertyOrientation].flatMap { ($0 as? NSNumber)?.intValue }.flatMap { $0 == 1 ? nil : $0 })
+        #endif
     }
 
     func testOutputIsAJpegWithNoMetadata() throws {
+        #if !canImport(ImageIO)
+        throw XCTSkip("Picture preparation needs ImageIO, which Linux does not have in this build yet")
+        #else
         let gps: [CFString: Any] = [kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 51.5, kCGImagePropertyGPSLongitude: -0.12, kCGImagePropertyGPSLatitudeRef: "N", kCGImagePropertyGPSLongitudeRef: "W"],
                                     kCGImagePropertyExifDictionary: [kCGImagePropertyExifUserComment: "private note"],
                                     kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "SecretCam"]]
@@ -94,27 +109,42 @@ final class ImageRulesTests: XCTestCase {
         XCTAssertNil((found[kCGImagePropertyExifDictionary] as? [CFString: Any])?[kCGImagePropertyExifUserComment])
         XCTAssertFalse(String(decoding: prepared.data, as: UTF8.self).contains("private note"))
         XCTAssertFalse(String(decoding: prepared.data, as: UTF8.self).contains("SecretCam"))
+        #endif
     }
 
     func testTransparencyIsFlattenedOntoWhite() throws {
+        #if !canImport(ImageIO)
+        throw XCTSkip("Picture preparation needs ImageIO, which Linux does not have in this build yet")
+        #else
         let prepared = try ImagePreparer.prepare(data: TestImage.png(width: 32, height: 32, alpha: 0), name: "clear.png")
         let (r, g, b) = TestImage.pixel(prepared.data, x: 16, y: 16)
         XCTAssertGreaterThan(r, 245); XCTAssertGreaterThan(g, 245); XCTAssertGreaterThan(b, 245)
+        #endif
     }
 
     func testOtherFormatsMacCanReadAreAccepted() throws {
+        #if !canImport(ImageIO)
+        throw XCTSkip("Picture preparation needs ImageIO, which Linux does not have in this build yet")
+        #else
         let tiff = TestImage.encode(TestImage.cgImage(width: 40, height: 30), type: .tiff)
         XCTAssertEqual(ImagePreparer.dimensions(of: try ImagePreparer.prepare(data: tiff, name: "scan.tiff").data)?.width, 40)
         let gif = TestImage.encode(TestImage.cgImage(width: 20, height: 20), type: .gif)
         XCTAssertEqual(ImageRules.kind(of: try ImagePreparer.prepare(data: gif, name: "a.gif").data), .jpeg)
+        #endif
     }
 
-    func testNotAnImageAndTooBigSourcesAreRefused() {
+    func testNotAnImageAndTooBigSourcesAreRefused() throws {
+        #if !canImport(ImageIO)
+        throw XCTSkip("Picture preparation needs ImageIO, which Linux does not have in this build yet")
+        #endif
         XCTAssertThrowsError(try ImagePreparer.prepare(data: Data("hello".utf8), name: "x.txt")) { XCTAssertEqual(messageOf($0), ImagePreparer.notAnImage) }
         XCTAssertThrowsError(try ImagePreparer.prepare(data: Data(count: ImageRules.maxSourceBytes + 1), name: "x.png")) { XCTAssertEqual(messageOf($0), "Choose an image smaller than 20 MB.") }
     }
 
     func testPreparingAFileRefusesOneOver20MB() throws {
+        #if !canImport(ImageIO)
+        throw XCTSkip("Picture preparation needs ImageIO, which Linux does not have in this build yet")
+        #endif
         let dir = makeTemporaryFolder(self)
         let path = dir + "/big.png"
         FileManager.default.createFile(atPath: path, contents: Data(count: ImageRules.maxSourceBytes + 1))

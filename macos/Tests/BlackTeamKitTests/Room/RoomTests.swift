@@ -115,7 +115,7 @@ final class RoomTests: XCTestCase {
         let r = try await rig()
         _ = try member(r, "Ornith", model: r.localKey)
         let file = r.fixture.stateDir + "/rooms/" + r.pid + ".json"
-        var info = stat(); XCTAssertEqual(stat(file, &info), 0)
+        var info = CStat(); XCTAssertEqual(stat(file, &info), 0)
         XCTAssertEqual(info.st_mode & 0o777, 0o600)
         XCTAssertEqual(stat(r.fixture.stateDir + "/rooms", &info), 0)
         XCTAssertEqual(info.st_mode & 0o777, 0o700)

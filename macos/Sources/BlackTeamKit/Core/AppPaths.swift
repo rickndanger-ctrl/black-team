@@ -11,7 +11,13 @@ public enum AppPaths {
             while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
             return path
         }
+        #if os(Linux)
+        // The Linux app: `black-team-data` under XDG_DATA_HOME (when absolute) or ~/.local/share.
+        let share = environment["XDG_DATA_HOME"].flatMap { $0.hasPrefix("/") ? $0 : nil } ?? home + "/.local/share"
+        return share + "/black-team-data"
+        #else
         return home + "/Library/Application Support/Black Team"
+        #endif
     }
 
     /// The folder the app works in until the person picks another. It stays `~/Black Team`

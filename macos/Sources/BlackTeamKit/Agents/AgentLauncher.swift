@@ -95,13 +95,21 @@ private final class AgentProcessRun: @unchecked Sendable {
             return spawnFailed("The tool could not start (pipe).")
         }
         for fd in outPipe + errPipe { _ = fcntl(fd, F_SETFD, FD_CLOEXEC) }
+        #if os(Linux)
+        var actions = posix_spawn_file_actions_t()
+        #else
         var actions: posix_spawn_file_actions_t? = nil
+        #endif
         posix_spawn_file_actions_init(&actions)
         posix_spawn_file_actions_adddup2(&actions, outPipe[1], 1)
         posix_spawn_file_actions_adddup2(&actions, errPipe[1], 2)
         posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
         posix_spawn_file_actions_addchdir_np(&actions, command.workspace)
+        #if os(Linux)
+        var attributes = posix_spawnattr_t()
+        #else
         var attributes: posix_spawnattr_t? = nil
+        #endif
         posix_spawnattr_init(&attributes)
         // The tool starts with the default signal set, so SIGTERM stops it even when the app ignores or blocks signals.
         var mask = sigset_t(), defaults = sigset_t()
@@ -159,7 +167,7 @@ private final class AgentProcessRun: @unchecked Sendable {
         var buffer = [UInt8](repeating: 0, count: 65536)
         var pending: [UInt8] = []
         while true {
-            let count = Darwin.read(fd, &buffer, buffer.count)
+            let count = cRead(fd, &buffer, buffer.count)
             if count < 0 { if errno == EINTR { continue }; break }
             if count == 0 { break }
             for byte in buffer[0..<count] {

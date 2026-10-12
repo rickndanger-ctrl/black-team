@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 /// What Ask does with one step Claude Code could not do without approval.
 enum AskDecision: Equatable {

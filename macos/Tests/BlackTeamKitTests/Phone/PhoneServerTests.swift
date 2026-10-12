@@ -1,6 +1,12 @@
 import XCTest
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
+#if canImport(Network)
 import Network
+#endif
 @testable import BlackTeamKit
 
 // The strict HTTP reader, the loopback-only server, and a phone driving a real Backend through both.
@@ -92,7 +98,11 @@ final class PhoneHTTPParserTests: XCTestCase {
 
 /// A blocking client over BSD sockets, so the tests can send exactly the bytes they like.
 func rawExchange(host: String = "127.0.0.1", port: Int, _ pieces: [Data], pause: TimeInterval = 0) -> (reply: String, connected: Bool) {
+    #if os(Linux)
+    let fd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+    #else
     let fd = socket(AF_INET, SOCK_STREAM, 0)
+    #endif
     defer { close(fd) }
     var address = sockaddr_in()
     address.sin_family = sa_family_t(AF_INET)
@@ -116,6 +126,7 @@ func rawExchange(host: String = "127.0.0.1", port: Int, _ pieces: [Data], pause:
     return (String(decoding: reply, as: UTF8.self), true)
 }
 
+#if canImport(Network)
 final class PhoneServerTests: XCTestCase {
     private func started(_ rig: PhoneRig) async throws -> PhoneServer {
         let server = PhoneServer(router: rig.router, port: 0)
@@ -224,6 +235,15 @@ final class PhoneServerTests: XCTestCase {
         XCTAssertNil(PhoneServer.peerAddress(.hostPort(host: "example.com", port: 1)))
     }
 }
+#else
+final class PhoneServerTests: XCTestCase {
+    func testItAnswersOnLoopbackAndNowhereElse() throws { throw XCTSkip("The phone server needs Network.framework; its Linux version comes later") }
+    func testAPairedPhoneAndAStrangerOverTheSocket() throws { throw XCTSkip("The phone server needs Network.framework; its Linux version comes later") }
+    func testMalformedAndOversizedRequestsOverTheSocket() throws { throw XCTSkip("The phone server needs Network.framework; its Linux version comes later") }
+    func testAPortInUseIsReportedAndStopClosesTheListener() throws { throw XCTSkip("The phone server needs Network.framework; its Linux version comes later") }
+    func testThePeerAddressIsReadFromTheConnection() throws { throw XCTSkip("The phone server needs Network.framework; its Linux version comes later") }
+}
+#endif
 
 /// A phone against a real Backend: nothing private leaves, and a chat reaches the model and comes back.
 final class PhoneBackendTests: XCTestCase {

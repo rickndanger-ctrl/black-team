@@ -1,5 +1,12 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 // Finds the models already on this computer, so setting up is choosing, not typing.
 // It asks local servers for their model list and looks for GGUF files in the folders
@@ -79,9 +86,14 @@ public struct RunningServer: Equatable, Sendable {
 
 /// The path of a process's program, from the system.
 public func processExecutablePath(_ pid: Int) -> String? {
+    #if os(Linux)
+    guard let target = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/\(pid)/exe") else { return nil }
+    return target
+    #else
     var buffer = [CChar](repeating: 0, count: 4 * 1024)
     guard proc_pidpath(Int32(pid), &buffer, UInt32(buffer.count)) > 0 else { return nil }
     return String(cString: buffer)
+    #endif
 }
 
 /// Model servers this user is already running, on whatever port they chose. `processes` lists the user's
@@ -137,13 +149,13 @@ public func ggufFiles(home: String, extra: [String] = [], dataFolder: String? = 
         guard let handle = opendir(directory) else { return }
         defer { closedir(handle) }
         while let entry = readdir(handle) {
-            let name = withUnsafePointer(to: &entry.pointee.d_name) { $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) } }
+            let name = withUnsafePointer(to: &entry.pointee.d_name) { $0.withMemoryRebound(to: CChar.self, capacity: 256) { String(cString: $0) } }
             if name == "." || name == ".." { continue }
             budget -= 1
             if budget < 0 || files.count >= 60 { return }
             let full = directory + "/" + name
             var isDirectory = entry.pointee.d_type == UInt8(DT_DIR)
-            if entry.pointee.d_type == UInt8(DT_UNKNOWN) { var info = stat(); isDirectory = lstat(full, &info) == 0 && (info.st_mode & S_IFMT) == S_IFDIR }
+            if entry.pointee.d_type == UInt8(DT_UNKNOWN) { var info = CStat(); isDirectory = lstat(full, &info) == 0 && (info.st_mode & S_IFMT) == S_IFDIR }
             // A linked folder is never followed.
             if isDirectory { if depth < 5 && !name.hasPrefix(".git") { walk(full, depth + 1) }; continue }
             if !isGGUF(name) || isHelperFile(name) { continue }
@@ -152,7 +164,7 @@ public func ggufFiles(home: String, extra: [String] = [], dataFolder: String? = 
         }
     }
     for root in roots {
-        var info = stat()
+        var info = CStat()
         if stat(root, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR { looked.append(root); walk(root, 0) }
     }
     var seen = Set<String>()

@@ -99,6 +99,9 @@ final class RuntimeInstallerTests: XCTestCase {
     }
 
     func testInstallExtractsVerifiesAndRecords() async throws {
+        #if os(Linux)
+        throw XCTSkip("The runtime installer checks for a Mac (Mach-O) program; its Linux version comes later")
+        #endif
         let data = folder.appendingPathComponent("data")
         let fake = FakeDownloader(archive: try makeArchive(tag: "b1"))
         let installer = RuntimeInstaller(dataFolder: data, architecture: .current, fetch: { _ in Data() }, downloader: fake)
@@ -126,6 +129,9 @@ final class RuntimeInstallerTests: XCTestCase {
     }
 
     func testBadUpdateKeepsThePreviousVersion() async throws {
+        #if os(Linux)
+        throw XCTSkip("The runtime installer checks for a Mac (Mach-O) program; its Linux version comes later")
+        #endif
         let data = folder.appendingPathComponent("data")
         let fake = FakeDownloader(archive: try makeArchive(tag: "b1"))
         let installer = RuntimeInstaller(dataFolder: data, architecture: .current, fetch: { _ in Data() }, downloader: fake)
@@ -140,6 +146,9 @@ final class RuntimeInstallerTests: XCTestCase {
     }
 
     func testGoodUpdateRecordsPreviousAndPrunesOlder() async throws {
+        #if os(Linux)
+        throw XCTSkip("The runtime installer checks for a Mac (Mach-O) program; its Linux version comes later")
+        #endif
         let data = folder.appendingPathComponent("data")
         let fake = FakeDownloader(archive: try makeArchive(tag: "b1"))
         let installer = RuntimeInstaller(dataFolder: data, architecture: .current, fetch: { _ in Data() }, downloader: fake)
@@ -164,6 +173,9 @@ final class RuntimeInstallerTests: XCTestCase {
     }
 
     func testMachOCheckRejectsWrongArchitectureAndScripts() throws {
+        #if os(Linux)
+        throw XCTSkip("The runtime installer checks for a Mac (Mach-O) program; its Linux version comes later")
+        #endif
         let program = URL(fileURLWithPath: "/usr/bin/true")
         let other: MacArchitecture = MacArchitecture.current == .arm64 ? .x64 : .arm64
         // /usr/bin/true is universal on current macOS, so only assert the current architecture passes.
@@ -175,16 +187,29 @@ final class RuntimeInstallerTests: XCTestCase {
     }
 
     func testQuarantineAttributeIsCleared() throws {
+        #if os(Linux)
+        throw XCTSkip("There is no download-quarantine attribute on Linux")
+        #else
         let file = folder.appendingPathComponent("flagged")
         try Data("x".utf8).write(to: file)
         let value = "0083;00000000;Safari;"
         XCTAssertEqual(setxattr(file.path, "com.apple.quarantine", value, value.utf8.count, 0, 0), 0)
         XCTAssertGreaterThanOrEqual(RuntimeInstaller.clearQuarantine(at: folder), 1)
         XCTAssertEqual(getxattr(file.path, "com.apple.quarantine", nil, 0, 0, 0), -1)
+        #endif
     }
 
     func testVersionCheckTimesOut() async throws {
-        do { _ = try await RuntimeInstaller.runVersion(executable: URL(fileURLWithPath: "/bin/sleep"), timeout: 0.5); XCTFail("expected an error") }
+        #if os(Linux)
+        // GNU sleep answers --version at once, so use a program that really does wait.
+        let slow = folder.appendingPathComponent("slow-server")
+        try Data("#!/bin/sh\nsleep 30\n".utf8).write(to: slow)
+        chmod(slow.path, 0o755)
+        let waiter = slow
+        #else
+        let waiter = URL(fileURLWithPath: "/bin/sleep")
+        #endif
+        do { _ = try await RuntimeInstaller.runVersion(executable: waiter, timeout: 0.5); XCTFail("expected an error") }
         catch let error as BlackTeamError { XCTAssertTrue(error.message.contains("did not start") || error.message.contains("did not respond"), error.message) }
     }
 

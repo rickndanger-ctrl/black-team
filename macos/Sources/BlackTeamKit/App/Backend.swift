@@ -1,5 +1,7 @@
 import Foundation
-import CryptoKit
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 // The app's brain with no window and no HTTP: the logic `lib/server.cjs` kept behind its
 // routes and `main.cjs` behind its IPC channels. The Mac app calls it directly.

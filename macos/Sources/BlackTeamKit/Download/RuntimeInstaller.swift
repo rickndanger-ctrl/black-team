@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 public enum MacArchitecture: String, Sendable, Codable {
     case arm64, x64
@@ -278,6 +281,9 @@ public final class RuntimeInstaller: @unchecked Sendable {
     /// the program. Files fetched by this app are not flagged anyway; this covers archives that carry it.
     @discardableResult
     public static func clearQuarantine(at folder: URL) -> Int {
+        #if os(Linux)
+        return 0   // Linux has no download-quarantine flag.
+        #else
         var cleared = 0
         func clear(_ path: String) { if removexattr(path, "com.apple.quarantine", XATTR_NOFOLLOW) == 0 { cleared += 1 } }
         clear(folder.path)
@@ -285,6 +291,7 @@ public final class RuntimeInstaller: @unchecked Sendable {
             for case let relative as String in walker { clear(folder.path + "/" + relative) }
         }
         return cleared
+        #endif
     }
 
     /// Runs `llama-server --version` and returns what it prints. Fails if it will not start in time.

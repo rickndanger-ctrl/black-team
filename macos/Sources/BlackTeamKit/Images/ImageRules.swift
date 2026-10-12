@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 // Image attachments, the rules of `companion-images.cjs` and `src/ImageAttachments.jsx`: up to 4 images a message,
 // PNG, JPEG or WebP data of at most 1 MB each after resizing, checked by their magic numbers.

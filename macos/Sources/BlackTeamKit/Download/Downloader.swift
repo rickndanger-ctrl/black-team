@@ -1,5 +1,7 @@
 import Foundation
-import CryptoKit
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// A snapshot of a running download, for a progress bar.
 public struct DownloadProgress: Sendable, Equatable {
@@ -89,9 +91,13 @@ public final class Downloader: FileDownloading, @unchecked Sendable {
     public static let systemFreeSpace: @Sendable (URL) -> Int64? = { url in
         var folder = url
         while !FileManager.default.fileExists(atPath: folder.path), folder.path != "/" { folder = folder.deletingLastPathComponent() }
+        #if os(Linux)
+        return SystemInfo.diskSpace(at: folder.path).map { Int64($0.available) }
+        #else
         let values = try? folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
         if let important = values?.volumeAvailableCapacityForImportantUsage, important > 0 { return important }
         return values?.volumeAvailableCapacity.map { Int64($0) }
+        #endif
     }
 
     /// Progress as a stream for SwiftUI: `for try await event in downloader.events(for: request)`.
@@ -389,7 +395,7 @@ final class DownloadJob: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             return
         }
         report(force: true)
-        finish(.success(.complete))
+        finish(.success(outcome))   // a reply we cancelled on purpose may complete without an error on Linux
     }
 
     private func report(force: Bool) {
