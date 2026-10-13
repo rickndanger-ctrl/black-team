@@ -177,3 +177,4 @@ main { display: block; }
 .gallery + .note { margin: 14px 0 0; }
 .lead-in { max-width: 760px; color: var(--muted); margin: 10px 0 22px; }
 .film { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.film-note { margin: 14px 0 0; max-width: none; }

@@ -4,7 +4,7 @@
 
 **Your local models. Your choice of harness. Your computer, wherever you work.**
 
-Website: https://blackteamagent.com
+Website: https://blackteamagent.com · Video (72 seconds): https://youtu.be/WEKZ1CKsT0k
 
 > The app was called "Black Team" up to 0.1.0-alpha.20. The `black-team` command, its folders and the downloads keep that name.
 
