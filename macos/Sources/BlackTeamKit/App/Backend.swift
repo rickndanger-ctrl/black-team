@@ -83,6 +83,10 @@ public final class Backend: @unchecked Sendable {
     var teamControl: TeamControl?
     /// Set only by the Linux desktop service (Desktop/): where the app's scripts are, and that Hermes is supported. Nil on the Mac.
     var desktopOptions: DesktopOptions?
+    /// The window's vision file download and how far it is (Desktop/DesktopVision.swift). Idle everywhere else.
+    let visionInstall = VisionInstallState()
+    /// The window's starter model download, likewise.
+    let starterInstall = VisionInstallState()
 
     private var keeperFile: String { dataFolder + "/keeper.json" }
     private var projectsFile: String { dataFolder + "/projects.json" }

@@ -12,6 +12,8 @@ public final class DesktopControl: @unchecked Sendable {
         "runtime-start", "runtime-stop", "phone-save", "phone-detect", "phone-command", "phone-connect", "phone-disconnect", "open-data",
         // Cloud models and subscription agents (Desktop/DesktopCloud.swift).
         "cloud-discover", "cloud-save", "project-cloud", "agents-status", "agent-signin", "agent-update",
+        // Starter model and vision file downloads (Desktop/DesktopVision.swift).
+        "vision-install", "vision-cancel", "starter-list", "starter-install", "starter-cancel",
     ]
     /// Actions that change something: one at a time.
     static let changing: Set<String> = [
@@ -21,6 +23,8 @@ public final class DesktopControl: @unchecked Sendable {
     ]
 
     let backend: Backend
+    var vision: VisionInstallState { backend.visionInstall }
+    var starter: VisionInstallState { backend.starterInstall }
     private let home: String
     private let environment: [String: String]
 
@@ -45,6 +49,22 @@ public final class DesktopControl: @unchecked Sendable {
         switch action {
         case "status":
             return try await backend.desktopStatusJSON()
+        case "vision-install":
+            try unsupported([], "Unsupported setup setting.")
+            return visionStart()
+        case "vision-cancel":
+            try unsupported([], "Unsupported setup setting.")
+            return visionStop()
+        case "starter-list":
+            try unsupported([], "Unsupported setup setting.")
+            return starterList()
+        case "starter-install":
+            try unsupported(["id"], "Unsupported setup setting.")
+            guard let id = input["id"]?.string, !id.isEmpty else { throw BlackTeamError("That starter model is not in the list.") }
+            return starterStart(id)
+        case "starter-cancel":
+            try unsupported([], "Unsupported setup setting.")
+            return starterStop()
         case "server-discover":
             try unsupported(["endpoint", "apiKey"], "Unsupported server discovery setting.")
             // A key that is not text is refused as a key, never silently dropped.
