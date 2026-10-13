@@ -4,6 +4,8 @@
 
 **Your local models. Your choice of harness. Your computer, wherever you work.**
 
+Website: https://blackteamagent.com
+
 > The app was called "Black Team" up to 0.1.0-alpha.20. The `black-team` command, its folders and the downloads keep that name.
 
 Black Team Agent is a local AI workspace for Linux. It gives you one place to connect
