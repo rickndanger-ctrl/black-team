@@ -691,7 +691,7 @@ enum AboutPanel {
         let credits = NSAttributedString(string: "Private AI. Total control.\nLocal by default. A cloud model is used only when you choose one." + (runtime.map { "\nllama.cpp build \($0)" } ?? ""),
                                          attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
-            .applicationName: "Black Team", .applicationVersion: version, .version: "", .credits: credits,
+            .applicationName: "Black Team Agent", .applicationVersion: version, .version: "", .credits: credits,
         ])
         NSApplication.shared.activate(ignoringOtherApps: true)
     }

@@ -150,7 +150,7 @@ mv -f -- "$root/manage.sh.tmp" "$root/manage.sh"
 # Desktop Entry quoting includes percent field-code escaping.
 desktop_launcher=$(printf '%s' "$launcher" | sed 's/\\/\\\\/g; s/"/\\"/g; s/`/\\`/g; s/\$/\\$/g; s/%/%%/g')
 {
-  printf '%s\n' '[Desktop Entry]' '# black-team-managed-v1' 'Type=Application' 'Name=Black Team' 'Comment=Private AI on your computer'
+  printf '%s\n' '[Desktop Entry]' '# black-team-managed-v1' 'Type=Application' 'Name=Black Team Agent' 'Comment=Private AI on your computer'
   printf 'Exec="%s"\n' "$desktop_launcher"
   printf 'Icon=%s/current/resources/app/dist/black-team-512.png\n' "$root"
   printf '%s\n' 'Terminal=false' 'Categories=Utility;' 'StartupWMClass=Black Team'
@@ -163,5 +163,5 @@ if [ -n "$current" ]; then
 fi
 ln -s "releases/$version" "$root/.current-new"
 mv -Tf -- "$root/.current-new" "$root/current"
-printf 'Installed Black Team %s.\nLaunch: %s\nRollback: %s --rollback\nYour application data is preserved separately.\n' "$version" "$launcher" "$launcher"
+printf 'Installed Black Team Agent %s.\nLaunch: %s\nRollback: %s --rollback\nYour application data is preserved separately.\n' "$version" "$launcher" "$launcher"
 sandbox_help "$(sandbox_state)"

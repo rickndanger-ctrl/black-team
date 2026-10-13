@@ -2,7 +2,7 @@ import Foundation
 
 /// `black-team --help` and `black-team <command> --help`.
 let usage = """
-Black Team: local AI models, a coding agent and a team, in your terminal.
+Black Team Agent: local AI models, a coding agent and a team, in your terminal.
 
 Usage:
   black-team                          start a session: chat, code, resume, switch models (type /help inside)

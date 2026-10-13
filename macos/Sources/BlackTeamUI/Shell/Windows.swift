@@ -65,7 +65,7 @@ struct BootView: View {
         VStack(spacing: 16) {
             BrandWordmark().frame(maxWidth: 360)
             if let failure = model.statusFailure {
-                Text("Black Team could not read its settings").font(BTFont.body(18, .semibold)).foregroundStyle(theme.ink)
+                Text("Black Team Agent could not read its settings").font(BTFont.body(18, .semibold)).foregroundStyle(theme.ink)
                 Text(failure).font(BTFont.body(12.5)).foregroundStyle(theme.muted).multilineTextAlignment(.center).frame(maxWidth: 420)
                 Button("Try again") { Task { await model.refresh() } }.buttonStyle(.btPrimary)
             } else {

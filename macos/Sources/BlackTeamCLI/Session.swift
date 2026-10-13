@@ -65,7 +65,7 @@ import BlackTeamTerminal
     // MARK: Loop
 
     func run() async -> Int32 {
-        say(style.bold("Black Team") + style.dim("  \(backend.version)  \u{00B7}  /help for commands, Ctrl-D to leave"))
+        say(style.bold("Black Team Agent") + style.dim("  \(backend.version)  \u{00B7}  /help for commands, Ctrl-D to leave"))
         meta("folder: \(folder)")
         if let notice = backend.engineLock.noticeOnce() { say(style.yellow(notice)) }
         if (try? await backend.status())?.setupComplete == false { meta("No model is set up yet. Use /model, or `black-team starter list` and `black-team use <key>`.") }

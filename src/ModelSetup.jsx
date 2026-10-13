@@ -5,7 +5,7 @@ import CloudModel from './Cloud.jsx';
 const baseModel={source:'server',endpoint:'http://127.0.0.1:11434/v1',id:'',name:'',file:'',runtime:'',context:4096,gpuLayers:0,threads:4,mmproj:'',draft:''};
 const filename=value=>value.split('/').filter(Boolean).at(-1)||'';
 const modelLabel=value=>filename(value).replace(/\.gguf$/i,'').slice(0,120);
-const providers=[['ollama','Ollama','Use models downloaded in Ollama','http://127.0.0.1:11434/v1'],['lmstudio','LM Studio','Use its running local server','http://127.0.0.1:1234/v1'],['gguf','Model file','Choose a GGUF on this computer'],['custom','Another server','Enter a local address'],['cloud','Cloud model','Use a service with your own API key. What you send leaves this Mac.']];
+const providers=[['ollama','Ollama','Use models downloaded in Ollama','http://127.0.0.1:11434/v1'],['lmstudio','LM Studio','Use its running local server','http://127.0.0.1:1234/v1'],['gguf','Model file','Choose a GGUF on this computer'],['custom','Another server','Enter a local address'],['cloud','Cloud model','Use a service with your own API key. What you send leaves this computer.']];
 const providerFor=model=>model.kind==='cloud'?'cloud':model.source==='gguf'?'gguf':providers.find(p=>p[3]===model.endpoint)?.[0]||'custom';
 
 export default function ModelSetup({status,onSave,onAction,busy,settings=false,onCloudSaved}) {
