@@ -12,7 +12,7 @@ struct BlackTeamApp: App {
     }
 
     var body: some Scene {
-        Window("Black Team", id: "main") {
+        Window("Black Team Agent", id: "main") {
             CommandRoot(model: model)
         }
         .windowStyle(.hiddenTitleBar)
@@ -34,7 +34,7 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
-            Button("About Black Team") { model.showAbout() }
+            Button("About Black Team Agent") { model.showAbout() }
         }
         CommandGroup(replacing: .newItem) {
             Button("New Conversation") { model.openCamp = { openWindow(id: "camp"); NSApp.activate(ignoringOtherApps: true) }; model.newConversation() }

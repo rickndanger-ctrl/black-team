@@ -34,7 +34,7 @@ else {
     engine.on('exit',({expected})=>{
       if(expected||quitting||shuttingDown)return;
       quitting=true;
-      dialog.showErrorBox('Black Team stopped','The local Black Team engine stopped unexpectedly. Reopen Black Team to continue.');
+      dialog.showErrorBox('Black Team Agent stopped','The local Black Team engine stopped unexpectedly. Reopen Black Team to continue.');
       app.quit();
     });
     session.defaultSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
@@ -74,7 +74,7 @@ else {
         {title:kind==='model'?'Choose a local GGUF model':kind==='runtime'?'Choose llama-server from its extracted release':'Choose the application executable',properties:['openFile'],...(kind==='model'?{filters:[{name:'GGUF models',extensions:['gguf']}]}:{})};
       const result=await dialog.showOpenDialog(window,options);return result.canceled?null:result.filePaths[0]||null;
     });
-    window=new BrowserWindow({width:1320,height:900,minWidth:800,minHeight:620,title:'Black Team',backgroundColor:'#08090c',icon:path.join(__dirname,'dist/black-team-512.png'),show:false,
+    window=new BrowserWindow({width:1320,height:900,minWidth:800,minHeight:620,title:'Black Team Agent',backgroundColor:'#08090c',icon:path.join(__dirname,'dist/black-team-512.png'),show:false,
       webPreferences:{preload:path.join(__dirname,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,spellcheck:false,devTools:!app.isPackaged}});
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     window.webContents.on('will-navigate',(event,url)=>{if(url!==`${origin}/` && url!==`${origin}/index.html`)event.preventDefault();});
@@ -87,13 +87,13 @@ else {
       }
     });
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      {label:'Black Team',submenu:[{label:'Open data folder',click:()=>shell.openPath(stateDir)},{type:'separator'},{role:'quit'}]},
+      {label:'Black Team Agent',submenu:[{label:'Open data folder',click:()=>shell.openPath(stateDir)},{type:'separator'},{role:'quit'}]},
       {label:'Edit',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},
       {label:'View',submenu:[{role:'reload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{role:'togglefullscreen'}]},
     ]));
     await window.loadURL(ready.bootstrapURL);
   }).catch(async error=>{
-    dialog.showErrorBox('Black Team could not start',error.message);
+    dialog.showErrorBox('Black Team Agent could not start',error.message);
     try{await engine?.stop();}catch{}quitting=true;app.quit();
   });
   app.on('window-all-closed',()=>app.quit());

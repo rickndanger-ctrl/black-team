@@ -288,7 +288,7 @@ test('open-data asks the engine for the folder, the menu opens it too, and a fai
   const request = handlers.get('black-team:request');
   assert.equal((await request(event(), 'open-data')).opened, true);
   assert.deepEqual(captured.opened, [stateDir]);
-  const openItem = captured.menu.find(item => item.label === 'Black Team').submenu.find(item => item.label === 'Open data folder');
+  const openItem = captured.menu.find(item => item.label === 'Black Team Agent').submenu.find(item => item.label === 'Open data folder');
   await openItem.click();
   assert.deepEqual(captured.opened, [stateDir, stateDir]);
   world.openPathError = 'no application for folders';
@@ -390,7 +390,7 @@ test('an unexpected engine exit shows the error and quits, while an expected exi
   assert.deepEqual(captured.errors, []);
   assert.equal(captured.quit, undefined);
   captured.engine.emit('exit', { expected: false, error: null, code: 1 });
-  assert.deepEqual(captured.errors, [['Black Team stopped', 'The local Black Team engine stopped unexpectedly. Reopen Black Team to continue.']]);
+  assert.deepEqual(captured.errors, [['Black Team Agent stopped', 'The local Black Team engine stopped unexpectedly. Reopen Black Team to continue.']]);
   assert.equal(captured.quit, true);
 });
 
@@ -405,7 +405,7 @@ test('an engine exit during a normal quit is not reported as a crash', async () 
 
 test('a failed engine start is reported, the engine is stopped, and no window is opened', async () => {
   const { captured } = await boot({ startError: new Error('The Black Team engine did not start in time.') });
-  assert.deepEqual(captured.errors, [['Black Team could not start', 'The Black Team engine did not start in time.']]);
+  assert.deepEqual(captured.errors, [['Black Team Agent could not start', 'The Black Team engine did not start in time.']]);
   assert.equal(captured.engine.stopCalls, 1);
   assert.equal(captured.quit, true);
   assert.equal(captured.window, undefined);

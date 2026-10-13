@@ -11,6 +11,8 @@
   line-height: 1;
   isolation: isolate;
   overflow: hidden;
+  /* The sidebar is a column that may run out of height; the logo must not be the thing that gives way. */
+  flex-shrink: 0;
 }
 .black-team-brand::before,
 .black-team-brand::after {
@@ -46,6 +48,7 @@
   position: relative;
   width: 100%;
   aspect-ratio: 1800 / 300;
+  flex-shrink: 0;
   overflow: hidden;
   /* Opaque over the lettering; the image's black ground reaches zero at its own edges. */
   mask-image: radial-gradient(ellipse 66% 50% at 50% 50%, #000 60%, transparent 100%);

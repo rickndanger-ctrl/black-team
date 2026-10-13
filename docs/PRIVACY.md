@@ -4,12 +4,13 @@ Black Team has no analytics integration, hosted chat backend, advertising script
 online license check, or automatic cloud model fallback. Fonts and artwork are
 packaged locally. A Black Team account is not needed.
 
-## Cloud models on the Mac (the Linux app is local only)
+## Cloud models
 
-The native Mac app can use a **cloud model**: an OpenAI-compatible service you name, reached over
-HTTPS with your own API key. The Linux app cannot; everything below this section describes it and
-stays true for it. On the Mac, nothing changes until you save a cloud model. Privacy then travels with
-the work, not with a section of the app, and the rule is enforced by the engine:
+Both apps can use a **cloud model**: an OpenAI-compatible service you name, reached over
+HTTPS with your own API key (on Linux since 0.1.0-alpha.20). Nothing changes until you save a cloud
+model. Privacy then travels with the work, not with a section of the app, and the rule is enforced by
+the engine, which is the same program on Mac and Linux. Where this section says "this Mac", read "this
+computer" on Linux:
 
 - **Every conversation has a level**, shown at all times: `local` (nothing in it is sent off this Mac,
   the default) or `cloud` (it may be sent to the service named on it). The level is fixed by the model
@@ -28,7 +29,9 @@ the work, not with a section of the app, and the rule is enforced by the engine:
   conversation removes the Core and recalled notes already in it. Memory tidying (which asks a model to
   rewrite notes) refuses to run while a cloud model is selected.
 - **A phone** may continue conversations but cannot start one with a cloud model, convert one, or choose
-  a model; it is refused with the same words as the Mac.
+  a model; it is refused with the same words as the desktop app. A phone also cannot add or change a cloud
+  model or its key, allow cloud models in a project, change what a subscription agent may do, or use the
+  Room.
 - **Keys** live in the private `config.json` and saved-models file (owner-only), are never shown again,
   never sent to a phone, never put in conversations or logs, and are removed from error messages. A key
   is sent only to the host it was entered for; if the saved address's host changes the key is cleared.
@@ -47,7 +50,7 @@ resolves to a private address is not detected. Anyone with your OS account can r
 
 ## Models and harnesses
 
-On Linux, and on the Mac for every model that is not a cloud model, the app sends model requests only to configured loopback HTTP endpoints. Its
+For every model that is not a cloud model, the app sends model requests only to configured loopback HTTP endpoints. Its
 owned llama.cpp process uses a fresh private key and is checked for model identity
 and authentication. Startup clears inherited inference overrides; stop affects
 only that owned child. A selected executable is trusted software running as you.

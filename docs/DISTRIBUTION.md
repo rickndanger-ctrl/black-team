@@ -1,4 +1,4 @@
-# Black Team Linux preview
+# Black Team Agent Linux preview
 
 This is an unsigned Linux x86-64 alpha. It includes an upstream Electron runtime
 and the Black Team application. The `BUILD.json` inside the installed release
