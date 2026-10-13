@@ -27,12 +27,13 @@ export default function Room({status, project, onOpenChat}) {
   const shown = useRef(projectId);
   useEffect(() => {live.current = true; return () => {live.current = false;};}, []);
 
-  const read = async id => {
+  // A quiet read is a background refresh: it leaves the error on the page alone, whether it works or not.
+  const read = async (id, quiet = false) => {
     try {
       const next = await api(`/api/room?project=${encodeURIComponent(id)}`);
-      if (live.current && shown.current === id) {setRoom(next); setError('');}
+      if (live.current && shown.current === id) {setRoom(next); if (!quiet) setError('');}
     } catch (cause) {
-      if (live.current && shown.current === id) setError(cause.message);
+      if (live.current && shown.current === id && !quiet) setError(cause.message);
     }
   };
   // A different project starts from its own room; nothing from the last one is kept.
@@ -53,6 +54,17 @@ export default function Room({status, project, onOpenChat}) {
     if (!projectId || !running) return undefined;
     const timer = window.setInterval(() => read(projectId), 1500);
     return () => window.clearInterval(timer);
+  }, [projectId, running]);
+
+  // With nothing running, the room is still read every 10 s and when the window comes back into view, so a change made
+  // somewhere else (the black-team command, the phone) shows without leaving the page.
+  useEffect(() => {
+    if (!projectId || running) return undefined;
+    const refresh = () => {if (document.visibilityState === 'visible') read(projectId, true);};
+    const timer = window.setInterval(refresh, 10000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh);};
   }, [projectId, running]);
 
   // One call to the engine. Its error shows on the page; the answer is returned to the card that asked.

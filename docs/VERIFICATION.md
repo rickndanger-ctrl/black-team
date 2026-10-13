@@ -625,8 +625,8 @@ Two scripts run the first steps of this list by themselves and print PASS or
 FAIL per step. `scripts/smoke-cli.sh <path to black-team>` goes through the
 command on a Mac or on Linux. `node scripts/smoke-window.mjs` opens the Linux
 window and presses its buttons: it downloads a starter model with the Download
-button, opens every page and Settings section, types a chat and, with `--code`,
-runs a coding task and approves it. Give `--app <launcher>` to test an installed
+button, opens every page and Settings section, types a chat and, with `--code` and `--approval`,
+runs a coding task and a file deletion that it denies once and approves once. Give `--app <launcher>` to test an installed
 package instead of the checkout. Both use a data folder of their own when asked
 to, and both check that no model server is left running. Run them on each
 machine before a release; they do not replace the hand checks below.

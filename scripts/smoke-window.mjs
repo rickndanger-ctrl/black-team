@@ -2,12 +2,13 @@
 // A short end-to-end check of the Linux window, pressing its buttons the way a person would.
 // It prints one PASS or FAIL line per step and exits non-zero if any step failed.
 //
-//   node scripts/smoke-window.mjs [--app <launcher>] [--data <folder>] [--install <starter id>] [--code] [--port <number>]
+//   node scripts/smoke-window.mjs [--app <launcher>] [--data <folder>] [--install <starter id>] [--code] [--approval] [--port <number>]
 //
 // --app      the installed launcher to test (for example ~/.local/bin/black-team-desktop); without it, this checkout is run
 // --data     keep the app's data under this folder (it is used as XDG_DATA_HOME); without it a fresh folder is used and removed
 // --install  when no model is set up yet, download this starter model first (for example qwen3.5-0.8b)
 // --code     also run a small coding task in Code; needs a model that can use tools (Ornith 1.5 9B or better)
+// --approval also ask Code to delete a file twice: Deny the first time, Approve once the second (same model need as --code)
 // --port     the local port the window is driven through (default 19333)
 //
 // The window appears on the screen while this runs. The app must not already be open on the same data folder.
@@ -18,10 +19,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const options = { app: '', data: '', install: '', port: '19333', code: false };
+const options = { app: '', data: '', install: '', port: '19333', code: false, approval: false };
 for (let i = 2; i < process.argv.length; i++) {
   const name = process.argv[i].replace(/^--/, '');
-  if (name === 'code') { options.code = true; continue; }
+  if (name === 'code' || name === 'approval') { options[name] = true; continue; }
   if (!(name in options) || process.argv[i + 1] === undefined) { console.error(`Unknown option ${process.argv[i]}`); process.exit(2); }
   options[name] = process.argv[++i];
 }
@@ -176,12 +177,12 @@ try {
     if (problem) fail('a chat message typed in the window gets an answer', problem); else { pass('a chat message typed in the window gets an answer'); console.log(`      took ${seconds(start)} s: ${reply.replace(/\s+/g, ' ').slice(0, 80)}`); }
   }
 
-  // A coding task in Code, approved by hand when the agent asks. It works in a folder of its own, never the person's workspace.
-  if (options.code && state.setupComplete) {
-    const start = Date.now();
-    const workspace = path.join(data, 'smoke-workspace');
+  // Code works in a folder of its own for these steps, never the person's workspace.
+  const workspace = path.join(data, 'smoke-workspace');
+  const inWorkspace = name => { try { return fs.readFileSync(path.join(workspace, name), 'utf8'); } catch { return null; } };
+  const useWorkspace = async () => {
     fs.mkdirSync(workspace, { recursive: true });
-    let problem = '';
+    if ((await status()).config.workspace === workspace) return '';
     try {
       // The model has to be stopped to change the workspace, and the folder chooser is a system dialog a script cannot press,
       // so this one step asks the engine directly, the same request the Change folder button ends in.
@@ -190,26 +191,55 @@ try {
         await until(async () => ['off', 'error'].includes((await status()).runtime.state), 60000);
       }
       await page.run(`window.blackTeam.request('setup-save', {workspace: ${JSON.stringify(workspace)}}).then(() => '')`);
-      if ((await status()).config.workspace !== workspace) problem = 'the workspace could not be set to the test folder';
-    } catch (error) { problem = error.message; }
+      return (await status()).config.workspace === workspace ? '' : 'the workspace could not be set to the test folder';
+    } catch (error) { return error.message; }
+  };
+  // Types a task into a new Code conversation and runs it. `answer` is the button pressed whenever Code asks for approval.
+  // Returns {problem, asked}: how many times it asked.
+  const runTask = async (task, answer) => {
+    let problem = await useWorkspace();
     problem ||= await press('Chat / Code', `document.querySelector('[aria-label="Main navigation"]')`);
     await sleep(500);
     problem ||= await press('Black Team Code');
     await sleep(500);
     problem ||= await page.run(`(() => { const box = document.querySelector('[aria-label="Describe a task for Code"]'); if (!box) return 'there is no task box'; if (box.disabled) return 'the task box is switched off'; box.focus(); return ''; })()`);
-    if (!problem) { await page.send('Input.insertText', { text: 'Create a file named smoke.txt containing the single line: smoke test ok' }); await sleep(300); problem = await press('Run task'); }
-    const written = () => { try { return fs.readFileSync(path.join(workspace, 'smoke.txt'), 'utf8').includes('smoke test ok'); } catch { return false; } };
-    let approvals = 0;
+    if (!problem) { await page.send('Input.insertText', { text: task }); await sleep(300); problem = await press('Run task'); }
+    let asked = 0;
     if (!problem) {
       await until(async () => (await status()).job?.state === 'running', 15000);
       const finished = await until(async () => {
-        if (!(await press('Approve once'))) { approvals++; await sleep(1000); return false; }
+        if (!(await press(answer))) { asked++; await sleep(1000); return false; }
         return (await status()).job?.state !== 'running';
       }, 20 * 60000, 1000);
       if (!finished) problem = 'the task was still running after 20 minutes';
-      else if (!written()) problem = `smoke.txt is missing or wrong. ${await shownProblems() || await page.run(`[...document.querySelectorAll('[aria-label="Conversation"] .message.assistant .message-body')].pop()?.innerText.trim() || ''`)}`;
     }
-    if (problem) fail('a coding task run from the window writes the file it was asked for', problem); else { pass('a coding task run from the window writes the file it was asked for'); console.log(`      took ${seconds(start)} s, ${approvals} approval${approvals === 1 ? '' : 's'} given`); }
+    return { problem, asked };
+  };
+  const lastReply = () => page.run(`[...document.querySelectorAll('[aria-label="Conversation"] .message.assistant .message-body')].pop()?.innerText.trim() || ''`);
+
+  // A coding task in Code. Writing a file inside the workspace needs no approval; if Code asks anyway, it is approved.
+  if (options.code && state.setupComplete) {
+    const start = Date.now();
+    let { problem, asked } = await runTask('Create a file named smoke.txt containing the single line: smoke test ok', 'Approve once');
+    if (!problem && !(inWorkspace('smoke.txt') || '').includes('smoke test ok')) problem = `smoke.txt is missing or wrong. ${await shownProblems() || await lastReply()}`;
+    if (problem) fail('a coding task run from the window writes the file it was asked for', problem); else { pass('a coding task run from the window writes the file it was asked for'); console.log(`      took ${seconds(start)} s, ${asked} approval${asked === 1 ? '' : 's'} given`); }
+  }
+
+  // A risky command (here, deleting a file) waits for approval. Denied, it must not run; approved once, it must.
+  if (options.approval && state.setupComplete) {
+    for (const [answer, file] of [['Deny', 'denied.txt'], ['Approve once', 'approved.txt']]) {
+      const start = Date.now();
+      const name = answer === 'Deny' ? 'a file Code asks to delete stays when the command is denied' : 'a file Code asks to delete goes when the command is approved once';
+      let problem = await useWorkspace();
+      if (!problem) fs.writeFileSync(path.join(workspace, file), 'a file for the approval test\n');
+      let asked = 0;
+      if (!problem) ({ problem, asked } = await runTask(`Delete the file ${file} by running this exact shell command and nothing else: rm ${file}`, answer));
+      const there = inWorkspace(file) !== null;
+      if (!problem && !asked) problem = `Code never asked for approval (${file} is ${there ? 'still there' : 'gone'}). ${await lastReply()}`;
+      else if (!problem && answer === 'Deny' && !there) problem = `${file} was deleted although the command was denied`;
+      else if (!problem && answer !== 'Deny' && there) problem = `${file} was not deleted. ${await shownProblems() || await lastReply()}`;
+      if (problem) fail(name, problem); else { pass(name); console.log(`      took ${seconds(start)} s, asked ${asked} time${asked === 1 ? '' : 's'}`); }
+    }
   }
 
   if (page.errors.length) fail('the window reported no errors of its own', [...new Set(page.errors)].slice(0, 3).join(' | ')); else pass('the window reported no errors of its own');
