@@ -113,13 +113,21 @@ test('stop escalates to SIGTERM and SIGKILL when the child will not stop', async
   assert.ok(Date.now() - started < 5000, 'stop is bounded');
 });
 
-test('resolveEngine prefers BLACK_TEAM_ENGINE, then the packaged binary, then the macOS builds', () => {
+test('resolveEngine prefers BLACK_TEAM_ENGINE, then the packaged binary, then the newest build in the checkout', () => {
   const dirname = '/app';
   const only = wanted => p => p === wanted;
   assert.equal(resolveEngine({ env: { BLACK_TEAM_ENGINE: '/x/engine' }, dirname, exists: p => p === '/x/engine' }), '/x/engine');
   assert.throws(() => resolveEngine({ env: { BLACK_TEAM_ENGINE: '/x/missing' }, dirname, exists: () => false }), /BLACK_TEAM_ENGINE is missing/);
   assert.equal(resolveEngine({ env: {}, dirname, exists: only('/app/bin/black-team') }), '/app/bin/black-team');
-  assert.equal(resolveEngine({ env: {}, dirname, exists: only('/app/macos/.build/release/black-team') }), '/app/macos/.build/release/black-team');
-  assert.equal(resolveEngine({ env: {}, dirname, exists: only('/app/macos/.build/debug/black-team') }), '/app/macos/.build/debug/black-team');
+  const modified = () => 1;
+  for (const folder of ['engine', 'release', 'debug']) {
+    const build = `/app/macos/.build/${folder}/black-team`;
+    assert.equal(resolveEngine({ env: {}, dirname, exists: only(build), modified }), build);
+  }
+  // An old release build left behind does not win over the engine built today, and the packaged copy wins over both.
+  const ages = { '/app/macos/.build/engine/black-team': 300, '/app/macos/.build/release/black-team': 100, '/app/macos/.build/debug/black-team': 200 };
+  assert.equal(resolveEngine({ env: {}, dirname, exists: p => p in ages, modified: p => ages[p] }), '/app/macos/.build/engine/black-team');
+  assert.equal(resolveEngine({ env: {}, dirname, exists: p => p in ages, modified: p => 400 - ages[p] }), '/app/macos/.build/release/black-team');
+  assert.equal(resolveEngine({ env: {}, dirname, exists: p => p in ages || p === '/app/bin/black-team', modified: p => ages[p] }), '/app/bin/black-team');
   assert.throws(() => resolveEngine({ env: {}, dirname, exists: () => false }), /engine is missing/);
 });
