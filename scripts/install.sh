@@ -163,5 +163,14 @@ if [ -n "$current" ]; then
 fi
 ln -s "releases/$version" "$root/.current-new"
 mv -Tf -- "$root/.current-new" "$root/current"
-printf 'Installed Black Team Agent %s.\nLaunch: %s\nRollback: %s --rollback\nYour application data is preserved separately.\n' "$version" "$launcher" "$launcher"
+# The terminal command, when its name is free: a link through "current", so an update or a rollback is followed. A file or link
+# of that name that is not this one is left alone.
+command_link=$prefix/bin/black-team
+command_target=$root/current/resources/app/bin/black-team
+command_note="Command: $command_link"
+if [ -L "$command_link" ] && [ "$(readlink "$command_link")" = "$command_target" ]; then :
+elif [ ! -e "$command_link" ] && [ ! -L "$command_link" ]; then ln -s "$command_target" "$command_link" || command_note="Command: $command_target"
+else command_note="Command: $command_target ($command_link already exists and was left alone)"
+fi
+printf 'Installed Black Team Agent %s.\nLaunch: %s\n%s\nRollback: %s --rollback\nYour application data is preserved separately.\n' "$version" "$launcher" "$command_note" "$launcher"
 sandbox_help "$(sandbox_state)"

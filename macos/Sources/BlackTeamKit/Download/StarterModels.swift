@@ -37,6 +37,8 @@ public struct StarterModel: Codable, Sendable, Equatable, Identifiable {
     public var license: String
     public var contextSize: Int
     public var toolCalling: Bool
+    /// False for a model too small to gain from thinking before it answers: its replies take many times longer and get worse.
+    public var thinks: Bool = true
     /// Present when the model can read images and has a projector to download.
     public var vision: StarterVision? = nil
 
@@ -75,7 +77,7 @@ public enum StarterModels {
             summary: "A very small model for a quick test that everything works; answers are basic.",
             repo: "unsloth/Qwen3.5-0.8B-GGUF", filename: "Qwen3.5-0.8B-Q4_K_M.gguf",
             bytes: 532_517_120, sha256: "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
-            license: "Apache-2.0", contextSize: 8192, toolCalling: false,
+            license: "Apache-2.0", contextSize: 8192, toolCalling: false, thinks: false,
             vision: StarterVision(repo: "unsloth/Qwen3.5-0.8B-GGUF", filename: "mmproj-F16.gguf", localName: "Qwen3.5-0.8B-mmproj-F16.gguf",
                                   bytes: 204_987_232, sha256: "56e4c6cfe73b0c82e3e82bc518d7591997e61d81f723fc41a586f4fa69ea2453")),
         StarterModel(

@@ -265,6 +265,21 @@ final class ImageBackendTests: XCTestCase {
         XCTAssertEqual(downloader.requests.count, 1)
     }
 
+    func testAStarterModelTooSmallToThinkAnswersAtOnceWhateverThePace() async throws {
+        // The fixture's model is the smallest starter, which is marked as not thinking.
+        let (fixture, model, _) = try starterFixture()
+        XCTAssertEqual(model.thinks, false)
+        XCTAssertEqual(StarterModels.all.filter { !$0.thinks }.map(\.id), ["qwen3.5-0.8b"])
+        let backend = try fixture.make()
+        _ = try backend.submit(message: "What is 17 plus 25?", mode: "deep", requestId: newID())
+        await backend.waitForIdle()
+        let body = fixture.requests.body(0)
+        XCTAssertEqual(body["reasoning_effort"]?.string, "none")
+        XCTAssertEqual(body["chat_template_kwargs"]?["enable_thinking"]?.bool, false)
+        XCTAssertNil(body["thinking_budget_tokens"])
+        XCTAssertEqual(body["messages"]?[0]?["content"]?.string?.hasPrefix(ChatStream.SYSTEM), true)
+    }
+
     func testTheWindowStartsTheVisionDownloadAndReadsItsProgressFromStatus() async throws {
         let (fixture, _, downloader) = try starterFixture()
         let backend = try fixture.make()
