@@ -12,7 +12,7 @@ same models, conversations, projects and memory as the app, so you can switch be
 
 (or `~/Applications/...` if that is where the app is). To build just the command from the source, use `macos/dev/install-cli.sh`.
 
-**Linux.** Run `macos/dev/install-cli.sh`. It builds the release program with Swift and links it as `~/.local/bin/black-team`.
+**Linux.** The installer links the command as `black-team` in the same `bin` folder as `black-team-desktop` (`~/.local/bin` by default) when that name is free, and says so when it finishes; if something else already has the name, it prints the full path to run instead. To build just the command from the source, use `macos/dev/install-cli.sh`.
 
 `install-command` links the program you ran into `~/.local/bin` (it makes the folder if needed) and tells you whether that folder
 is on your `PATH`. If it is not, it prints the one line to add to your shell's start-up file. It never replaces something that is

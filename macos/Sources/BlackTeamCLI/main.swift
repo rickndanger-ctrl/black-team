@@ -6,13 +6,18 @@ import BlackTeamTerminal
 // the subcommands (status, chat, code, agent, room, ...) drive the same engine one step at a time.
 // The data folder is the app's own (BLACK_TEAM_DATA overrides). Every run ends by shutting the model down.
 
-/// The version of the app this program sits inside (its Info.plist), so the two never disagree; a bare build says "dev".
+/// The version of the app this program sits inside (the Mac app's Info.plist, the Linux package's package.json), so the two never
+/// disagree; a bare build says "dev".
 let programVersion: String = {
     let program = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
     let plist = program.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Info.plist")
     if let data = try? Data(contentsOf: plist),
        let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
        let version = info["BlackTeamVersion"] as? String, !version.isEmpty { return version }
+    // The Linux package: the program is in the app's bin folder, beside the app's package.json.
+    let package = program.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("package.json")
+    if let data = try? Data(contentsOf: package), let value = try? JSONValue.parse(data),
+       value["name"]?.string?.hasPrefix("black-team") == true, let version = value["version"]?.string, !version.isEmpty { return version }
     return ProcessInfo.processInfo.environment["BLACK_TEAM_VERSION"] ?? "0.1.0-dev"
 }()
 let rawArguments = Array(CommandLine.arguments.dropFirst())

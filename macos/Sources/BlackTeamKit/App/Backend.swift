@@ -520,7 +520,9 @@ public final class Backend: @unchecked Sendable {
             "model": .string(config.model.source == "server" ? config.model.id : "black-team-local"),
             "messages": .array(try modelMessages(prepared.messages, threadId: thread["id"]?.string ?? "")), "stream": true, "stream_options": ["include_usage": true], "max_tokens": .number(Double(prepared.maxTokens)), "temperature": 0.7,
         ]
-        for (name, value) in thinkingOptions(mode) { body[name] = value }
+        // A starter model marked as too small to think answers at once, whatever pace is chosen.
+        let thinking = starterModel(for: config.model)?.thinks == false ? "fast" : mode
+        for (name, value) in thinkingOptions(thinking) { body[name] = value }
         var urlRequest = URLRequest(url: URL(string: endpoint + "/chat/completions")!)
         urlRequest.httpMethod = "POST"
         urlRequest.timeoutInterval = 30 * 60

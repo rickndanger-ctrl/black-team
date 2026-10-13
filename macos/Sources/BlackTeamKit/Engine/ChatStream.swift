@@ -3,7 +3,9 @@ import Foundation
 /// The two pure helpers of plain Chat that the rest of the chat backend builds on:
 /// the messages sent for a thread, and the reader for a streamed reply.
 public enum ChatStream {
-    public static let SYSTEM = "You are Black Team, a helpful private AI assistant running on the user\u{2019}s computer. This conversation has no tools: do not claim to read files, browse, run commands, or complete external actions. Ask for needed information and be clear about uncertainty."
+    /// Worded so that a very small model still answers: told flatly that it "has no tools", the 0.8B starter model, with thinking on,
+    /// reasoned its way to refusing sums and translations. Measured on it: 20 of 20 simple questions right with this wording.
+    public static let SYSTEM = "You are Black Team, a helpful assistant running privately on the user\u{2019}s own computer. Answer the user\u{2019}s questions directly and do what they ask. You cannot open files, browse the web or run commands in this conversation, so never say that you did. If you are unsure, say so."
 
     /// The same instructions for a conversation with a cloud service: it must not claim to be local or to know the vault.
     public static let CLOUD_SYSTEM = "You are Black Team, a helpful AI assistant. This conversation has no tools: do not claim to read files, browse, run commands, or complete external actions. Ask for needed information and be clear about uncertainty."

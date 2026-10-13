@@ -108,6 +108,20 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(original.read_text(), 'existing personal app')
         self.assertFalse((root / '.install-lock').exists())
 
+    def test_links_the_terminal_command_when_the_name_is_free(self):
+        first = self.distribution('0.1.0-alpha.1')
+        result = self.install(first)
+        link = self.prefix / 'bin/black-team'
+        target = self.prefix / 'share/black-team/current/resources/app/bin/black-team'
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(os.readlink(link), str(target))
+        self.assertTrue(target.is_file())
+        self.assertIn(f'Command: {link}', result.stdout)
+        # An update keeps the same link, which follows "current" to the new release.
+        self.install(self.distribution('0.1.0-alpha.2'))
+        self.assertEqual(os.readlink(link), str(target))
+        self.assertIn('releases/0.1.0-alpha.2', os.path.realpath(link))
+
     def test_corruption_does_not_change_active_release(self):
         self.install(self.distribution('0.1.0-alpha.1'))
         second = self.distribution('0.1.0-alpha.2')

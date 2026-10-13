@@ -50,6 +50,7 @@ final class ChatStreamTests: XCTestCase {
         XCTAssertEqual(sent[0]["content"]?.string, ChatStream.SYSTEM + "\n\nWhat you know about the user:\nPrefers one-sentence answers.")
         XCTAssertEqual(sent[1]["content"], "How do I deploy?\n\n[From your memory. Use it only if it is relevant.]\n- Release process: make ship")
         XCTAssertEqual(sent[3]["content"], "Thanks!")
-        XCTAssertTrue(ChatStream.SYSTEM.contains("running on the user\u{2019}s computer"))
+        XCTAssertTrue(ChatStream.SYSTEM.contains("running privately on the user\u{2019}s own computer"))
+        XCTAssertTrue(ChatStream.SYSTEM.contains("never say that you did"))
     }
 }
