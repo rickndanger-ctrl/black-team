@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.20**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.21**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -740,3 +740,34 @@ Linux; the phone's view of these screens; the sign-in and Update buttons; the
 Ask fix against Claude Code older than 2.1.295; and, as in alpha.19, phone
 pairing on Linux, the AppArmor profile, and distributions other than Arch.
 Not included: the vision-file download button in the Linux window.
+
+## Live follow-up — October 12, 2026 (alpha.21)
+
+Changes after alpha.20.
+
+**The name people see is Black Team Agent.** Titles and labels use it: window
+titles and About on Mac and Linux, the version line in the Linux sidebar, the
+installer's messages and desktop entry, the README heading, and the command's
+help text and session banner. Running text, the mode names Black Team Chat and
+Black Team Code, the logo, the `black-team` command, data folders, the Mac
+bundle identifier and file name, download names and the repository are
+unchanged, so updates and existing data are not affected.
+
+**A website**, `site/` in this repository, published at
+https://rickndanger-ctrl.github.io/black-team/ from the `gh-pages` branch. It
+makes no requests to other hosts and sets no cookies.
+
+**Fixed.** `docs/PRIVACY.md` said the Linux app was local only, which stopped
+being true in alpha.20. The Linux sidebar logo collapsed when the sidebar ran
+out of height. One "this Mac" remained in the Linux cloud form.
+
+Checked: Linux 602 engine tests (6 skipped), macOS 542 and 41, Node 43, Python
+23, no failures. alpha.21 installed over alpha.20 in a clean home kept the
+model, conversation and project, answered a new chat, and shows the new name
+in the window title, the sidebar and the desktop entry.
+
+Not checked for this release: the same list as alpha.20 (a chat sent to a real
+cloud service from the Linux window, a Codex run from it, a completed team run
+on Linux, a phone's view of the new screens, the Sign in and Update buttons,
+the Ask fix against Claude Code older than 2.1.295, phone pairing on Linux, the
+AppArmor profile, and distributions other than Arch).
