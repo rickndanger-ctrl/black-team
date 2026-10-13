@@ -103,6 +103,8 @@ final class LineReader {
     var history: InputHistory
     private let historyPath: String?
     private var pendingStdin: [String] = []
+    /// Keys typed after an Enter that arrived in the same read: they belong to the next line, so they wait here for it.
+    private var typedAhead: [Key] = []
 
     init(interactive: Bool, historyPath: String?) {
         self.interactive = interactive
@@ -127,6 +129,8 @@ final class LineReader {
             return .line(line)
         }
         defer { Terminal.leaveRaw() }
+        // A question (an approval, a choice) is answered only by what is typed after it is shown, never by something typed earlier.
+        if question { typedAhead.removeAll() }
         var buffer = LineBuffer()
         var decoder = KeyDecoder()
         let promptWidth = DisplayWidth.of(plain)
@@ -138,15 +142,26 @@ final class LineReader {
         }
         redraw()
         while true {
-            guard let bytes = Terminal.readBytes(timeoutMs: decoder.isMidSequence ? 40 : -1) else {
-                for key in decoder.flush() where key == .escape { _ = key }
-                continue
+            let keys: [Key]
+            if !typedAhead.isEmpty {
+                keys = typedAhead
+                typedAhead = []
+            } else {
+                guard let bytes = Terminal.readBytes(timeoutMs: decoder.isMidSequence ? 40 : -1) else {
+                    for key in decoder.flush() where key == .escape { _ = key }
+                    continue
+                }
+                if bytes.isEmpty { emit("\r\n"); return .eof }
+                keys = decoder.feed(bytes)
             }
-            if bytes.isEmpty { emit("\r\n"); return .eof }
-            for key in decoder.feed(bytes) {
+            for (index, key) in keys.enumerated() {
                 switch key {
                 case .text(let s), .paste(let s): buffer.insert(s)
                 case .enter:
+                    // Whatever came after this Enter is the start of the next line. The line is drawn first, so it shows
+                    // even when it and its Enter arrived together.
+                    typedAhead = Array(keys[(index + 1)...])
+                    redraw()
                     emit("\r\n")
                     if keepHistory { history.resetPosition() }
                     return .line(buffer.text)

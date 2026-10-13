@@ -69,6 +69,14 @@ struct RoomPage: View {
             room.load(model)
             for await _ in model.backend.changes() { room.load(model) }
         }
+        // A change made by another program (the black-team command) sends no signal here, so the room is also read every 10 s.
+        // load publishes only when something differs, so an unchanged room redraws nothing.
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                if !Task.isCancelled { room.load(model) }
+            }
+        }
     }
 
     private var projectRow: some View {
