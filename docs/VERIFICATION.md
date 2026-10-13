@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.21**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.22**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -771,3 +771,40 @@ cloud service from the Linux window, a Codex run from it, a completed team run
 on Linux, a phone's view of the new screens, the Sign in and Update buttons,
 the Ask fix against Claude Code older than 2.1.295, phone pairing on Linux, the
 AppArmor profile, and distributions other than Arch).
+
+## Live follow-up — October 12, 2026 (alpha.22)
+
+Changes after alpha.21, in the Linux window.
+
+**Download a starter model.** A "Download a model to this computer" panel on
+first run and in Settings lists the starter models with size, licence and
+context, marks the one recommended for the computer's memory, and downloads
+the chosen one together with the llama.cpp program that runs it when none is
+installed. Progress and Stop are shown. Until now only the Mac app and the
+`black-team` command could do this.
+
+**Download a model's vision file.** When a starter model has no vision file
+yet, Chat offers "Download vision file" with its size, then shows progress.
+
+Both are started by a desktop action that answers at once; progress is part
+of the desktop status (`starterInstall`, `visionInstall`). A paired phone
+cannot start either.
+
+Checked: Linux 604 engine tests (6 skipped), macOS 544 and 41, Node 43, Python
+23, no failures. In the real window with scratch data and real downloads: on
+a clean first run, Download on the smallest starter fetched llama.cpp and the
+model, set it up, and the model answered a chat; for a starter installed with
+the command, the vision file (205 MB) downloaded with stage, percent and speed
+shown, and the model then answered "red" to a red square sent as a picture.
+alpha.22 installed over alpha.21 in a clean home kept the model, conversation
+and project and answered a new chat.
+
+Not checked for this release: Stop in the middle of a real download in the
+window, and resuming afterwards (covered by the engine's tests only); the
+three larger starter models; and the list carried from alpha.20 (a chat sent
+to a real cloud service from the Linux window, a Codex run from it, a
+completed team run on Linux, a phone's view of the newer screens, the Sign in
+and Update buttons, the Ask fix against Claude Code older than 2.1.295, phone
+pairing on Linux, the AppArmor profile, and distributions other than Arch).
+
+On macOS the app is unchanged from alpha.21.
