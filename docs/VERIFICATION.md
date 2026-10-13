@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.24**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.25**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -902,3 +902,42 @@ that model answered "42" and "Paris".
 Not checked for this release: the window test on a Linux computer other than
 the Dell; a coding task that asks for approval in the window test; and the
 lists carried from alpha.20, alpha.22 and alpha.23.
+
+## Live follow-up — October 13, 2026 (alpha.25)
+
+Three small fixes after alpha.24, and the test scripts extended.
+
+**The Room page shows changes made elsewhere.** It read its room once, and
+again only while a run or a task was going, so a member or task changed from
+the `black-team` command or the phone appeared only after leaving the page.
+It now reads quietly every 10 s and when the window comes back into view. The
+Mac app does the same; it was told only about changes made inside itself.
+
+**Lines typed ahead in the `black-team` session are kept.** Keys typed after
+an Enter that arrived in the same read were thrown away, so of four commands
+sent at once only the first ran. They now wait for the next line. A question
+(an approval, a choice) still takes only what is typed after it is shown.
+
+**A window run from the checkout uses the newest engine build.** It looked
+only at `macos/.build/release` and `debug`, never at the engine
+`scripts/build-engine.sh` makes, and could start an old build that had no
+starter models. Installed packages were not affected.
+
+**The window test covers approval.** `scripts/smoke-window.mjs --approval`
+asks Code to delete a file twice: denied, the file stays; approved once, it
+goes.
+
+Checked: Linux 606 engine tests (6 skipped), macOS 546, Node 43, Python 24, no
+failures. In the Linux window, a member added from the command appeared on the
+open Room page within the 10 s cycle. On the Dell with Ornith 1.5 9B, Deny
+kept the file and Approve once deleted it, each asked once. In a clean home,
+alpha.25 installed over alpha.24 kept the model and the conversation and
+passed the window test and the command test; four commands sent at once to
+the packaged command all ran in order. A real team run with two members both
+named Ornith (alpha.24, Ornith 1.5 9B, Mac): six tasks planned, none left
+out, both members given work, both files written.
+
+Not checked for this release: the Mac app's Room refresh on screen (it
+compiles and calls the load the page already used); the window test on a
+Linux computer other than the Dell; and the lists carried from alpha.20 and
+alpha.22.
