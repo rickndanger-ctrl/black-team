@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.22**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.23**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -808,3 +808,26 @@ and Update buttons, the Ask fix against Claude Code older than 2.1.295, phone
 pairing on Linux, the AppArmor profile, and distributions other than Arch).
 
 On macOS the app is unchanged from alpha.21.
+
+## Live follow-up — October 12, 2026 (alpha.23)
+
+One fix after alpha.22, on both platforms.
+
+**Team members who share a name no longer lose tasks.** In a real team run
+with two members both named "Ornith" (a builder and a writer), the lead wrote
+`"member":"Ornith (writer)"` in its plan, the form it had been shown, and
+three of five tasks were dropped as naming someone not on the team; the run
+built nothing. The lead is now given a distinct name for each member (the
+role in brackets when names repeat, a number when the role does not settle
+it), and a plan's member is matched by that name, the bare name, the name
+with its role, the role alone, or the id. A name that is on the team is never
+dropped. The agreement text also agrees in number ("Claude Code is cloud").
+
+Checked: a test with the exact member strings the real lead wrote, looser
+forms, and members with the same name and role. Linux 605 engine tests (6
+skipped), macOS 545 and 41, Node 43, Python 23, no failures. alpha.23
+installed over alpha.22 in a clean home kept the model, conversation and
+project and answered a new chat.
+
+Not checked for this release: a fresh real team run with two same-named
+members after the fix; and the lists carried from alpha.20 and alpha.22.
