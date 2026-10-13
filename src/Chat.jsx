@@ -8,7 +8,7 @@ import {responseActivity} from './responseActivity.mjs';
 import {api, call, post} from './http.mjs';
 import {AGENT_NAMES, CloudNotice, CloudUsage, PrivacyCard, PrivacyTag, ProjectCloud} from './Privacy.jsx';
 import {AgentPicker, AgentRunActions, PermissionPicker, VersionLine} from './Agents.jsx';
-import {MAX_PICTURES, MessageImages, PictureButton, PictureChips} from './Pictures.jsx';
+import {MAX_PICTURES, MessageImages, PictureButton, PictureChips, VisionDownload} from './Pictures.jsx';
 
 const desktop = Boolean(window.blackTeam?.request);
 const byteSize = value => Number.isFinite(value) ? `${(value / 1024 ** 3).toFixed(1)} GB` : 'Unavailable';
@@ -162,7 +162,7 @@ export function Chat({status, thread, threadId, connection, onSend, onCancel, on
     {!desktop&&<small className="composer-note">Computer CPU {status.performance?.cpu ?? '—'}% · RAM available {byteSize(status.performance?.memory?.free)}</small>}
     {pendingRequest && !sending && <p className="inline-note retry-note" role="status">Your last message may already be saved. Retry to reconnect to that same response without sending it twice.</p>}
     {canPicture && (images.length > 0) && <PictureChips items={images} onRemove={removePicture}/>}
-    {desktop && kind !== 'agent' && status.vision?.needsFile && <p className="inline-note">This model needs its vision file before it can read images.</p>}
+    {desktop && kind !== 'agent' && <VisionDownload status={status} onError={onError}/>}
     <form className="composer" onSubmit={submit}>{status.dictation&&<button type="button" className={`secondary mic${listening?' on':''}`} aria-pressed={listening} aria-label={listening?'Stop dictation':'Dictate'} title={listening?'Listening… click to finish':'Dictate'} disabled={sending||Boolean(pendingRequest)} onClick={dictate}><Icon name="mic" size={16}/></button>}{canPicture && <PictureButton busy={preparing} disabled={sending || Boolean(pendingRequest) || images.length >= MAX_PICTURES} onFiles={addPictures}/>}<textarea ref={box} aria-label={kind==='agent'?'Describe a task for Code':'Message your local model'} rows={3} value={pendingRequest?.message || message} onChange={event => editMessage(event.target.value)} onPaste={paste} placeholder={connection !== 'online' ? 'Reconnecting to your computer…' : kind==='agent' ? 'Describe what you want built, checked or changed…' : 'Message your local model…'} disabled={sending || connection !== 'online' || !status.setupComplete || Boolean(pendingRequest)} onKeyDown={event => {if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && window.innerWidth > 760) {event.preventDefault(); if (available && message.trim()) submit(event);}}}/>{activeJob && !pendingRequest ? <button type="button" className="secondary" onClick={onCancel} disabled={sending || connection !== 'online'}>{status.job?.kind==='memory'?'Stop upkeep':'Stop'}</button> : <button className="primary" aria-label={pendingRequest ? 'Retry last message' : kind==='agent' ? 'Run task' : 'Send message'} disabled={!available || (!message.trim() && !images.length && !pendingRequest)}><Icon name="send" size={17}/><span>{sending ? 'Sending…' : pendingRequest ? 'Retry message' : kind==='agent' ? 'Run' : 'Send'}</span></button>}</form>
     <small className="composer-note">{activeJob && status.job?.threadId !== threadId ? (status.job?.kind==='memory' ? 'Black Team is tidying memory with your model.' : 'A response is running in another conversation.') : 'LOCAL INFERENCE · HISTORY SAVED ON YOUR COMPUTER'}</small>
   </div>;

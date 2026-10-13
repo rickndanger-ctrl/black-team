@@ -265,6 +265,42 @@ final class ImageBackendTests: XCTestCase {
         XCTAssertEqual(downloader.requests.count, 1)
     }
 
+    func testTheWindowStartsTheVisionDownloadAndReadsItsProgressFromStatus() async throws {
+        let (fixture, _, downloader) = try starterFixture()
+        let backend = try fixture.make()
+        let control = DesktopControl(backend)
+        let before = try await control.handle("status")
+        XCTAssertEqual(before["visionInstall"]?["running"]?.bool, false)
+        XCTAssertEqual(before["visionInstall"]?["done"]?.bool, false)
+        let started = try await control.handle("vision-install")
+        XCTAssertEqual(started["started"]?.bool, true)
+        var last: JSONValue = .null
+        for _ in 0..<200 {
+            last = try await control.handle("status")
+            if last["visionInstall"]?["running"]?.bool == false { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(last["visionInstall"]?["error"]?.string, "")
+        XCTAssertEqual(last["visionInstall"]?["done"]?.bool, true)
+        XCTAssertEqual(last["vision"]?["canSee"]?.bool, true, "\(last["vision"] ?? .null) \(last["visionInstall"] ?? .null) \(last["config"]?["model"]?["mmproj"] ?? .null)")
+        XCTAssertEqual(downloader.requests.count, 1)
+        XCTAssertEqual(try fixture.files.store.read().model.mmproj, downloader.requests[0].destination.path)
+        // Asking again: the engine's own refusal arrives as the download's error, in its words.
+        _ = try await control.handle("vision-install")
+        for _ in 0..<200 {
+            last = try await control.handle("status")
+            if last["visionInstall"]?["running"]?.bool == false { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(last["visionInstall"]?["error"]?.string, "This model already has its vision file.")
+        XCTAssertEqual(downloader.requests.count, 1)
+        // Not for a phone, and no settings are accepted.
+        do { _ = try await control.handle("vision-install", nil, access: .phone); XCTFail("a phone must be refused") } catch {}
+        do { _ = try await control.handle("vision-install", ["file": "x"]); XCTFail("should refuse") } catch { XCTAssertEqual(messageOf(error), "Unsupported setup setting.") }
+        let stopped = try await control.handle("vision-cancel")
+        XCTAssertEqual(stopped["stopped"]?.bool, true)
+    }
+
     func testInstallingRestartsARunningModelSoTheProjectorLoads() async throws {
         let (fixture, _, _) = try starterFixture()
         fixture.runtime.state = .ready

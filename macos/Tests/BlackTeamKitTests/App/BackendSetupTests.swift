@@ -187,6 +187,51 @@ final class BackendSetupTests: XCTestCase {
         XCTAssertEqual(catalogue.runtime?.tag, "b9999")
     }
 
+    func testTheWindowListsStartersStartsADownloadAndReadsItsProgressFromStatus() async throws {
+        let fixture = try BackendFixture(self)
+        fixture.files.config.model = ModelConfig()
+        let installer = StubInstaller(fixture.files.dir)
+        let downloader = StubDownloader()
+        fixture.installer = installer
+        fixture.downloader = downloader
+        try FileManager.default.removeItem(atPath: fixture.stateDir + "/config.json")
+        let backend = try fixture.make()
+        let control = DesktopControl(backend)
+        let list = try await control.handle("starter-list")
+        XCTAssertEqual(list["models"]?.array?.count, StarterModels.all.count)
+        XCTAssertEqual(list["models"]?.array?.filter { $0["recommended"]?.bool == true }.count, 1)
+        XCTAssertEqual(list["models"]?.array?.first?["installed"]?.bool, false)
+        let before = try await control.handle("status")
+        XCTAssertEqual(before["starterInstall"]?["running"]?.bool, false)
+        let started = try await control.handle("starter-install", ["id": "qwen3.5-0.8b"])
+        XCTAssertEqual(started["started"]?.bool, true)
+        var last: JSONValue = .null
+        for _ in 0..<200 {
+            last = try await control.handle("status")
+            if last["starterInstall"]?["running"]?.bool == false { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(last["starterInstall"]?["error"]?.string, "")
+        XCTAssertEqual(last["starterInstall"]?["done"]?.bool, true)
+        XCTAssertEqual(last["setupComplete"]?.bool, true)
+        XCTAssertEqual(installer.installs, 1)
+        XCTAssertEqual(try backend.configStore.read().model.name, StarterModels.model(id: "qwen3.5-0.8b")?.name)
+        let after = try await control.handle("starter-list")
+        XCTAssertEqual(after["models"]?.array?.first { $0["model"]?["id"]?.string == "qwen3.5-0.8b" }?["installed"]?.bool, true)
+        // An id that is not in the list fails in the engine's words; a phone is refused; extra settings are refused.
+        _ = try await control.handle("starter-install", ["id": "nope"])
+        for _ in 0..<200 {
+            last = try await control.handle("status")
+            if last["starterInstall"]?["running"]?.bool == false { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(last["starterInstall"]?["error"]?.string, "That starter model is not in the list.")
+        do { _ = try await control.handle("starter-install", ["id": "qwen3.5-0.8b"], access: .phone); XCTFail("a phone must be refused") } catch {}
+        do { _ = try await control.handle("starter-install", ["id": "qwen3.5-0.8b", "url": "https://example.com"]); XCTFail("should refuse") } catch { XCTAssertEqual(messageOf(error), "Unsupported setup setting.") }
+        let stopped = try await control.handle("starter-cancel")
+        XCTAssertEqual(stopped["stopped"]?.bool, true)
+    }
+
     func testASecondSetupSkipsWhatIsAlreadyInstalledAndFollowsFindMyModels() async throws {
         let fixture = try BackendFixture(self)
         let installer = StubInstaller(fixture.files.dir)
