@@ -12,19 +12,18 @@ const TERM_WAIT_MS = 3000;
 const KILL_WAIT_MS = 2000;
 const MAX_LINE_BYTES = 64 * 1024 * 1024;
 
-/// Finds the engine binary: BLACK_TEAM_ENGINE, then the packaged copy, then a macOS build (release, then debug).
-function resolveEngine({ env = process.env, dirname, exists = fs.existsSync } = {}) {
+/// Finds the engine binary: BLACK_TEAM_ENGINE, then the packaged copy, then the newest build in this checkout
+/// (the one scripts/build-engine.sh makes, or a swift build), so an old build left behind is never picked over a fresh one.
+function resolveEngine({ env = process.env, dirname, exists = fs.existsSync, modified = file => fs.statSync(file).mtimeMs } = {}) {
   if (env.BLACK_TEAM_ENGINE) {
     if (!exists(env.BLACK_TEAM_ENGINE)) throw new Error(`The engine named by BLACK_TEAM_ENGINE is missing: ${env.BLACK_TEAM_ENGINE}`);
     return env.BLACK_TEAM_ENGINE;
   }
-  const candidates = [
-    path.join(dirname, 'bin', 'black-team'),
-    path.join(dirname, 'macos', '.build', 'release', 'black-team'),
-    path.join(dirname, 'macos', '.build', 'debug', 'black-team'),
-  ];
-  const found = candidates.find(candidate => exists(candidate));
-  if (!found) throw new Error('The Black Team engine is missing. Reinstall Black Team, or build it with: cd macos && swift build -c release --product black-team');
+  const packaged = path.join(dirname, 'bin', 'black-team');
+  const builds = ['engine', 'release', 'debug'].map(folder => path.join(dirname, 'macos', '.build', folder, 'black-team')).filter(candidate => exists(candidate));
+  // A stable sort: builds of the same age keep the order above.
+  const found = exists(packaged) ? packaged : builds.map(file => ({ file, at: modified(file) })).sort((a, b) => b.at - a.at)[0]?.file;
+  if (!found) throw new Error('The Black Team engine is missing. Reinstall Black Team, or build it with: scripts/build-engine.sh (Linux) or cd macos && swift build -c release --product black-team');
   return found;
 }
 
