@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.23**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.24**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -842,7 +842,7 @@ project and answered a new chat.
 Not checked for this release: a fresh real team run with two same-named
 members after the fix; and the lists carried from alpha.20 and alpha.22.
 
-## Live follow-up — October 13, 2026 (after alpha.23, not yet released)
+## Live follow-up — October 13, 2026 (after alpha.23, released in alpha.24)
 
 **A repeatable check of the Linux window.** `scripts/smoke-window.mjs` opens
 the window on a data folder of its own and presses its buttons. On the Dell
@@ -868,3 +868,37 @@ since the fixes merged earlier the same day (Linux 606, macOS 546 and 41).
 Not checked: the window test's coding step with a task that asks for approval
 (this one needed none); the window test on a Linux computer other than the
 Dell.
+
+## Live follow-up — October 13, 2026 (alpha.24)
+
+Fixes found by testing alpha.23 on three computers, and two scripts that
+repeat that testing.
+
+**The smallest starter model answers simple questions.** Qwen3.5 0.8B refused
+"17 plus 25" ("I do not have the ability to perform arithmetic"). The app sent
+thinking on by default, and the model reasoned from "this conversation has no
+tools" to "I cannot do arithmetic". The chat instructions now say what to do
+before what is not available (on that model, 20 of 20 simple questions right
+with thinking on and off; the old wording gave 20 of 24 with thinking on), and
+a starter model marked as not thinking is asked without thinking at every
+pace. The reworded instructions apply to every local chat.
+
+**The Linux command reports its version.** The packaged `bin/black-team
+--version` said `0.1.0-dev`; it now reads the version of the app it came with.
+
+**The Linux installer sets up the `black-team` command.** `install.sh` links
+it next to the launcher when that name is free, and prints its path either way.
+
+**Wide tables in the room's team conversation** use the full width (see the
+entry above).
+
+Checked: Linux 606 engine tests (6 skipped), macOS 546 and 41, Node 43, Python
+24, no failures. In a clean home on the Dell: alpha.23 installed, the window
+test downloaded Qwen3.5 0.8B and chatted; alpha.24 installed over it kept the
+model and the conversation, linked the command (`black-team 0.1.0-alpha.24`),
+and passed the window test and the command test. Through the packaged command
+that model answered "42" and "Paris".
+
+Not checked for this release: the window test on a Linux computer other than
+the Dell; a coding task that asks for approval in the window test; and the
+lists carried from alpha.20, alpha.22 and alpha.23.
