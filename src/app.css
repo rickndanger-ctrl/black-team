@@ -629,8 +629,9 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .room-conversation, .room-report { margin-top: 20px; }
 .room-conversation > .eyebrow, .room-report > .eyebrow { margin-bottom: 4px; }
 .room-line { padding: 14px 0; border-top: 1px solid var(--line); }
-.room-line > div { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-.room-line > div strong { font: 10px var(--font-mono); letter-spacing: .08em; color: var(--ink-2); }
+/* The name row only: the text below it is a div too, and must keep its normal layout. */
+.room-line > div:first-child { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.room-line > div:first-child strong { font: 10px var(--font-mono); letter-spacing: .08em; color: var(--ink-2); }
 .room-kind { padding: 2px 8px; border: 1px solid var(--line-2); border-radius: 999px; font: 9px var(--font-mono); letter-spacing: .08em; color: var(--muted); }
 .room-columns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; align-items: start; }
 .room-column { display: grid; gap: 8px; align-content: start; min-width: 0; }

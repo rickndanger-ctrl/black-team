@@ -621,6 +621,16 @@ separate. Its local image customization is not included in this public source.
 
 ## Live release checklist
 
+Two scripts run the first steps of this list by themselves and print PASS or
+FAIL per step. `scripts/smoke-cli.sh <path to black-team>` goes through the
+command on a Mac or on Linux. `node scripts/smoke-window.mjs` opens the Linux
+window and presses its buttons: it downloads a starter model with the Download
+button, opens every page and Settings section, types a chat and, with `--code`,
+runs a coding task and approves it. Give `--app <launcher>` to test an installed
+package instead of the checkout. Both use a data folder of their own when asked
+to, and both check that no model server is left running. Run them on each
+machine before a release; they do not replace the hand checks below.
+
 Use a clean Linux user account with the source dependencies installed. Configure
 an owned GGUF and an existing server separately. Send a real streaming chat,
 cancel, restart, change models and test context pressure. Confirm the configured
@@ -831,3 +841,30 @@ project and answered a new chat.
 
 Not checked for this release: a fresh real team run with two same-named
 members after the fix; and the lists carried from alpha.20 and alpha.22.
+
+## Live follow-up — October 13, 2026 (after alpha.23, not yet released)
+
+**A repeatable check of the Linux window.** `scripts/smoke-window.mjs` opens
+the window on a data folder of its own and presses its buttons. On the Dell
+laptop (Intel i7-10810U, no graphics card), from a fresh folder: the Download
+button fetched and set up Ornith 1.5 9B in 177 s; all six pages and the three
+Settings sections opened with no error shown; a typed chat was answered
+("Hello!", 20 s including loading the model); a coding task typed into Code
+wrote the file it was asked for in 176 s; the window reported no errors of its
+own, closed when asked and left no model server running. The same run with
+Qwen3.5 0.8B took 20 s to set up and 5 s to answer. Run against the installed
+alpha.23 package with `--app`, every step passed as well.
+
+**Wide tables in the room's team conversation.** A layout rule meant for the
+row with the member's name also matched the text under it, so a reply with
+more than one block was laid out side by side: a paragraph 147 px wide next to
+a table squeezed into 325 px of a 525 px line. The rule now matches the name
+row only; measured in the window, the same paragraph and table each take the
+full 525 px.
+
+Checked: Node 43 and Python 24 tests, no failures. The engine is unchanged
+since the fixes merged earlier the same day (Linux 606, macOS 546 and 41).
+
+Not checked: the window test's coding step with a task that asks for approval
+(this one needed none); the window test on a Linux computer other than the
+Dell.
