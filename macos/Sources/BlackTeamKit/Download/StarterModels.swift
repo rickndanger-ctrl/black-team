@@ -80,7 +80,7 @@ public enum StarterModels {
                                   bytes: 204_987_232, sha256: "56e4c6cfe73b0c82e3e82bc518d7591997e61d81f723fc41a586f4fa69ea2453")),
         StarterModel(
             id: "qwen3.5-4b", name: "Qwen3.5 4B (small)",
-            summary: "A good everyday chat model that runs comfortably on any recent Mac.",
+            summary: "A good everyday chat model that runs comfortably on any recent \(Place.kind).",
             repo: "unsloth/Qwen3.5-4B-GGUF", filename: "Qwen3.5-4B-Q4_K_M.gguf",
             bytes: 2_740_937_888, sha256: "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
             license: "Apache-2.0", contextSize: 16384, toolCalling: true,
@@ -96,7 +96,7 @@ public enum StarterModels {
                                   bytes: 921_704_672, sha256: "626f9f90627402a6bf4a999111d0fbd69b5fcca7aa8ba089d69e5f10e8858e1d")),
         StarterModel(
             id: "qwen3-14b", name: "Qwen3 14B (large)",
-            summary: "The most capable of the starter models; needs a Mac with plenty of memory.",
+            summary: "The most capable of the starter models; needs a \(Place.kind) with plenty of memory.",
             repo: "Qwen/Qwen3-14B-GGUF", filename: "Qwen3-14B-Q4_K_M.gguf",
             bytes: 9_001_752_960, sha256: "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",
             license: "Apache-2.0", contextSize: 32768, toolCalling: true),

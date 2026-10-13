@@ -169,7 +169,7 @@ final class BackendCloudTests: XCTestCase {
         let chat = backend.privacyCheck(threadId: nil, project: nil, kind: "chat")
         XCTAssertEqual(chat.outcome, .startsCloud)
         XCTAssertEqual(chat.provider, host)
-        assertMatch(chat.message, "leaves this Mac"); assertMatch(chat.message, "your messages"); assertMatch(chat.message, "Memory is not used in cloud conversations")
+        assertMatch(chat.message, "leaves \(Place.this)"); assertMatch(chat.message, "your messages"); assertMatch(chat.message, "Memory is not used in cloud conversations")
         let code = backend.privacyCheck(threadId: nil, project: nil, kind: "agent")
         assertMatch(code.message, "the contents of any file the agent reads and the output of any command it runs")
         let sent = try await send(backend)
@@ -198,7 +198,7 @@ final class BackendCloudTests: XCTestCase {
         let before = fixture.requests.count
         XCTAssertThrowsError(try backend.submit(message: "and now?", requestId: newID(), threadId: local.threadId)) {
             let text = messageOf($0)
-            assertMatch(text, "private to this Mac"); assertMatch(text, "Cloud Big"); assertMatch(text, "Start a new cloud conversation")
+            assertMatch(text, "private to \(Place.this)"); assertMatch(text, "Cloud Big"); assertMatch(text, "Start a new cloud conversation")
             assertMatch(text, "switch back to Fixture model"); assertMatch(text, "send this conversation to \(host)")
         }
         XCTAssertEqual(fixture.requests.count, before)
@@ -397,7 +397,7 @@ final class BackendCloudTests: XCTestCase {
         XCTAssertFalse(macMessage.isEmpty); XCTAssertEqual(phoneMessage, macMessage)
         // A phone does not start a cloud conversation.
         XCTAssertThrowsError(try phone.submit(message: "new", kind: "chat", mode: "balanced", requestId: newID(), threadId: nil, project: nil)) {
-            assertMatch(messageOf($0), "decision made at the Mac")
+            assertMatch(messageOf($0), "decision made at \(Place.the)")
         }
         XCTAssertEqual(backend.privacyCheck(threadId: nil, project: nil, viaPhone: true).outcome, .phoneNeedsMac)
         XCTAssertEqual(fixture.requests.count, 1)

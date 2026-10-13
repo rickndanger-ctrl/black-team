@@ -102,7 +102,7 @@ final class BackendAgentRunTests: XCTestCase {
         try backend.history.save(thread)
         let id = try XCTUnwrap(thread["id"]?.string)
         XCTAssertThrowsError(try backend.submitAgentTask(service: .claudeCode, message: "hello", requestId: newID(), threadId: id)) {
-            assertMatch(messageOf($0), "private to this Mac")
+            assertMatch(messageOf($0), "private to \(Place.this)")
         }
         XCTAssertTrue(agents.commands.isEmpty)
         XCTAssertEqual(backend.history.get(id)?["messages"]?.array?.count, 0)
@@ -126,7 +126,7 @@ final class BackendAgentRunTests: XCTestCase {
         let backend = try make(fixture, agents: agents)
         let project = try openProject(backend)
         XCTAssertThrowsError(try backend.submitAgentTask(service: .claudeCode, message: "hello", requestId: newID(), project: project.id, from: .phone)) {
-            assertMatch(messageOf($0), "made at the Mac")
+            assertMatch(messageOf($0), "made at \(Place.the)")
         }
         XCTAssertTrue(agents.commands.isEmpty)
     }

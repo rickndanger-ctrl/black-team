@@ -10,14 +10,17 @@ public final class DesktopControl: @unchecked Sendable {
         "setup-help", "installed-discover", "hermes-inspect", "phone-setup", "phone-off", "integrations-save", "harness-connect", "harness-launch",
         "server-discover", "model-inspect", "status", "setup-save", "models-find", "models-add", "models-ignore", "model-switch", "model-forget",
         "runtime-start", "runtime-stop", "phone-save", "phone-detect", "phone-command", "phone-connect", "phone-disconnect", "open-data",
+        // Cloud models and subscription agents (Desktop/DesktopCloud.swift).
+        "cloud-discover", "cloud-save", "project-cloud", "agents-status", "agent-signin", "agent-update",
     ]
     /// Actions that change something: one at a time.
     static let changing: Set<String> = [
         "integrations-save", "harness-connect", "harness-launch", "setup-save", "models-add", "models-ignore", "model-switch", "model-forget",
         "runtime-start", "runtime-stop", "phone-save", "phone-setup", "phone-off", "phone-connect", "phone-disconnect",
+        "cloud-save", "project-cloud", "agent-signin", "agent-update",
     ]
 
-    private let backend: Backend
+    let backend: Backend
     private let home: String
     private let environment: [String: String]
 
@@ -30,8 +33,10 @@ public final class DesktopControl: @unchecked Sendable {
         return discoverLinux(home: home, env: environment, saved: saved)
     }
 
-    /// Answers one request. `data` is the request's input object (an empty one when none was sent).
-    public func handle(_ action: String, _ data: JSONValue? = nil) async throws -> JSONValue {
+    /// Answers one request. `data` is the request's input object (an empty one when none was sent). The control channel is the
+    /// desktop's alone; a request made on a phone's behalf is refused here whatever the action (nothing reaches this from HTTP).
+    public func handle(_ action: String, _ data: JSONValue? = nil, access: DesktopAccess = .desktop) async throws -> JSONValue {
+        try access.requireDesktop()
         guard let input = (data ?? [:]).object else { throw BlackTeamError("Invalid desktop request.") }
         guard Self.actions.contains(action) else { throw BlackTeamError("Unsupported desktop action.") }
         func unsupported(_ allowed: [String], _ message: String) throws {
@@ -80,6 +85,8 @@ public final class DesktopControl: @unchecked Sendable {
                          "lmstudio": "https://lmstudio.ai/download", "tailscale": "https://tailscale.com/download"]
             guard let topic = input["topic"]?.string, let url = links[topic] else { throw BlackTeamError("Unsupported setup help.") }
             return ["url": .string(url)]
+        case "cloud-discover", "agents-status":
+            return try await cloudRead(action, input, unsupported)
         case "open-data":
             guard CoreFS.exists(backend.dataFolder) else { throw BlackTeamError("Could not open the application data folder.") }
             return ["path": .string(backend.dataFolder)]
@@ -145,6 +152,8 @@ public final class DesktopControl: @unchecked Sendable {
             return try await backend.exclusive { .encoded(try await self.backend.phone().manager.connect()) }
         case "phone-disconnect":
             return try await backend.exclusive { .encoded(try await self.backend.phone().manager.disconnect()) }
+        case "cloud-save", "project-cloud", "agent-signin", "agent-update":
+            return try await cloudChange(action, input, unsupported)
         default:
             throw BlackTeamError("Unsupported desktop action.")
         }

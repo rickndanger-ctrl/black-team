@@ -87,7 +87,7 @@ extension Backend {
         }
         result.convertWarning = "Send this conversation to \(provider)? Everything in it so far will be sent to \(provider) with your next message: all your messages and the replies"
             + (isAgent ? ", and the file contents and command output the agent saw" : (kind == "agent" ? ", and the file contents and command output the agent saw" : ""))
-            + ". The conversation stays marked as having left this Mac, even if you later continue it with a local model."
+            + ". The conversation stays marked as having left \(Place.this), even if you later continue it with a local model."
         // A project that is local only never uses a cloud model.
         if let project, !project.cloudAllowed {
             result.outcome = .projectLocalOnly
@@ -104,9 +104,9 @@ extension Backend {
             if level == "local" {
                 result.outcome = .needsChoice
                 result.message = isAgent
-                    ? "This conversation is private to this Mac, and \(name) would send it to \(provider). "
-                    : "This conversation is private to this Mac, and \(name) is a cloud model that would send it to \(provider). "
-                result.message += "Nothing in a private conversation is sent off this Mac without your say-so. " + choices
+                    ? "This conversation is private to \(Place.this), and \(name) would send it to \(provider). "
+                    : "This conversation is private to \(Place.this), and \(name) is a cloud model that would send it to \(provider). "
+                result.message += "Nothing in a private conversation is sent off \(Place.this) without your say-so. " + choices
                 return result
             }
             if sentTo != provider {
@@ -121,15 +121,15 @@ extension Backend {
         if viaPhone {
             result.outcome = .phoneNeedsMac
             result.message = isAgent
-                ? "Starting a conversation with \(name) is a decision made at the Mac. Open Black Team on your Mac to start one, or ask there."
-                : "Starting a conversation with a cloud model is a decision made at the Mac. Open Black Team on your Mac to start one, or ask there."
+                ? "Starting a conversation with \(name) is a decision made at \(Place.the). Open Black Team on \(Place.your) to start one, or ask there."
+                : "Starting a conversation with a cloud model is a decision made at \(Place.the). Open Black Team on \(Place.your) to start one, or ask there."
             return result
         }
         result.outcome = .startsCloud
         result.message = isAgent
-            ? "This conversation leaves this Mac. It is handed to \(name), which runs on \(provider) under your subscription: \(result.willLeave.joined(separator: ", and ")). "
+            ? "This conversation leaves \(Place.this). It is handed to \(name), which runs on \(provider) under your subscription: \(result.willLeave.joined(separator: ", and ")). "
                 + "\(name) uses its own tools and its maker\u{2019}s service, and Black Team\u{2019}s memory is not used."
-            : "This conversation leaves this Mac. It is sent to \(provider), which you chose for it: \(result.willLeave.joined(separator: ", and ")). "
+            : "This conversation leaves \(Place.this). It is sent to \(provider), which you chose for it: \(result.willLeave.joined(separator: ", and ")). "
                 + "Memory is not used in cloud conversations."
         return result
     }

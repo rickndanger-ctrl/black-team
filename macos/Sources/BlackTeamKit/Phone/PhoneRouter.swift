@@ -46,6 +46,8 @@ final class PhoneRouter: @unchecked Sendable {
     private let files: PhoneStaticFiles
     /// The Linux desktop window's session (lib/server.cjs `bootstrapKey` / `sessionKey`). Nil on the Mac, where the local address grants nothing.
     private let desktop: DesktopSession?
+    /// The routes only the Linux desktop service has (cloud, agents, room, pictures). Nil on the Mac and in the terminal program.
+    private let desktopRoutes: DesktopRoutes?
     private let lock = NSLock()
     private var _localPort: Int
 
@@ -56,8 +58,9 @@ final class PhoneRouter: @unchecked Sendable {
 
     /// `isConnected` says the Tailscale route is Black Team's own, private, and points at a server that is running.
     init(backend: PhoneBackend, config: PhoneConfigStoring, keys: PhoneKeys, webRoot: String, localPort: Int = Phone.localPort,
-         desktop: DesktopSession? = nil, isConnected: @escaping @Sendable () async -> Bool) {
+         desktop: DesktopSession? = nil, desktopRoutes: DesktopRoutes? = nil, isConnected: @escaping @Sendable () async -> Bool) {
         self.backend = backend; self.config = config; self.keys = keys; self.isConnected = isConnected; self.desktop = desktop
+        self.desktopRoutes = desktop == nil ? nil : desktopRoutes
         files = PhoneStaticFiles(folder: webRoot); _localPort = localPort
     }
 
@@ -113,7 +116,10 @@ final class PhoneRouter: @unchecked Sendable {
     }
 
     /// How much body a route reads (server.cjs `bodyJSON`): 64 KiB, and 900 KiB for saving a memory note.
-    func bodyLimit(_ head: HTTPHead) -> Int { head.path == "/api/memory/save" ? 900 * 1024 : 65536 }
+    func bodyLimit(_ head: HTTPHead) -> Int {
+        if desktopRoutes != nil && head.path == "/api/image" { return DesktopRoutes.imageUploadLimit }
+        return head.path == "/api/memory/save" ? 900 * 1024 : 65536
+    }
 
     // MARK: Whole request (used by the server and by tests)
 
@@ -122,6 +128,8 @@ final class PhoneRouter: @unchecked Sendable {
     func respond(_ head: HTTPHead, peer: String?, readBody: () async throws -> Data) async -> HTTPResponse {
         do {
             let access = try await authorize(head, peer: peer)
+            // A picture upload is big; only the desktop\u{2019}s may be read at all.
+            if desktopRoutes != nil, head.path == "/api/image", head.method == "POST", access != .desktop { throw HTTPFailure(DesktopRefusal.pictures, 403) }
             if head.contentLength > bodyLimit(head) { throw HTTPFailure("Request is too large.", 413) }
             let body = head.method == "POST" ? try await readBody() : Data()
             return Self.secured(try await handle(head, body: body, access: access))
@@ -182,6 +190,7 @@ final class PhoneRouter: @unchecked Sendable {
             return try served(head)
         }
         guard access == .phone || access == .desktop else { throw HTTPFailure("Not found.", 404) }
+        if let desktopRoutes, let answer = try await desktopRoutes.handle(head, body: body, access: access) { return answer }
 
         if path == "/api/approval" && method == "POST" {
             let input = try bodyJSON(head, body)

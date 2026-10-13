@@ -65,7 +65,8 @@ final class PhoneService: @unchecked Sendable {
         let configStore = backend.configStore
         let manager = self.manager
         let router = PhoneRouter(backend: BackendPhone(backend), config: configStore, keys: keys, webRoot: options.webRoot,
-                                 localPort: options.port, desktop: options.desktop, isConnected: { [weak self] in
+                                 localPort: options.port, desktop: options.desktop,
+                                 desktopRoutes: options.desktop == nil ? nil : DesktopRoutes(backend), isConnected: { [weak self] in
             // The route must be ours and private, and it must lead to a server that is listening.
             guard let self, self.serverRunning, let status = try? await manager.status() else { return false }
             return status.connected
@@ -96,7 +97,7 @@ final class PhoneService: @unchecked Sendable {
 
     private func diagnose(_ saved: PhoneConfig) async -> String? {
         let me = await manager.detect()
-        if !me.installed { return "Tailscale is not installed on this Mac." }
+        if !me.installed { return "Tailscale is not installed on \(Place.this)." }
         if !me.online { return "Tailscale is not connected. Open Tailscale and sign in." }
         if me.hostname != saved.hostname || me.owner != saved.owner {
             return "Your Tailscale account or computer has changed. Turn off phone access, then enable it again."
