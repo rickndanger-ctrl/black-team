@@ -211,7 +211,7 @@ final class TeamTests: XCTestCase {
         // The lead was told the goal and the members; the plan step is read-only.
         let planMessage = claudeMessage(agents, 0)
         XCTAssertTrue(planMessage.contains("Ship the helper"))
-        XCTAssertTrue(planMessage.contains("- Ornith (builder): chat work") && planMessage.contains("- Cloud Big (checker): chat work"))
+        XCTAssertTrue(planMessage.contains("- Ornith: role builder; chat work") && planMessage.contains("- Cloud Big: role checker; chat work"))
         XCTAssertTrue(planMessage.contains("at most 6 tasks") && planMessage.contains("do not change any file"))
         let args = agents.commands[0].arguments
         XCTAssertEqual(args[try XCTUnwrap(args.firstIndex(of: "--permission-mode")) + 1], "manual", "planning runs the agent in Ask, not Edit")
@@ -255,6 +255,32 @@ final class TeamTests: XCTestCase {
         XCTAssertEqual(prose.tasks.map(\.title), ["A } brace"]); XCTAssertEqual(prose.tasks[0].detail, "")
         let unknown = TeamText.parsePlan(#"{"tasks":[{"title":"A","member":"Ornith"},{"title":"B","member":"Nobody"},{"title":"","member":"Ornith"},{"member":"Ornith"}]}"#, members: m)
         XCTAssertEqual(unknown.tasks.map(\.title), ["A"]); XCTAssertTrue(unknown.notes.joined().contains("not on the team"))
+    }
+
+    func testMembersWhoShareANameAreToldApartByRoleAndNoTaskIsLost() {
+        let lead = RoomMember(id: newID(), name: "Claude Code", role: "lead", modelKey: nil, agent: "claude-code", permission: "edit", work: nil)
+        let builder = RoomMember(id: newID(), name: "Ornith", role: "builder", modelKey: "k", agent: nil, permission: nil, work: "code")
+        let writer = RoomMember(id: newID(), name: "Ornith", role: "writer", modelKey: "k", agent: nil, permission: nil, work: "chat")
+        let m = [lead, builder, writer]
+        XCTAssertEqual(m.map { TeamText.planName($0, among: m) }, ["Claude Code", "Ornith (builder)", "Ornith (writer)"])
+        let prompt = TeamText.planPrompt(goal: "g", members: m)
+        XCTAssertTrue(prompt.contains("- Ornith (builder): role builder;")); XCTAssertTrue(prompt.contains("- Ornith (writer): role writer;"))
+        XCTAssertTrue(prompt.contains("- Claude Code: role lead;"))
+        // What a real lead wrote when two members were both called Ornith; three of five tasks used to be dropped.
+        let plan = TeamText.parsePlan(#"{"tasks":[{"title":"Inspect","member":"Claude Code"},{"title":"Copy","member":"Ornith (writer)"},{"title":"Build","member":"Ornith (builder)"},{"title":"Link","member":"ornith (Builder)"},{"title":"Verify","member":"Claude Code"}]}"#, members: m)
+        XCTAssertEqual(plan.tasks.map(\.memberId), [lead.id, writer.id, builder.id, builder.id, lead.id])
+        XCTAssertTrue(plan.notes.isEmpty)
+        // Looser forms: the role alone, the role first, and a bare shared name (kept, given to the first of that name).
+        let loose = TeamText.parsePlan(#"{"tasks":[{"title":"A","member":"writer"},{"title":"B","member":"builder Ornith"},{"title":"C","member":"Ornith"},{"title":"D","member":"Nobody"}]}"#, members: m)
+        XCTAssertEqual(loose.tasks.map(\.memberId), [writer.id, builder.id, builder.id])
+        XCTAssertTrue(loose.notes.joined().contains("Left out 1 task"))
+        // The same name and the same role: numbers tell them apart.
+        let twin = RoomMember(id: newID(), name: "Ornith", role: "builder", modelKey: "k", agent: nil, permission: nil, work: "code")
+        let twins = [builder, twin]
+        XCTAssertEqual(twins.map { TeamText.planName($0, among: twins) }, ["Ornith 1", "Ornith 2"])
+        XCTAssertEqual(TeamText.parsePlan(#"{"tasks":[{"title":"A","member":"Ornith 2"}]}"#, members: twins).tasks.map(\.memberId), [twin.id])
+        // One member with that name: extra words after the name do not lose the task.
+        XCTAssertEqual(TeamText.parsePlan(#"{"tasks":[{"title":"A","member":"Claude Code (lead)"}]}"#, members: [lead, builder]).tasks.map(\.memberId), [lead.id])
     }
 
     func testPlanParsingCapsClipsAndExplainsWhatWentWrong() {
