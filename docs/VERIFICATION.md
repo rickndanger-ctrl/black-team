@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.19**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.20**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -702,3 +702,41 @@ its certificates could differ.
 
 On macOS the app is the same as alpha.18 apart from carrying the `black-team`
 command and reporting its version.
+
+## Live follow-up — October 12, 2026 (alpha.20)
+
+Changes after alpha.19.
+
+**The Linux window has the Mac app's newer features**, in its own look: cloud
+models with your own key (OpenRouter by default, with a filter for free models
+that can use tools), the privacy questions before a conversation would leave
+the computer, Claude Code and Codex with Ask, Edit and Auto, "Roll back this
+task", picture attachments, and the Room with team runs. The desktop service
+gained the actions and routes for them (`macos/Sources/BlackTeamKit/Desktop/`).
+All of it is for the desktop window only: a paired phone is refused by the
+engine, with one test per rule. Keys are kept in the private data folder
+(0600) and never returned. Engine texts say "this computer" off macOS.
+
+**Fixed.** The Linux window's messages were sent as if from a phone, so it
+could never start a cloud conversation. In Ask mode, an approved file write
+was still refused by Claude Code 2.1.295: a `Write(...)` rule no longer lets
+Write through. The rule is now `Edit(//absolute/path)`, checked directly with
+the tool. This fix applies to the Mac app as well.
+
+Checked: Linux 602 engine tests (6 skipped), macOS 542 and 41, Node 43,
+Python 23, no failures. In the real Linux window with scratch data: a
+local-only project refuses Claude Code with its card; "Allow cloud models"
+asks first; an Ask-mode Claude Code task asks once, writes the file, and
+"Roll back this task" removes it; requests without the window's session are
+refused. Also seen: a service's model list and the free filter (with a key
+that is not real), saving and removing a cloud model, pictures, room members,
+the agreement card, starting and stopping a team run, tasks, hand-off and the
+log. alpha.20 installed over alpha.19 in a clean home kept the model,
+conversation and project, answered a new chat, and shows the Room.
+
+Not checked for this release: a chat sent to a real cloud service from the
+Linux window; a Codex run from it; a team run that completes with a report on
+Linux; the phone's view of these screens; the sign-in and Update buttons; the
+Ask fix against Claude Code older than 2.1.295; and, as in alpha.19, phone
+pairing on Linux, the AppArmor profile, and distributions other than Arch.
+Not included: the vision-file download button in the Linux window.
