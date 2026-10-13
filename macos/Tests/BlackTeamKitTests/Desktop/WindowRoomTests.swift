@@ -133,7 +133,7 @@ final class WindowRoomTests: XCTestCase {
         let preview = await r.desktop("POST", "/api/room/team/preview", ["project": .string(pid), "goal": "Ship the helper"])
         XCTAssertEqual(preview.status, 200, preview.text)
         XCTAssertEqual(preview["agreement"]?.string, "This run shares your goal and each member's results with every member of this team: Ornith, Cloud Big. "
-            + "Cloud Big are cloud: what is shared with them is sent to \(r.host). Your memory is not used in a team run that has a cloud member.")
+            + "Cloud Big is cloud: what is shared with it is sent to \(r.host). Your memory is not used in a team run that has a cloud member.")
         XCTAssertEqual(preview["leavesThisMac"]?.bool, true); XCTAssertEqual(preview["memoryUsed"]?.bool, false)
         XCTAssertEqual(preview["members"]?.array?.map { $0["kind"]?.string }, ["local", "cloud"])
         let digest = try XCTUnwrap(preview["digest"]?.string)

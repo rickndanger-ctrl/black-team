@@ -75,11 +75,45 @@ enum TeamText {
 
     /// The prompt for the lead's planning step.
     static func planPrompt(goal: String, members: [RoomMember]) -> String {
-        let list = members.map { "- \($0.name) (\($0.role.isEmpty ? "no role set" : $0.role)): \(workLabel($0))" }.joined(separator: "\n")
+        let list = members.map { "- \(planName($0, among: members)): \($0.role.isEmpty ? "no role set" : "role \($0.role)"); \(workLabel($0))" }.joined(separator: "\n")
         return "You lead a small team. The person you work for gave the team this goal:\n\n\(goal)\n\nThe team members:\n\(list)\n\n"
-            + "Plan the work as at most \(TeamLimits.tasks) tasks. Each task must be small and concrete, and assigned to one member by role, using the member's exact name. "
+            + "Plan the work as at most \(TeamLimits.tasks) tasks. Each task must be small and concrete, and assigned to one member by role, using the member's exact name "
+            + "as it is written before the colon above. "
             + "Do not do the work yourself in this step and do not change any file. "
             + "Reply with only JSON in exactly this form: {\"tasks\":[{\"title\":\"...\",\"detail\":\"...\",\"member\":\"<member name>\"}]}"
+    }
+
+    /// What the lead is told to call a member. A name that only one member has is used as it is; members who share a name are told
+    /// apart by their role ("Ornith (builder)"), and by a number when the role does not settle it either ("Ornith 2").
+    static func planName(_ member: RoomMember, among members: [RoomMember]) -> String {
+        let same = members.filter { $0.name.lowercased() == member.name.lowercased() }
+        if same.count <= 1 { return member.name }
+        let role = EText.trim(member.role)
+        if !role.isEmpty, same.filter({ EText.trim($0.role).lowercased() == role.lowercased() }).count == 1 { return "\(member.name) (\(role))" }
+        return "\(member.name) \((same.firstIndex { $0.id == member.id } ?? 0) + 1)"
+    }
+
+    /// The member a plan means by `wanted`. A lead does not always copy a name exactly: it may add the role in brackets, or give
+    /// only the role. A name on the team is never dropped: when several members share it and nothing tells them apart, the first is used.
+    static func planMember(_ wanted: String, members: [RoomMember]) -> RoomMember? {
+        let text = EText.trim(wanted).lowercased()
+        if text.isEmpty { return nil }
+        if let exact = members.first(where: { planName($0, among: members).lowercased() == text }) { return exact }
+        if let byId = members.first(where: { $0.id == text }) { return byId }
+        let named = members.filter { $0.name.lowercased() == text }
+        if named.count == 1 { return named[0] }
+        // "Name (role)", "Name - role", "role Name": the name and the role both appear.
+        let both = members.filter { m in
+            let role = EText.trim(m.role).lowercased()
+            return !role.isEmpty && text.contains(m.name.lowercased()) && text.contains(role)
+        }
+        if both.count == 1 { return both[0] }
+        let byRole = members.filter { EText.trim($0.role).lowercased() == text }
+        if byRole.count == 1 { return byRole[0] }
+        if let first = named.first { return first }
+        // The name with something after it ("Ornith (the model)"), when only one member has that name.
+        let starts = members.filter { text.hasPrefix($0.name.lowercased() + " ") }
+        return starts.count == 1 ? starts[0] : nil
     }
 
     static func reviewPrompt(goal: String, member: String, title: String, detail: String, result: String) -> String {
@@ -133,10 +167,7 @@ enum TeamText {
             guard entry.object != nil else { continue }
             let title = EText.prefix(EText.trim(TeamStore.text(entry["title"]?.string ?? "", 10_000, multiline: false)), RoomLimits.title)
             if title.isEmpty { continue }
-            let wanted = EText.trim(entry["member"]?.string ?? "").lowercased()
-            guard !wanted.isEmpty, let member = members.first(where: { $0.name.lowercased() == wanted }) ?? members.first(where: { $0.id == wanted }) else {
-                unknown += 1; continue
-            }
+            guard let member = planMember(entry["member"]?.string ?? "", members: members) else { unknown += 1; continue }
             let detail = EText.trim(TeamStore.text(entry["detail"]?.string ?? "", RoomLimits.detail))
             tasks.append(PlannedTask(title: title, detail: detail, memberId: member.id))
         }
@@ -244,7 +275,7 @@ extension Backend {
         } else {
             var providers: [String] = []
             for p in cloud where !providers.contains(p.provider) { providers.append(p.provider) }
-            agreement += "\(cloud.map(\.name).joined(separator: ", ")) are cloud: what is shared with them is sent to \(providers.joined(separator: ", ")). "
+            agreement += "\(cloud.map(\.name).joined(separator: ", ")) \(cloud.count == 1 ? "is" : "are") cloud: what is shared with \(cloud.count == 1 ? "it" : "them") is sent to \(providers.joined(separator: ", ")). "
                 + "Your memory is not used in a team run that has a cloud member."
         }
         let basis: JSONValue = .array([.string(goal), .array(previews.map { .string($0.id) }),
