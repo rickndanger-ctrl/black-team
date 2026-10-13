@@ -426,7 +426,7 @@ final class ScreenSnapshotTests: XCTestCase {
         cloudModel(fresh)
         fresh.campPage = .chat
         fresh.privacyNow = PrivacyCheck(outcome: .startsCloud,
-            message: "This conversation leaves this Mac.", provider: "api.anthropic.com", modelName: "Claude Sonnet",
+            message: "This conversation leaves \(Place.this).", provider: "api.anthropic.com", modelName: "Claude Sonnet",
             willLeave: ["your messages, and any pictures you attach"], localModelName: "Ornith 1.5", localModelKey: "ornith")
         try render("y5-presend-notice-chat", .camp, height: 800, model: fresh)
 
@@ -435,7 +435,7 @@ final class ScreenSnapshotTests: XCTestCase {
         code.newKind = .agent
         code.campPage = .chat
         code.privacyNow = PrivacyCheck(outcome: .startsCloud,
-            message: "This conversation leaves this Mac.", provider: "api.anthropic.com", modelName: "Claude Sonnet",
+            message: "This conversation leaves \(Place.this).", provider: "api.anthropic.com", modelName: "Claude Sonnet",
             willLeave: ["your messages", "the contents of any file the agent reads and the output of any command it runs", "the path of your workspace folder"],
             localModelName: "Ornith 1.5", localModelKey: "ornith")
         try render("y6-presend-notice-code", .camp, height: 800, model: code)
@@ -446,9 +446,9 @@ final class ScreenSnapshotTests: XCTestCase {
         open(refused, thread: "t10", kind: "chat", messages: [user("Reply exactly: Companion ready.", "u1"), reply("Companion ready.", "a1")])
         refused.drafts.set(refused.draftKey, message: "And what did I say before that?")
         refused.refusal = PrivacyCheck(outcome: .needsChoice,
-            message: "This conversation is private to this Mac, and Claude Sonnet is a cloud model that would send it to api.anthropic.com. Nothing in a private conversation is sent off this Mac without your say-so. Start a new cloud conversation, switch back to Ornith 1.5, or send this conversation to api.anthropic.com.",
+            message: "This conversation is private to \(Place.this), and Claude Sonnet is a cloud model that would send it to api.anthropic.com. Nothing in a private conversation is sent off \(Place.this) without your say-so. Start a new cloud conversation, switch back to Ornith 1.5, or send this conversation to api.anthropic.com.",
             provider: "api.anthropic.com", modelName: "Claude Sonnet", localModelName: "Ornith 1.5", localModelKey: "ornith",
-            convertWarning: "Send this conversation to api.anthropic.com? Everything in it so far will be sent to api.anthropic.com with your next message: all your messages and the replies. The conversation stays marked as having left this Mac, even if you later continue it with a local model.")
+            convertWarning: "Send this conversation to api.anthropic.com? Everything in it so far will be sent to api.anthropic.com with your next message: all your messages and the replies. The conversation stays marked as having left \(Place.this), even if you later continue it with a local model.")
         try render("y7-refusal-choices", .camp, height: 1000, model: refused)
 
         let project = try await dailyModel(running: false)

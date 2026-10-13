@@ -55,7 +55,9 @@ enum AgentAsk {
         guard inside(url, workspace: workspace) else { return .refuse(reason: outsideFolder, label: shown) }
         let exists = FileManager.default.fileExists(atPath: url.path)
         let verb = denial.tool == "Write" && !exists ? "Create" : "Edit"
-        return .ask(rule: "\(denial.tool == "Write" ? "Write" : "Edit")(\(url.path))", command: "\(verb) \(url.path)", label: "\(verb) \(url.path)")
+        // Claude Code reads one leading slash as "from the project folder" and two as "from the root of the disk", and its Edit
+        // rules cover every file-changing tool (a Write rule does not let Write through). Checked with Claude Code 2.1.295.
+        return .ask(rule: "Edit(/\(url.path))", command: "\(verb) \(url.path)", label: "\(verb) \(url.path)")
     }
 
     /// The path with "." and ".." resolved by name only, so the rule says the path as it was given.

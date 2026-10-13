@@ -1,21 +1,26 @@
 import React, {useState} from 'react';
 import {native} from './desktop.mjs';
+import CloudModel from './Cloud.jsx';
 
 const baseModel={source:'server',endpoint:'http://127.0.0.1:11434/v1',id:'',name:'',file:'',runtime:'',context:4096,gpuLayers:0,threads:4,mmproj:'',draft:''};
 const filename=value=>value.split('/').filter(Boolean).at(-1)||'';
 const modelLabel=value=>filename(value).replace(/\.gguf$/i,'').slice(0,120);
-const providers=[['ollama','Ollama','Use models downloaded in Ollama','http://127.0.0.1:11434/v1'],['lmstudio','LM Studio','Use its running local server','http://127.0.0.1:1234/v1'],['gguf','Model file','Choose a GGUF on this computer'],['custom','Another server','Enter a local address']];
-const providerFor=model=>model.source==='gguf'?'gguf':providers.find(p=>p[3]===model.endpoint)?.[0]||'custom';
+const providers=[['ollama','Ollama','Use models downloaded in Ollama','http://127.0.0.1:11434/v1'],['lmstudio','LM Studio','Use its running local server','http://127.0.0.1:1234/v1'],['gguf','Model file','Choose a GGUF on this computer'],['custom','Another server','Enter a local address'],['cloud','Cloud model','Use a service with your own API key. What you send leaves this Mac.']];
+const providerFor=model=>model.kind==='cloud'?'cloud':model.source==='gguf'?'gguf':providers.find(p=>p[3]===model.endpoint)?.[0]||'custom';
 
-export default function ModelSetup({status,onSave,onAction,busy,settings=false}) {
-  const [form,setForm]=useState(()=>({model:{...baseModel,...status.config?.model,...(!status.setupComplete?{source:'server',name:''}:{})},workspace:status.config?.workspace||''}));
-  const [provider,setProvider]=useState(()=>providerFor(form.model));
+export default function ModelSetup({status,onSave,onAction,busy,settings=false,onCloudSaved}) {
+  // A cloud model in use has its own form below, so its cloud fields never go into the local model form.
+  const inUse=status.config?.model?.kind==='cloud'?{}:status.config?.model;
+  const [form,setForm]=useState(()=>({model:{...baseModel,...inUse,...(!status.setupComplete?{source:'server',name:''}:{})},workspace:status.config?.workspace||''}));
+  const [provider,setProvider]=useState(()=>status.config?.model?.kind==='cloud'?'cloud':providerFor(form.model));
   const [models,setModels]=useState([]);
   const [checking,setChecking]=useState(false);
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
-  const running=status.runtime?.ready||['starting','running'].includes(status.runtime?.state);
-  const server=provider!=='gguf';
+  // A cloud model has no process to stop, so it never shows the connected card.
+  const running=status.config?.model?.kind!=='cloud'&&(status.runtime?.ready||['starting','running'].includes(status.runtime?.state));
+  const cloud=provider==='cloud';
+  const server=provider!=='gguf'&&!cloud;
   const update=(key,value)=>setForm(previous=>({...previous,model:{...previous.model,[key]:value}}));
   const discover=async(endpoint=form.model.endpoint,apiKey=form.model.apiKey)=>{
     setError('');setMessage('');setChecking(true);setModels([]);
@@ -29,6 +34,7 @@ export default function ModelSetup({status,onSave,onAction,busy,settings=false})
   };
   const chooseProvider=async id=>{
     setProvider(id);setError('');setModels([]);setMessage('');
+    if(id==='cloud')return;
     const endpoint=providers.find(p=>p[0]===id)?.[3];
     setForm(previous=>({...previous,model:{...previous.model,source:id==='gguf'?'gguf':'server',...(endpoint?{endpoint,id:'',name:'',...(endpoint===previous.model.endpoint?{}:{apiKey:''})}:{})}}));
     if(endpoint)await discover(endpoint,endpoint===form.model.endpoint?form.model.apiKey:'');
@@ -63,7 +69,7 @@ export default function ModelSetup({status,onSave,onAction,busy,settings=false})
     {running&&<div className="connection-card"><div><strong>{status.config.model.name}</strong><p>{status.runtime.busy?'Finish or stop the current response before changing models.':'Connected. Disconnect here to choose another model.'}</p></div><button type="button" className="secondary" disabled={busy||status.runtime.busy} onClick={()=>onAction('runtime-stop',{},'Ready to choose another model.')}>Change model</button></div>}
     <fieldset disabled={busy||checking||running}>
       <div className="provider-grid full" role="group" aria-label="Where is your model?">{providers.map(([id,name,description])=><button type="button" key={id} aria-pressed={provider===id} className={`provider-card${provider===id?' selected':''}`} onClick={()=>chooseProvider(id)}><strong>{name}</strong><span>{description}</span></button>)}</div>
-      {server?<>
+      {cloud?<CloudModel status={status} busy={busy} onSaved={onCloudSaved}/>:server?<>
         {provider==='custom'&&<label className="form-field full">Local server address<input value={form.model.endpoint} placeholder="http://127.0.0.1:1234/v1" onChange={e=>{setModels([]);setMessage('');setForm(previous=>({...previous,model:{...previous.model,endpoint:e.target.value,id:'',apiKey:''}}));}}/></label>}
         <div className="button-row full"><button type="button" className="secondary" onClick={()=>discover()}>{checking?'Finding models…':'Find models'}</button><small>{provider==='ollama'?'Start Ollama first.':provider==='lmstudio'?'Turn on the local server in LM Studio first.':'Start your server and enable its API first.'}</small></div>
         {checking&&<p className="full" role="status">Checking your local server…</p>}
@@ -75,7 +81,7 @@ export default function ModelSetup({status,onSave,onAction,busy,settings=false})
         {form.model.draft&&<div className="file-picker full companion"><div><strong>Draft model for faster replies</strong><span className="file-path">{filename(form.model.draft)} · found beside the model</span></div><button type="button" className="text-button" onClick={()=>update('draft','')}>Leave out</button></div>}
         <div className="file-picker full"><div><strong>{form.model.runtime?'llama.cpp ready':'Choose llama.cpp once'}</strong><span className="file-path">{form.model.runtime||'Select the llama-server executable from your installation'}</span></div><button type="button" className="secondary" onClick={()=>pick('runtime')}>{form.model.runtime?'Change':'Choose runtime'}</button></div>
       </>}
-      <details className="full advanced-settings"><summary>Advanced connection and performance</summary><div className="form-grid">
+      {!cloud&&<details className="full advanced-settings"><summary>Advanced connection and performance</summary><div className="form-grid">
         <label className="form-field full">Display name (optional)<input value={form.model.name} maxLength={120} onChange={e=>update('name',e.target.value)} placeholder="Uses the model name automatically"/></label>
         {server&&<>
           {provider!=='custom'&&<label className="form-field full">Server address<input value={form.model.endpoint} onChange={e=>{setProvider('custom');setModels([]);setMessage('');setForm(previous=>({...previous,model:{...previous.model,endpoint:e.target.value,id:'',apiKey:''}}));}}/></label>}
@@ -86,8 +92,8 @@ export default function ModelSetup({status,onSave,onAction,busy,settings=false})
         <div className="file-picker full"><div><strong>Workspace</strong><span className="file-path">{form.workspace}</span></div><button type="button" className="secondary" onClick={()=>pick('workspace')}>Change folder</button></div>
         <label className="form-field">Context window<input type="number" min="512" max="131072" value={form.model.context} onChange={e=>update('context',Number(e.target.value))}/><small>{server?'Use no more than the context loaded by your server.':'Larger values use more memory.'}</small></label>
         {!server&&<><label className="form-field">CPU threads<input type="number" min="1" max="1024" value={form.model.threads} onChange={e=>update('threads',Number(e.target.value))}/></label><label className="form-field">GPU layers<input type="number" min="0" max="999" value={form.model.gpuLayers} onChange={e=>update('gpuLayers',Number(e.target.value))}/><small>0 uses CPU. GPU layers require a compatible runtime.</small></label></>}
-      </div></details>
-      <div className="form-actions full"><button className="primary" disabled={server?!form.model.id.trim()||!form.model.endpoint:!form.model.file||!form.model.runtime}>{busy?'Saving…':'Save and open chat'}</button><small>Your first message connects the model automatically.</small></div>
+      </div></details>}
+      {!cloud&&<div className="form-actions full"><button className="primary" disabled={server?!form.model.id.trim()||!form.model.endpoint:!form.model.file||!form.model.runtime}>{busy?'Saving…':'Save and open chat'}</button><small>Your first message connects the model automatically.</small></div>}
     </fieldset>
     {server&&['ollama','lmstudio'].includes(provider)&&<button type="button" className="text-button" disabled={busy||checking} onClick={()=>onAction('setup-help',{topic:provider})}>Get {provider==='ollama'?'Ollama':'LM Studio'}</button>}
     {error&&<p className="inline-note error-text" role="alert">{error} If your server uses a key, add it under Advanced connection and performance, then choose Find models again.</p>}

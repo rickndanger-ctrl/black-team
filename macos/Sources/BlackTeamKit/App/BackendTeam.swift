@@ -240,7 +240,7 @@ extension Backend {
         let cloud = previews.filter { $0.kind == "cloud" }
         var agreement = "This run shares your goal and each member's results with every member of this team: \(previews.map(\.name).joined(separator: ", ")). "
         if cloud.isEmpty {
-            agreement += "Every member runs on this Mac, so nothing leaves it."
+            agreement += "Every member runs on \(Place.this), so nothing leaves it."
         } else {
             var providers: [String] = []
             for p in cloud where !providers.contains(p.provider) { providers.append(p.provider) }

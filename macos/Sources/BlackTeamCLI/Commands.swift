@@ -75,7 +75,7 @@ import BlackTeamKit
         print("state: \(state)")
         if rollbackReady { print("rollback: black-team agent rollback \(sent.threadId) \(sent.id)") }
         if let note = reply?["rollbackNote"]?.string { print("rollback: \(note)") }
-        print("privacy: leaves this Mac, sent to \(service.provider) under your \(service.displayName) subscription")
+        print("privacy: leaves \(Place.this), sent to \(service.provider) under your \(service.displayName) subscription")
         if let error = reply?["error"]?.string { FileHandle.standardError.write(Data(("error: " + error + "\n").utf8)) }
         if reply?["needsSignIn"] != nil { print("sign in: black-team agent signin \(service.program)") }
     }
@@ -160,7 +160,7 @@ import BlackTeamKit
         if let usage = finalThread?["usage"] {
             print("usage: \(usage["prompt"]?.int ?? 0) tokens in, \(usage["completion"]?.int ?? 0) out" + ((usage["cached"]?.int ?? 0) > 0 ? ", \(usage["cached"]!.int!) cached" : ""))
         }
-        if finalThread?["privacy"]?.string == "cloud" { print("privacy: leaves this Mac, sent to \(finalThread?["provider"]?.string ?? "a cloud service")") }
+        if finalThread?["privacy"]?.string == "cloud" { print("privacy: leaves \(Place.this), sent to \(finalThread?["provider"]?.string ?? "a cloud service")") }
         if let error = reply?["error"]?.string { FileHandle.standardError.write(Data(("error: " + error + "\n").utf8)) }
     }
     return state == "done" ? 0 : 1
@@ -361,7 +361,7 @@ import BlackTeamKit
             if asJSON { printJSON(preview) } else {
                 print("This is exactly what \(preview.receiverName) would be given:\n")
                 print(preview.text)
-                print("\n" + (preview.leavesThisMac ? "This leaves this Mac: it goes to \(preview.provider)." : "This stays on this Mac."))
+                print("\n" + (preview.leavesThisMac ? "This leaves \(Place.this): it goes to \(preview.provider)." : "This stays on \(Place.this)."))
             }
             guard confirmed else {
                 if !asJSON { print("Nothing was sent. Add --yes to create the task.") }
@@ -395,7 +395,7 @@ import BlackTeamKit
             print("version: \(status.version)")
             print("setup complete: \(status.setupComplete ? "yes" : "no")")
             print("model: \(status.config.model.name) (\(status.config.model.source))")
-            if status.cloud.selected { print("privacy: cloud model; conversations with it leave this Mac for \(status.cloud.provider)") }
+            if status.cloud.selected { print("privacy: cloud model; conversations with it leave \(Place.this) for \(status.cloud.provider)") }
             print("runtime: \(status.runtime.state)\(status.runtime.error.map { " - \($0)" } ?? "")")
             print("saved models: \(status.models.count)")
             print("downloaded llama.cpp: \(status.downloadedRuntime.map { $0.tag + " at " + $0.executable } ?? "none")")
@@ -492,7 +492,7 @@ import BlackTeamKit
                                                  "context": .number(Double(context))]]
                 _ = try await backend.saveSetup(form)
                 let status = try await backend.status()
-                if asJSON { printJSON(status.cloud) } else { print("Saved cloud model \(name) at \(status.cloud.provider). It is now the model in use. Conversations with it leave this Mac.") }
+                if asJSON { printJSON(status.cloud) } else { print("Saved cloud model \(name) at \(status.cloud.provider). It is now the model in use. Conversations with it leave \(Place.this).") }
                 return 0
             }
             if action == "models" {

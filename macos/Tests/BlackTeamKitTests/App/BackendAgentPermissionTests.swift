@@ -127,7 +127,7 @@ final class BackendAgentPermissionTests: XCTestCase {
         XCTAssertEqual(agents.commands.count - before, 2)
         XCTAssertEqual(seen.all.map(\.command), ["Create \(workspace)/new.txt"])
         let second = agents.commands.last!.arguments
-        XCTAssertEqual(second[second.firstIndex(of: "--allowedTools")! + 1], "Write(\(workspace)/new.txt)")
+        XCTAssertEqual(second[second.firstIndex(of: "--allowedTools")! + 1], "Edit(/\(workspace)/new.txt)")
         let text = try XCTUnwrap(reply(backend, result)["content"]?.string)
         XCTAssertTrue(text.contains("Not done (outside this conversation's folder): /etc/hosts; "), text)
         XCTAssertTrue(text.contains("escape.txt"), text)

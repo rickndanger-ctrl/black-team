@@ -54,7 +54,7 @@ public final class PhoneServer: @unchecked Sendable {
     }
 
     private static func busy(_ port: UInt16) -> BlackTeamError {
-        BlackTeamError("Port \(port) on this Mac is in use, so phone access cannot start. Quit the program using it and try again.")
+        BlackTeamError("Port \(port) on \(Place.this) is in use, so phone access cannot start. Quit the program using it and try again.")
     }
 
     private func markStopped(_ made: NWListener) {

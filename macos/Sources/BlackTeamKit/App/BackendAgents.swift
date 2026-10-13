@@ -84,7 +84,7 @@ extension Backend {
         // THE GATE. Nothing is started, resumed or saved unless it allows this run.
         let grant = try authorizeAgentRun(service: service, existing: existing, project: project, viaPhone: origin == .phone)
         guard agentLauncher.executable(for: service) != nil else {
-            throw BlackTeamError("\(service.displayName) is not installed on this Mac. Install it, then sign in with your subscription.")
+            throw BlackTeamError("\(service.displayName) is not installed on \(Place.this). Install it, then sign in with your subscription.")
         }
         // The version check runs in the background, never delaying the run; its answer is kept for the model menu.
         Task.detached { [self] in _ = await self.agentUpdateStatus(service: service) }
@@ -285,7 +285,7 @@ extension Backend {
     /// Opens the sign-in command in the person's own Terminal, so the sign-in happens there and Black Team sees none of it.
     public func openAgentSignIn(service: AgentService) async throws {
         guard agentLauncher.executable(for: service) != nil else {
-            throw BlackTeamError("\(service.displayName) is not installed on this Mac. Install it, then sign in with your subscription.")
+            throw BlackTeamError("\(service.displayName) is not installed on \(Place.this). Install it, then sign in with your subscription.")
         }
         let command = agentSignInCommand(service: service)
         let text = launchScript(workspace: home, environment: AgentTools.environment(), executable: command.executable, args: command.arguments)
@@ -302,7 +302,7 @@ extension Backend {
     /// Opens the update command in the person's own Terminal. Black Team starts it and captures nothing from it.
     public func openAgentUpdate(service: AgentService) async throws {
         guard agentLauncher.executable(for: service) != nil else {
-            throw BlackTeamError("\(service.displayName) is not installed on this Mac. Install it, then sign in with your subscription.")
+            throw BlackTeamError("\(service.displayName) is not installed on \(Place.this). Install it, then sign in with your subscription.")
         }
         let command = agentUpdateCommand(service: service)
         let text = launchScript(workspace: home, environment: AgentTools.environment(), executable: command.executable, args: command.arguments)

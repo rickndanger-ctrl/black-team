@@ -119,7 +119,7 @@ public final class RuntimeInstaller: @unchecked Sendable {
             } catch { firstError = firstError ?? error }
         }
         if let firstError, firstError is BlackTeamError { throw firstError }
-        throw BlackTeamError("Could not find a llama.cpp download for this \(platform == .macos ? "Mac" : "computer"). Check your internet connection and try again.")
+        throw BlackTeamError("Could not find a llama.cpp download for \(Place.this). Check your internet connection and try again.")
     }
 
     /// A newer build than the installed one, or nil.

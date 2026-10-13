@@ -123,7 +123,7 @@ extension Backend {
         } else if let service = m.service {
             view.kind = "cloud"; view.provider = service.provider
             if !project.cloudAllowed { view.usable = false; view.reason = localOnly }
-            else if !agentInstalled(service) { view.usable = false; view.reason = "\(service.displayName) is not installed on this Mac." }
+            else if !agentInstalled(service) { view.usable = false; view.reason = "\(service.displayName) is not installed on \(Place.this)." }
         }
         return view
     }

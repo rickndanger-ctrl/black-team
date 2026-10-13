@@ -543,7 +543,7 @@ final class TeamTests: XCTestCase {
         try add(r, "Claude Code", agent: "claude-code")
         try add(r, "Ornith", model: r.localKey)
         let p = try preview(r)
-        await fail({ _ = try r.backend.roomTeamRun(projectId: r.pid, goal: "Ship the helper", digest: p.digest, from: .phone) }, contains: "decision made at the Mac")
+        await fail({ _ = try r.backend.roomTeamRun(projectId: r.pid, goal: "Ship the helper", digest: p.digest, from: .phone) }, contains: "decision made at \(Place.the)")
         XCTAssertNil(try r.backend.room(projectId: r.pid).team); XCTAssertTrue(r.backend.threads().isEmpty); XCTAssertTrue(r.agents.commands.isEmpty)
         // An all-local team may be started from a phone.
         let local = try await self.rig()
