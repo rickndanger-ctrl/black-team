@@ -14,6 +14,8 @@ public final class DesktopControl: @unchecked Sendable {
         "cloud-discover", "cloud-save", "project-cloud", "agents-status", "agent-signin", "agent-update",
         // Starter model and vision file downloads (Desktop/DesktopVision.swift).
         "vision-install", "vision-cancel", "starter-list", "starter-install", "starter-cancel",
+        // Get a model: the ranking for this computer, a Hugging Face search, one repository, and the download (Desktop/DesktopModels.swift).
+        "models-recommend", "models-search", "models-repo", "model-get", "model-get-stop",
     ]
     /// Actions that change something: one at a time.
     static let changing: Set<String> = [
@@ -65,6 +67,21 @@ public final class DesktopControl: @unchecked Sendable {
         case "starter-cancel":
             try unsupported([], "Unsupported setup setting.")
             return starterStop()
+        case "models-recommend":
+            try unsupported([], "Unsupported setup setting.")
+            return .encoded(backend.modelRecommendations())
+        case "models-search":
+            try unsupported(["query"], "Unsupported setup setting.")
+            return ["results": .encoded(try await backend.searchModels(input["query"]?.string ?? ""))]
+        case "models-repo":
+            try unsupported(["repo"], "Unsupported setup setting.")
+            return .encoded(try await backend.hubRepo(input["repo"]?.string ?? ""))
+        case "model-get":
+            try unsupported(["source", "id", "repo", "file", "vision", "draft", "makeCurrent"], "Unsupported setup setting.")
+            return modelStart(try modelChoice(input), makeCurrent: input["makeCurrent"]?.bool ?? false)
+        case "model-get-stop":
+            try unsupported(["discard"], "Unsupported setup setting.")
+            return await modelStop(discard: input["discard"]?.bool ?? false)
         case "server-discover":
             try unsupported(["endpoint", "apiKey"], "Unsupported server discovery setting.")
             // A key that is not text is refused as a key, never silently dropped.

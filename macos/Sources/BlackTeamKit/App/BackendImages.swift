@@ -29,7 +29,7 @@ extension Backend {
     func starterModel(for model: ModelConfig) -> StarterModel? {
         guard model.source != "server", !model.file.isEmpty else { return nil }
         let folder = URL(fileURLWithPath: dataFolder)
-        return StarterModels.all.first { $0.destination(in: folder).path == model.file }
+        return ModelCatalogue.model(file: model.file, dataFolder: folder)
     }
 
     /// Whether the model in use can read images: yes with a projector set, or on another server (where support is unknown and

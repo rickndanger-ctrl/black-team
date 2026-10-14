@@ -432,6 +432,65 @@ import BlackTeamKit
             }
             fail(usage, code: 2)
 
+        case "recommend":
+            let recommendations = backend.modelRecommendations()
+            if asJSON { printJSON(recommendations); return 0 }
+            print("This \(Place.kind): \(recommendations.summary)")
+            if let note = recommendations.note { print("note: \(note)") }
+            func line(_ entry: ModelAssessment) -> String {
+                let picks = entry.picks.map { ["best": "BEST FOR THIS COMPUTER", "code": "best for Code (tools)", "fastest": "fastest"][$0] ?? $0 }
+                let fit = entry.fit == .comfortable ? "fits well" : entry.fit == .tight ? "tight" : "too big"
+                return "\(entry.id)\t\(entry.model.name)\t\(gigabytes(entry.model.bytes))\t\(fit)\t\(entry.speed.text)\t\(entry.goodFor.joined(separator: ", "))"
+                    + (picks.isEmpty ? "" : "\t<- " + picks.joined(separator: ", ")) + (entry.installed ? "\tinstalled" : "")
+            }
+            for entry in recommendations.models { print(line(entry)); print("\t\(entry.reason)") }
+            print("Download one with: black-team download <id>")
+            return 0
+
+        case "search":
+            guard !arguments.isEmpty else { fail("Search for what? black-team search <words>, or black-team search <owner/repo> to list a repository's files.", code: 2) }
+            let query = arguments.joined(separator: " "); arguments.removeAll()
+            if HuggingFaceHub.isValidRepo(query) {
+                let repo = try await backend.hubRepo(query)
+                if asJSON { printJSON(repo); return 0 }
+                print("\(repo.repo): \(repo.license) licence, made by \(query.split(separator: "/")[0]) (a third party), \(repo.page)")
+                if let problem = repo.problem { print(problem) }
+                for entry in repo.files {
+                    let fit = entry.fit == .comfortable ? "fits well" : entry.fit == .tight ? "tight" : "too big"
+                    print("\(entry.suggested ? "*" : " ") \(entry.file.path)\t\(entry.file.quant)\t\(gigabytes(entry.file.bytes))\t\(entry.unavailable ?? fit)")
+                }
+                if let vision = repo.visionFile { print("  vision file: \(vision.name) (\(gigabytes(vision.bytes))): add --with-vision when downloading") }
+                if let draft = repo.draftFile { print("  speed-up file: \(draft.name) (\(gigabytes(draft.bytes))): add --with-draft when downloading") }
+                print("* is the one suggested for this \(Place.kind). Download with: black-team download \(repo.repo) <file>")
+                return 0
+            }
+            let results = try await backend.searchModels(query)
+            if asJSON { printJSON(results); return 0 }
+            if results.isEmpty { print("No GGUF models found for \"\(query)\".") }
+            for item in results { print("\(item.repo)\t\(item.downloads) downloads\t\(item.likes) likes\(item.gated ? "\tneeds you to accept terms on huggingface.co" : "")") }
+            return 0
+
+        case "download":
+            let withVision = arguments.contains("--with-vision"), withDraft = arguments.contains("--with-draft"), makeCurrent = arguments.contains("--use")
+            arguments.removeAll { ["--with-vision", "--with-draft", "--use"].contains($0) }
+            guard !arguments.isEmpty else { fail("Name a model: black-team recommend, or black-team download <owner/repo> <file>.", code: 2) }
+            let first = arguments.removeFirst()
+            let choice: ModelChoice
+            if HuggingFaceHub.isValidRepo(first) {
+                guard !arguments.isEmpty else { fail("Name the file: black-team search \(first)", code: 2) }
+                choice = .hub(repo: first, path: arguments.removeFirst(), vision: withVision, draft: withDraft)
+            } else { choice = .catalogue(id: first, vision: withVision, draft: withDraft) }
+            let last = ProgressMemory()
+            let result = try await backend.getModel(choice, makeCurrent: makeCurrent) { progress in
+                if asJSON { return }
+                if let line = last.line(progress) { print(line); fflush(stdout) }
+            }
+            if asJSON { printJSON(result); return 0 }
+            print(result.message)
+            print("\(result.modelName): a model by someone else from Hugging Face (\(result.repo)), \(result.license) licence.")
+            if let warning = result.warning { print("warning: \(warning)") }
+            return 0
+
         case "runtime":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()
             if action == "status" {

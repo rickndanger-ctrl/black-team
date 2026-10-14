@@ -12,6 +12,9 @@ Usage:
 Commands (black-team <command> --help for details):
   status                              set-up state, runtime, saved models, hardware
   starter list | install <id>         the starter models; download the runtime and one of them
+  recommend                           which models suit this computer, best first
+  search <words> | <owner/repo>        find a GGUF model on Hugging Face, or list one repository's files
+  download <id> | <owner/repo> <file> download a model, check it, and set it up so it is ready to chat
   runtime status | install            the downloaded llama.cpp program
   find                                look for running model servers and model files
   models                              the saved models
@@ -41,6 +44,29 @@ let commandHelp: [String: String] = [
            black-team starter install <id>
       list      the starter models, what is installed, and the recommendation for this computer
       install   download the llama.cpp runtime and one starter model, and set it up
+    """,
+    "recommend": """
+    Usage: black-team [--json] recommend
+    Ranks the model catalogue for this computer (its cores, memory, free disk space and, where it can be read, graphics card). Each model is
+    marked as fitting well, tight or too big, with an estimated speed and what it is good for. One is the best for this computer, one the
+    best for Code (tools), and the fastest is named when it is another. Nothing is downloaded and nothing leaves this computer.
+    """,
+    "search": """
+    Usage: black-team [--json] search <words>
+           black-team [--json] search <owner/repo>
+      <words>        search Hugging Face for GGUF models, most downloaded first
+      <owner/repo>   list that repository's GGUF files with size, quantisation and how each fits this computer;
+                     * marks the one suggested (Q4_K_M when it fits), and a vision or speed-up file is mentioned when the repository has one
+    Contacts huggingface.co, only when you run it. These models are made by other people; read the licence before you use one.
+    """,
+    "download": """
+    Usage: black-team [--json] download <id> [--with-vision] [--with-draft] [--use]
+           black-team [--json] download <owner/repo> <file> [--with-vision] [--with-draft] [--use]
+    Downloads a catalogue model (see `recommend`) or any GGUF file from Hugging Face, resuming a partial download and checking its size and
+    SHA-256 against Hugging Face's own figures. Installs the llama.cpp runtime first when none is installed, then saves the model so it is
+    ready to chat. It becomes the model in use when none was set up; --use makes it the model in use anyway (the model in use must be stopped).
+      --with-vision   also download the repository's vision file, so the model can read pictures
+      --with-draft    also download its speed-up (MTP or draft) file
     """,
     "runtime": """
     Usage: black-team runtime status

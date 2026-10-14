@@ -5,7 +5,51 @@ below; Linux is local only). It loads GGUF with an owned
 llama.cpp runtime, or connects to an existing local OpenAI-compatible server.
 A model's architecture, file format, quantization and hardware requirements are
 handled by the inference engine. Black Team cannot directly load every weight
-format and does not convert or download models automatically.
+format and does not convert models. It downloads a model only when you choose
+one (see **Get a model**), and never in the background.
+
+## Get a model
+
+**Settings → Models** (and the first-run setup) has **Get a model**; the command
+line has `black-team recommend`, `search` and `download`.
+
+- **Best for this computer.** Black Team reads this computer's physical cores,
+  memory, free disk space in its models folder and, where it can, the graphics
+  card (Apple silicon shares memory with the graphics; on Linux an AMD card's memory
+  is read from sysfs, and an NVIDIA card's is estimated from its PCI memory window,
+  or left unknown; no program such as nvidia-smi is run). Each model in the
+  catalogue is marked *fits well*, *tight* or *too big*, with an **estimated** speed
+  and what it is good for (chat, Code agent with tools, images). One is picked as
+  best for this computer, one as best for Code (tools), and the fastest is named
+  when it is another.
+- **How it decides.** A model needs its file plus working memory (the larger of
+  2 GiB and a quarter of the file; 1.5 GiB on a graphics card's own memory). It
+  fits well within 60% of memory, tightly within 85%. Speed is about
+  memory bandwidth divided by the bytes read for each word: 4 GB/s per physical core
+  up to 45 GB/s on a processor, the chip family's bandwidth on Apple silicon,
+  and a rough figure by memory size for a card. A mixture-of-experts model reads only
+  its active share. This is a rule of thumb, shown as a range, not a measurement.
+  The pick is the most capable model that fits well and writes at a comfortable
+  speed; a small weight set by the maintainers breaks near-ties (it favours Ornith,
+  the model Black Team is built around). On Linux the llama.cpp Black Team
+  downloads uses the processor only, so a graphics card is counted only when you
+  run with GPU layers set (a GPU build of llama.cpp of your own).
+- **The catalogue** runs from a 0.5 GB test model to gpt-oss 120B (63 GB), and
+  includes Ornith 1.5 35B-A3B (from its makers) and Qwen3.8 27B (unsloth). Every
+  file's size and SHA-256 were read from the Hugging Face API on 2026-10-13.
+- **Any model on Hugging Face.** Search for a name, open a repository and Black
+  Team lists its GGUF files with size and quantisation, marks which fit this
+  computer, and suggests Q4_K_M when it fits. A vision file (mmproj) and a speed-up
+  (MTP or draft) file in the same repository can be downloaded with it. These are
+  made by other people: the licence is shown with the file. A model split into
+  several parts, or a repository that asks you to accept terms (Black Team does not
+  sign in to Hugging Face), cannot be downloaded; the window says so.
+- **Download, then ready.** The download resumes if stopped (Pause keeps what
+  arrived, Cancel deletes it), checks the size and the SHA-256 Hugging Face gives
+  for the file, and refuses to start without enough free disk space. If no llama.cpp
+  runtime is installed, Black Team installs one first. Then the model is saved with a
+  context that fits this computer; it becomes the model in use when none was set
+  up, and otherwise joins your list. The window then says "Ready. Start chatting."
 
 ## GGUF / llama.cpp
 

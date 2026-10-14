@@ -87,6 +87,12 @@ public final class Backend: @unchecked Sendable {
     let visionInstall = VisionInstallState()
     /// The window's starter model download, likewise.
     let starterInstall = VisionInstallState()
+    /// The window's "Get a model" download (App/BackendModels.swift, Desktop/DesktopModels.swift), likewise.
+    let modelInstall = ModelInstallState()
+    /// How Hugging Face is asked (search, a repository's files). Tests replace it; the app talks to huggingface.co only when asked.
+    var hubFetch: HTTPFetch = LocalHTTP.fetch
+    /// Tests only: pretend this computer is something else.
+    var hardwareOverride: HardwareProfile?
 
     private var keeperFile: String { dataFolder + "/keeper.json" }
     private var projectsFile: String { dataFolder + "/projects.json" }

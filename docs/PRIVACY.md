@@ -65,6 +65,13 @@ Black Team Agent creates separate Hermes profiles, pins the main and compression
 model to the selected endpoint, and does not copy normal Hermes profile secrets.
 Unrelated provider keys are excluded from the launch environment. Hermes and
 installed browser/desktop tools still have their own behavior and dependencies.
+Choosing **Get a model** contacts Hugging Face only when you ask. A search sends
+your search words to huggingface.co; opening a repository asks it for the file list
+(sizes and checksums); a download fetches the file from huggingface.co and its
+download servers (hf.co), and the llama.cpp program from github.com if it is not
+installed yet. No account, token or cookie is sent, nothing else is sent, and
+redirects to any other host are refused. Ranking the models for this computer reads
+its hardware locally and contacts nothing. Models there are made by other people.
 There is no universal network sandbox. Browsing, tool commands, downloads and
 explicit transfers can access external services.
 
