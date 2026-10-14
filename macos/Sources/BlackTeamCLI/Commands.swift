@@ -218,6 +218,68 @@ import BlackTeamKit
     fflush(stdout)
 }
 
+/// The ledger of a driven run: the plain sentence, then each member's tokens and time ("not measured" where none were reported).
+func grouped(_ n: Int) -> String { let f = NumberFormatter(); f.numberStyle = .decimal; f.groupingSeparator = ","; f.locale = Locale(identifier: "en_US"); return f.string(from: NSNumber(value: n)) ?? "\(n)" }
+
+func ledgerText(_ ledger: RunLedger) -> String {
+    var rows = [ledger.summary]
+    for line in ledger.lines {
+        let tokens = line.measured ? "\(grouped(line.prompt ?? 0)) read, \(grouped(line.completion ?? 0)) written" : "not measured"
+        rows.append("  \(line.name) (\(line.paid ? "paid" : "local")): \(tokens), \(line.seconds) s, \(line.runs) run\(line.runs == 1 ? "" : "s")")
+    }
+    return rows.joined(separator: "\n")
+}
+
+/// `room roster list | add | remove | use | save`: Black Team agents made once and added to any project's room.
+@MainActor func runRoomRoster(_ backend: Backend) -> Int32 {
+    let action = arguments.isEmpty ? "list" : arguments.removeFirst()
+    func printRoster(_ list: [RosterEntryView]) {
+        if asJSON { printJSON(list); return }
+        if list.isEmpty { print("The roster is empty. Add one: room roster add --name N (--model <key> | --agent claude|codex)"); return }
+        for (i, item) in list.enumerated() {
+            let e = item.entry
+            print("\(i + 1). \(e.name)" + (e.role.isEmpty ? "" : " [\(e.role)]") + " - " + (item.kind == "cloud" ? "paid (\(item.provider))" : "local")
+                  + (e.agent != nil ? ", \(e.agent!) \(e.permission ?? "edit")" : ", \(e.work ?? "code") work") + (item.usable ? "" : " - cannot be used: \(item.reason)"))
+        }
+    }
+    func pick(_ list: [RosterEntryView], _ given: String) -> RosterEntryView {
+        let hits = list.enumerated().filter { "\($0.offset + 1)" == given || $0.element.entry.id == given || $0.element.entry.name.lowercased() == given.lowercased() }
+        if hits.count == 1 { return hits[0].element }
+        fail("No saved agent \"\(given)\"" + (hits.count > 1 ? " (more than one matches)." : "."))
+    }
+    do {
+        switch action {
+        case "list": printRoster(backend.roster())
+        case "add":
+            let name = option("--name"), role = option("--role") ?? "", model = option("--model"), agent = option("--agent")
+            let work = option("--work"), permission = option("--permission")
+            guard let name else { fail("--name is required.", code: 2) }
+            var engine: String?
+            if let agent {
+                guard let service = AgentService.allCases.first(where: { $0.program == agent }) else { fail("--agent takes claude or codex.", code: 2) }
+                engine = service.engine
+            }
+            printRoster(try backend.rosterCreate(name: name, role: role, modelKey: model, agent: engine, permission: permission, work: work))
+        case "remove":
+            guard arguments.count == 1 else { fail("room roster remove takes a number or name.\n\n\(usage)", code: 2) }
+            printRoster(try backend.rosterRemove(id: pick(backend.roster(), arguments[0]).entry.id))
+        case "use":
+            guard arguments.count == 2 else { fail("room roster use takes a project and a saved agent.\n\n\(usage)", code: 2) }
+            let id = roomProject(backend, arguments[0])
+            printRoom(try backend.roomAddFromRoster(projectId: id, rosterId: pick(backend.roster(), arguments[1]).entry.id))
+        case "save":
+            guard arguments.count == 2 else { fail("room roster save takes a project and a member.\n\n\(usage)", code: 2) }
+            let id = roomProject(backend, arguments[0])
+            printRoster(try backend.roomSaveToRoster(projectId: id, memberId: roomMember(try backend.room(projectId: id), arguments[1]).id))
+        default: fail("room roster takes list, add, remove, use or save.\n\n\(usage)", code: 2)
+        }
+        return 0
+    } catch {
+        FileHandle.standardError.write(Data((describe(error) + "\n").utf8))
+        return 1
+    }
+}
+
 @MainActor func runRoomTeam(_ backend: Backend) async -> Int32 {
     func projectArg() -> String {
         guard !arguments.isEmpty else { fail("Name the project.\n\n\(usage)", code: 2) }
@@ -236,11 +298,16 @@ import BlackTeamKit
         let lead = option("--lead"), reviewer = option("--reviewer")
         let confirmed = arguments.contains("--yes")
         arguments.removeAll { $0 == "--yes" }
+        let pipeline = arguments.contains("--pipeline")
+        arguments.removeAll { $0 == "--pipeline" }
         let id = projectArg()
         guard arguments.count == 1 else { fail("room team takes a project and a goal in quotes.\n\n\(usage)", code: 2) }
         let current = try backend.room(projectId: id)
-        let preview = try backend.roomTeamPreview(projectId: id, goal: arguments[0], leadId: lead.map { roomMember(current, $0).id },
-                                                  reviewerId: reviewer.map { roomMember(current, $0).id })
+        // A paid lead drives (hands work to the other members while it works) unless --pipeline asks for plan, work, review, report.
+        let leadId = lead.map { roomMember(current, $0).id }
+        let driven = !pipeline && backend.roomCanDrive(projectId: id, leadId: leadId)
+        let preview = try backend.roomTeamPreview(projectId: id, goal: arguments[0], leadId: leadId,
+                                                  reviewerId: reviewer.map { roomMember(current, $0).id }, driven: driven)
         if asJSON { printJSON(preview) } else {
             print(preview.agreement + "\n")
             for m in preview.members {
@@ -252,7 +319,8 @@ import BlackTeamKit
             if !asJSON { print("\nNothing was started. Add --yes to run the team.") }
             return 0
         }
-        _ = try backend.roomTeamRun(projectId: id, goal: preview.goal, leadId: preview.leadId, reviewerId: preview.reviewerId, digest: preview.digest)
+        _ = try backend.roomTeamRun(projectId: id, goal: preview.goal, leadId: preview.leadId, reviewerId: preview.reviewerId, digest: preview.digest,
+                                    from: .mac, driven: driven)
         var seen: TeamLogEntry?
         var printed = 0
         while true {
@@ -271,6 +339,7 @@ import BlackTeamKit
         guard let final = try backend.room(projectId: id).team else { return 1 }
         if asJSON { printJSON(final) } else {
             if !final.report.isEmpty { print("\nReport:\n\(final.report)") }
+            if let ledger = final.ledger { print("\n" + ledgerText(ledger)) }
             print("\nTeam run \(final.phase.rawValue)" + (final.message.isEmpty ? "" : ": \(final.message)") + " (\(final.runs) member runs).")
         }
         return final.phase == .done ? 0 : 1
@@ -372,8 +441,10 @@ import BlackTeamKit
             if !asJSON { print("Created a task for \(preview.receiverName). Start it with: room start \(id) \(after.tasks.count)") }
         case "team":
             return await runRoomTeam(backend)
+        case "roster":
+            return runRoomRoster(backend)
         default:
-            fail("room takes show, member add, task add, start, accept, sendback, handoff or team.\n\n\(usage)", code: 2)
+            fail("room takes show, member add, task add, start, accept, sendback, handoff, team or roster.\n\n\(usage)", code: 2)
         }
         return 0
     } catch {

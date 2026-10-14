@@ -1,7 +1,7 @@
 # Model connections
 
-Black Team accepts model choices from the user (the Mac app can also use a cloud service, see
-below; Linux is local only). It loads GGUF with an owned
+Black Team accepts model choices from the user (both apps can also use a cloud service, see
+below). It loads GGUF with an owned
 llama.cpp runtime, or connects to an existing local OpenAI-compatible server.
 A model's architecture, file format, quantization and hardware requirements are
 handled by the inference engine. Black Team cannot directly load every weight
@@ -31,7 +31,7 @@ libraries, insufficient RAM/VRAM, or incompatible runtime endpoints. The alpha's
 runtime startup deadline is two minutes. Large or slow models may need a
 separately started server instead.
 
-## Cloud models (macOS app only)
+## Cloud models
 
 In the Mac app, **Available configurations → Cloud model** adds a hosted model. Choose a service
 (each preset only fills in the address) or **Another service**, paste your API key (a secure field; it
