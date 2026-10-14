@@ -16,6 +16,7 @@ import FindModels, {FoundPrompt} from './FindModels.jsx';
 import {Chat} from './Chat.jsx';
 import {CloudPanel} from './Cloud.jsx';
 import Room from './Room.jsx';
+import MicButton from './Dictate.jsx';
 import {api, call, post} from './http.mjs';
 
 const desktop = Boolean(window.blackTeam?.request);
@@ -79,6 +80,7 @@ export default function App() {
   const [mobileNav, setMobileNav] = useState(false);
   const [project, setProject] = useState(null);
   const [naming, setNaming] = useState(null);
+  const nameBox = useRef(null);
   const selectedThread = useRef(null);
   const pollInFlight = useRef(false);
   const mounted = useRef(true);
@@ -189,7 +191,7 @@ export default function App() {
     <div className="mobile-topbar"><span className="mobile-wordmark"><AgentAvatar/>BLACK TEAM{!desktop && <small>COMPANION</small>}</span><button className="secondary" aria-expanded={mobileNav} aria-controls="app-navigation" onClick={() => setMobileNav(previous => !previous)}>{mobileNav ? 'Close' : 'Menu'}</button></div>
     <aside className={`sidebar companion-nav app-sidebar${mobileNav ? ' mobile-open' : ''}`} id="app-navigation"><Brand caption={desktop ? 'PRIVATE AI. TOTAL CONTROL.' : 'PRIVATE COMPANION'}/><div className="nav-label">{desktop ? 'CONTROL ROOM' : 'YOUR COMPANION'}</div><nav aria-label="Main navigation">{(desktop ? [['workspace', 'grid', 'Workspace'], ['conversations', 'chat', 'Chat / Code'], ...(status.access === 'desktop' ? [['room', 'work', 'Room']] : []), ['memory', 'activity', 'Memory'], ['phone', 'globe', 'Phone Companion'], ['settings', 'chip', 'Settings']] : [['conversations', 'chat', 'Chat / Code'], ['memory', 'activity', 'Memory']]).map(([id, icon, label]) => <button key={id} className={`nav${page === id ? ' selected' : ''}`} onClick={() => navigate(id)} aria-current={page === id ? 'page' : undefined}><Icon name={icon} size={17}/>{label}</button>)}</nav><div className="thread-list">
       <div className="side-heading"><small>PROJECTS</small><button type="button" onClick={()=>setNaming(naming===null?'':null)} aria-label="New project" aria-expanded={naming!==null} title="New project">+</button></div>
-      {naming!==null&&<form className="side-form" onSubmit={createProject}><input autoFocus value={naming} maxLength={60} placeholder="Project name" aria-label="Project name" onChange={event=>setNaming(event.target.value)} onKeyDown={event=>{if(event.key==='Escape')setNaming(null);}}/></form>}
+      {naming!==null&&<form className="side-form" onSubmit={createProject}><input ref={nameBox} autoFocus value={naming} maxLength={60} placeholder="Project name" aria-label="Project name" onChange={event=>setNaming(event.target.value)} onKeyDown={event=>{if(event.key==='Escape')setNaming(null);}}/>{status.dictation&&<MicButton field={nameBox} value={naming} onError={setError}/>}</form>}
       {projects.length?projects.map(item=>{const mine=(status.threads||[]).filter(entry=>entry.project===item.id);const open=project===item.id;return <div key={item.id} className={`project${open?' open':''}`}><button className="project-name" aria-expanded={open} disabled={!item.exists||sending||Boolean(pendingRequest)} onClick={()=>open?leaveProject():openProject(item)}><Icon name="folder" size={14}/><span>{item.name}</span><i>{mine.length||''}</i></button>{open&&(mine.length?mine.map(entry=><button key={entry.id} disabled={sending||Boolean(pendingRequest)} className={`in-project${threadId===entry.id&&page==='conversations'?' selected':''}`} onClick={()=>openConversation(entry)}>{entry.title||'Untitled conversation'}<small>{threadLine(entry)}</small></button>):<p className="side-empty">No conversations yet. Send a message to start.</p>)}</div>;}):naming===null&&<p className="side-empty">Press + to start a project.</p>}
       <div className="side-heading"><small>CONVERSATIONS</small><button type="button" disabled={sending||Boolean(pendingRequest)} onClick={()=>startChat(newChatKind)} aria-label="New conversation" title="New conversation">+</button></div>
       {(status.threads||[]).filter(item=>!item.project||!projects.some(entry=>entry.id===item.project)).length?(status.threads||[]).filter(item=>!item.project||!projects.some(entry=>entry.id===item.project)).map(item=><button key={item.id} disabled={sending||Boolean(pendingRequest)} className={threadId===item.id&&page==='conversations'?'selected':''} onClick={()=>openConversation(item)}>{item.title||'Untitled conversation'}<small>{threadLine(item)}</small></button>):<p className="side-empty">Your conversations will appear here.</p>}
