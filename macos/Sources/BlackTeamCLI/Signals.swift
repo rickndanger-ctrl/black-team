@@ -30,6 +30,7 @@ enum Interrupts {
                 Terminal.leaveRaw()
                 backend.cancel()
                 backend.cancelSetUp()
+                backend.cancelOptimize()
                 Task {
                     await backend.shutdown()
                     exit(status)

@@ -16,6 +16,7 @@ Commands (black-team <command> --help for details):
   find                                look for running model servers and model files
   models                              the saved models
   use <key>                           make a saved model the one in use
+  optimize [model]                    measure this computer and keep the fastest settings for a model
   cloud add | models                  save a cloud model; ask a service which models it offers
   chat "<message>"                    one chat message, with the details printed after
   code "<message>"                    one message to the model working in a folder
@@ -60,6 +61,13 @@ let commandHelp: [String: String] = [
     "use": """
     Usage: black-team use <key>
     Makes a saved model the one in use. Keys are shown by `black-team models`.
+    """,
+    "optimize": """
+    Usage: black-team optimize [<key or name>]
+    Starts the model a few times with different settings (threads, context size, draft model, graphics chip), reads the speeds the
+    model reports for a short fixed test, and keeps the fastest settings for this computer. Takes up to about 3 minutes; the model is
+    stopped while it is measured and started again afterwards if it was running. Not while a response is being written.
+    A model on a server of its own is only measured, since its settings belong to that server. Ctrl-C stops it and puts things back.
     """,
     "cloud": """
     Usage: black-team cloud add --url <https address> --key-env <NAME> --model <id> [--name <text>] [--context <tokens>]

@@ -475,6 +475,37 @@ import BlackTeamKit
             if asJSON { printJSON(["switched": JSONValue.bool(result.switched), "name": JSONValue.string(result.name)]) } else { print("Now using \(result.name).") }
             return 0
 
+        case "optimize":
+            // The model named (its key, or the start of its name), or the one in use. The model is stopped while it is measured.
+            let config = try backend.configStore.read()
+            let list = backend.savedModels.list(active: config.model)
+            let wanted = arguments.isEmpty ? "" : arguments.removeFirst()
+            guard let target = wanted.isEmpty ? list.first(where: { $0.active }) : (list.first { $0.key == wanted } ?? list.first { $0.name.lowercased().hasPrefix(wanted.lowercased()) }) else {
+                fail(wanted.isEmpty ? "No model is in use. Name one: black-team models" : "No saved model matches \(wanted). See: black-team models", code: 2)
+            }
+            let started = try await backend.optimize(key: target.key)
+            guard started == .started else {
+                if asJSON { printJSON(["result": JSONValue.string(started.text)]) } else { print("Not started (\(started.text)). A response or another setup action is running.") }
+                return 1
+            }
+            if !asJSON { print("Optimizing \(target.name) for \(Place.this). This takes up to about 3 minutes and the model restarts a few times. Press Ctrl-C to stop.") }
+            var shown = 0
+            while true {
+                let status = backend.optimizeStatus()
+                let lines = status["log"]?.array?.compactMap { $0.string } ?? []
+                if !asJSON { for line in lines.dropFirst(min(shown, lines.count)) { print(line); fflush(stdout) } }
+                shown = lines.count
+                if status["running"]?.bool != true { break }
+                try? await Task.sleep(nanoseconds: 300_000_000)
+            }
+            await backend.waitForOptimize()
+            let final = backend.optimizeStatus()
+            if asJSON { printJSON(final); return final["error"]?.string?.isEmpty == false ? 1 : 0 }
+            if let error = final["error"]?.string, !error.isEmpty { FileHandle.standardError.write(Data((error + "\n").utf8)); return 1 }
+            if final["stopped"]?.bool == true { print("Stopped. The model is as it was."); return 130 }
+            print("Optimized for \(Place.this): \(final["summary"]?.string ?? "")")
+            return 0
+
         case "cloud":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()
             if arguments.contains("--key") { fail("A key is never taken from the command line. Put it in an environment variable and pass --key-env NAME.", code: 2) }

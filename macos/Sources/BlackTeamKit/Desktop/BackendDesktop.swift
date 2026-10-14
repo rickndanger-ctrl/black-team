@@ -46,6 +46,11 @@ extension Backend {
         json["access"] = "desktop"
         // Cloud models: a saved cloud model always holds its key (an entry without one is not kept), but the key itself is never sent.
         json["models"] = .array((json["models"]?.array ?? []).map { $0["kind"]?.string == "cloud" ? $0.setting("keyConfigured", .bool(true)) : $0 })
+        // Optimizing: how the one in progress stands, and what each model's last result says (stale, if this computer or the program changed).
+        json["models"] = .array((json["models"]?.array ?? []).map { item in
+            item.setting("tuning", item["key"]?.string.flatMap { savedModels.find($0) }.map { tuningInfo(for: $0) } ?? .null)
+        })
+        json["optimize"] = optimizeStatus()
         // Subscription agents found on this computer. Whether one is signed in is learned only when it runs (a reply says `needsSignIn`).
         json["visionInstall"] = visionInstallBefore
         json["starterInstall"] = starterInstallBefore

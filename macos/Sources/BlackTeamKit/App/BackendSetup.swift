@@ -34,13 +34,13 @@ extension Backend {
         return try await work()
     }
 
-    private func claimSetup() throws {
+    func claimSetup() throws {
         lock.lock(); defer { lock.unlock() }
         if changing { throw BlackTeamError("Another setup action is still running.") }
         changing = true
     }
 
-    private func releaseSetup() { lock.lock(); changing = false; lock.unlock() }
+    func releaseSetup() { lock.lock(); changing = false; lock.unlock() }
 
     private func downloadedRuntimePath() -> String { installer.installedRuntime()?.executable ?? "" }
 

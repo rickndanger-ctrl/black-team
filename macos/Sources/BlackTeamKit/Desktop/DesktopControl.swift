@@ -14,6 +14,8 @@ public final class DesktopControl: @unchecked Sendable {
         "cloud-discover", "cloud-save", "project-cloud", "agents-status", "agent-signin", "agent-update",
         // Starter model and vision file downloads (Desktop/DesktopVision.swift).
         "vision-install", "vision-cancel", "starter-list", "starter-install", "starter-cancel",
+        // Optimizing a model for this computer (App/BackendTune.swift): start, cancel; progress rides on every `status` as `optimize`.
+        "optimize-start", "optimize-cancel",
     ]
     /// Actions that change something: one at a time.
     static let changing: Set<String> = [
@@ -65,6 +67,15 @@ public final class DesktopControl: @unchecked Sendable {
         case "starter-cancel":
             try unsupported([], "Unsupported setup setting.")
             return starterStop()
+        case "optimize-start":
+            try unsupported(["key"], "Unsupported setup setting.")
+            guard let key = input["key"]?.string, !key.isEmpty else { throw BlackTeamError("Choose a model from your list.") }
+            let started = try await backend.optimize(key: key)
+            return ["started": .bool(started == .started), "result": .string(started.text)]
+        case "optimize-cancel":
+            try unsupported([], "Unsupported setup setting.")
+            backend.cancelOptimize()
+            return ["stopped": true]
         case "server-discover":
             try unsupported(["endpoint", "apiKey"], "Unsupported server discovery setting.")
             // A key that is not text is refused as a key, never silently dropped.
