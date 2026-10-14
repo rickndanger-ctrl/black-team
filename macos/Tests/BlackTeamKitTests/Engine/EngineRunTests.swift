@@ -92,7 +92,8 @@ extension EngineTests {
             return answer
         }
         let task = Task { try await self.go(s, pressing) }
-        for _ in 0..<400 where s.job.phase != "paused" { await pause() }
+        // The window learns of the pause a moment before the thread is saved.
+        for _ in 0..<400 where s.job.phase != "paused" || (try? saved(s.id)["run"]?["phase"]) != "paused" { await pause() }
         XCTAssertEqual(s.job.phase, "paused")
         XCTAssertTrue(s.job.snapshot.pausing)
         XCTAssertEqual(try get(s.dir + "/made.txt"), "hello")
@@ -112,7 +113,8 @@ extension EngineTests {
         let s = try setup()
         s.job.requestPause()
         let task = Task { try await self.go(s, fakeModel([Step(text: "never")])) }
-        for _ in 0..<400 where s.job.phase != "paused" { await pause() }
+        // The window learns of the pause a moment before the thread is saved.
+        for _ in 0..<400 where s.job.phase != "paused" || (try? saved(s.id)["run"]?["phase"]) != "paused" { await pause() }
         XCTAssertEqual(s.job.phase, "paused")
         s.stop.cancel()
         do { try await task.value; XCTFail("should have stopped") } catch { XCTAssertTrue(error is CancellationError) }
