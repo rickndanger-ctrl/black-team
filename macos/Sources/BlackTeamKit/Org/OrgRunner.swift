@@ -483,6 +483,7 @@ extension Backend {
         guard let role = engineers.isEmpty ? orgStageRole(.build, org: org) : engineers[index % engineers.count] else { throw OrgHalt.blocked("The organization has no engineer.") }
         let task = t.tasks[index]
         var tail = "Your task (\(index + 1) of \(t.tasks.count)): \(task.title)\n\(task.detail)\n\nYou are working in this ticket's own branch\(t.branch.map { " (\($0))" } ?? ""). Change the files in the project folder, run the tests you can, and reply with what you changed, what you checked and anything not finished."
+        tail += "\n\nYour working folder is \(workspace). File paths are relative to it and commands already run in it: do not cd to any other folder."
         if !t.findings.isEmpty { tail += "\n\nReview or QA sent this back with these findings. Fix them:\n\(t.findings)" }
         let r = try await orgRunRole(org, ticket: t, stage: .build, role: role, prompt: orgPrompt(orgHead(org, project, role, t, .build), orgEntries(t, ["spec", "intake", "design", "plan"]), tail: tail),
                                      write: true, workspace: workspace)
@@ -558,7 +559,7 @@ extension Backend {
         guard let role = orgStageRole(.qa, org: org) else { return .finished }
         let project = try roomProject(org.projectId)
         let workspace = try orgWorkspace(org, t, branch: true)
-        let tail = "Check that this ticket really works. Run the project's tests, check each acceptance criterion one by one (met or not met, and how you know), and write the tests that are missing. Do not call anything working that you did not run. End with ONE line of JSON in exactly this form: {\"verdict\":\"pass\" or \"fail\",\"reason\":\"what failed\"}"
+        let tail = "Your working folder is \(workspace); commands already run in it, so do not cd to any other folder.\n\nCheck that this ticket really works. Run the project's tests, check each acceptance criterion one by one (met or not met, and how you know), and write the tests that are missing. Do not call anything working that you did not run. End with ONE line of JSON in exactly this form: {\"verdict\":\"pass\" or \"fail\",\"reason\":\"what failed\"}"
         let r = try await orgRunRole(org, ticket: t, stage: .qa, role: role,
                                      prompt: orgPrompt(orgHead(org, project, role, t, .qa), orgEntries(t, ["spec", "intake", "build", "review"]), tail: tail), write: role.access != .read, workspace: workspace)
         if t.branch != nil || orgTicket(org.projectId, t.id)?.branch != nil { OrgGit.commitAll(workspace, message: "\(t.label) QA: tests and report") }

@@ -182,7 +182,21 @@ private func printOrg(_ s: OrgState) {
             orgSay("\nWorking while this command runs (Ctrl-C stops it). For work that carries on with nothing open: black-team service install")
             backend.orgHousekeeping(pid)
             var last = ""
+            var asked = Set<String>()
             while true {
+                // Without the background service nobody else can answer a question this run raises, so it is asked here.
+                if let approval = (try? await backend.status())?.job?.approval, !asked.contains(approval.id) {
+                    asked.insert(approval.id)
+                    orgSay("\nApproval needed: \(approval.description)\n  \(approval.command)")
+                    if isatty(0) != 0 {
+                        print("Allow it once? [y/N] ", terminator: ""); fflush(stdout)
+                        let yes = ["y", "yes"].contains((readLine() ?? "").trimmingCharacters(in: .whitespaces).lowercased())
+                        try? backend.approve(id: approval.id, digest: approval.digest, choice: yes ? "once" : "deny")
+                        orgSay(yes ? "Allowed once." : "Denied.")
+                    } else {
+                        orgSay("Nobody can answer it from here. Run `black-team org start` in a terminal, or keep Black Team running in the background (black-team service install) and answer it in the window, on the phone or with `black-team inbox`.")
+                    }
+                }
                 let now = try await state(t, pid)
                 let open = now.tickets.filter { !["done", "cancelled"].contains($0.state) }
                 let line = open.map { "T-\($0.number) \($0.stage.title): \($0.state)" }.joined(separator: " · ")
