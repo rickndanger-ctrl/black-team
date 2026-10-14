@@ -18,7 +18,7 @@ final class TurnState: @unchecked Sendable {
     private let lock = NSLock()
     private let thread: ThreadRef
     private let saveThread: @Sendable (JSONValue) throws -> Void
-    private let now: @Sendable () -> Date
+    let now: @Sendable () -> Date
     private var assistant: [String: JSONValue]
     private var lastSave: Int64 = 0
 
@@ -97,17 +97,20 @@ public final class Engine: @unchecked Sendable {
     public let undoDir: String
     let dir: String, artifacts: String
     private let vault: Memory?
-    private let fetch: HTTPStreamFetch
-    private let now: @Sendable () -> Date
+    let fetch: HTTPStreamFetch
+    let now: @Sendable () -> Date
     private let graph: @Sendable () -> String
     private let home: String
     private let useRtk: Bool
     private let cloudRules: CloudRules
+    private let skillStore: SkillStore?
+    let codeSettings: CodeSettingsStore
 
     /// graph: returns the graphify executable when one is installed, so Code can ask a map of the workspace.
     public init(stateDir: String, vault: Memory? = nil, fetch: @escaping HTTPStreamFetch = LocalHTTP.stream,
                 now: @escaping @Sendable () -> Date = { Date() }, graph: @escaping @Sendable () -> String = { "" },
-                home: String = NSHomeDirectory(), useRtk: Bool = true, cloud: CloudRules = .standard) throws {
+                home: String = NSHomeDirectory(), useRtk: Bool = true, cloud: CloudRules = .standard, skills: SkillStore? = nil) throws {
+        self.skillStore = skills; self.codeSettings = skills?.settings ?? CodeSettingsStore(dataFolder: stateDir)
         self.stateDir = stateDir; self.vault = vault; self.fetch = fetch; self.now = now; self.graph = graph; self.home = home; self.useRtk = useRtk
         self.cloudRules = cloud
         dir = stateDir + "/engine"; undoDir = dir + "/undo"; artifacts = stateDir + "/artifacts"
@@ -126,7 +129,7 @@ public final class Engine: @unchecked Sendable {
         guard !threadId.contains("/"), let data = FileManager.default.contents(atPath: memoryFile(threadId)), let saved = try? JSONValue.parse(data), var object = saved.object else { return }
         var recalledCalls = Set<String>()
         for message in object["messages"]?.array ?? [] {
-            for call in message["tool_calls"]?.array ?? [] where ["recall", "remember"].contains(call["function"]?["name"]?.string ?? "") {
+            for call in message["tool_calls"]?.array ?? [] where ["recall", "remember", "skill", "save_skill"].contains(call["function"]?["name"]?.string ?? "") {
                 if let id = call["id"]?.string { recalledCalls.insert(id) }
             }
         }
@@ -224,7 +227,15 @@ public final class Engine: @unchecked Sendable {
         guard let threadId = threadValue["id"]?.string, !threadId.isEmpty, !threadId.contains("/") else { throw BlackTeamError("This conversation has no valid id.") }
         let turn = TurnState(thread: thread, save: save, now: now)
         turn.reset()
-        let started = now()
+        var started = now()
+        // Where the run is, shown live and saved with the reply; the settings are read again at each step so a change takes effect at once.
+        let hostName = cloudTarget?.host ?? "", modelId = config.model.id, settingsStore = codeSettings
+        let prefs: @Sendable () -> CodeEffective = { settingsStore.effective(thread: threadId, cloud: cloud, host: hostName, model: modelId) }
+        let tracker = RunTracker(job: job, now: now) { record in
+            var shown = record.json
+            if let spent = record.cost(prefs().price) { shown = shown.setting("cost", .number(spent)) }
+            turn.set("run", shown)
+        }
         let ledger = WaitLedger()
         // A scheduled run says how long its question may wait; a run with a person at the window keeps the five minutes.
         let unattended = job.unattended
@@ -248,6 +259,7 @@ public final class Engine: @unchecked Sendable {
                     guard once.take() else { return }
                     timer.task?.cancel(); gate.set(nil); job.withdraw()
                     ledger.add(now().timeIntervalSince(askedAt))
+                    tracker.answered()
                     continuation.resume(returning: choice)
                 }
                 timer.task = Task {
@@ -257,6 +269,7 @@ public final class Engine: @unchecked Sendable {
                     finish("deny")
                 }
                 gate.set { finish("deny") }
+                tracker.waiting()
                 job.present(PendingApproval(id: id, digest: digest, command: EText.prefix(redact(request.command), 8000), description: request.description,
                                             expires: EText.millis(now()) + Int64(approvalSeconds) * 1000)) { answer in
                     guard answer.id == id, answer.digest == digest, ["once", "deny"].contains(answer.choice) else { throw BlackTeamError("No matching active approval.") }
@@ -273,6 +286,11 @@ public final class Engine: @unchecked Sendable {
 
         var memory = loadMemory(threadId, identity)
         if cloudThread { memory.core = nil }
+        // A run found unfinished was cut off (Black Team closed, or a tool was stopped): carry on from the saved state.
+        let interrupted = memory.run.phase.isUnfinished
+        let repaired = Engine.repairDangling(memory.messages)
+        if repaired.count != memory.messages.count { memory.messages = repaired; memory.promptTokens = 0; memory.counted = 0 }
+        tracker.load(memory.run)
         var limits = Engine.budgets(memory.readSpeed, contextWindow, cloud: cloud)
         let resultLimit = LimitBox(limits.resultChars)
         let mapper = graph()
@@ -284,11 +302,15 @@ public final class Engine: @unchecked Sendable {
         let remembers = vault != nil
         var schemas = tools.schemas.array ?? []
         // A member run that must not change files (a driver's read-only delegation) is not offered, and cannot call, the tools that do.
-        let readOnly = thread.value["readOnly"]?.bool == true
-        let changing: Set<String> = ["edit", "write", "run", "publish"]
+        // A read-only scheduled run is held to the same rule, which also covers saving a skill.
+        let readOnly = thread.value["readOnly"]?.bool == true || unattended?.permission == .readOnly
+        let changing: Set<String> = ["edit", "write", "run", "publish", "save_skill"]
         if readOnly { schemas = schemas.filter { !changing.contains($0["function"]?["name"]?.string ?? "") } }
         if room != nil { schemas += RoomTools.schemas }
         if remembers { schemas += MEMORY_TOOLS.array ?? [] }
+        // Skills, like the vault, are not used in a conversation that is sent to a cloud service.
+        let skills = cloudThread ? nil : skillStore
+        if skills != nil { schemas += SkillTools.schemas.filter { !(readOnly && changing.contains($0["function"]?["name"]?.string ?? "")) } }
         // Core memory is read once per conversation and then left alone, so the cached prompt stays valid.
         if let vault, memory.core == nil { memory.core = vault.core() }
         var system = Engine.SYSTEM(workspace, cloud: cloud)
@@ -297,11 +319,22 @@ public final class Engine: @unchecked Sendable {
             system += "\nYou have a memory that lasts across conversations. Use recall when a task refers to earlier work or to the user's preferences, and remember to save a lasting fact once you have verified it."
             if let core = memory.core, !core.isEmpty { system += "\n\nWhat you already know about the user:\n\(core)" }
         }
-        let dispatch: (String, JSONValue) async -> ToolResult = { name, args in
+        // The list of skills is read once per conversation, so the cached prompt stays valid; a skill saved later is found with `skill`.
+        if let skills {
+            if memory.skills == nil { memory.skills = skills.index(workspace: workspace)?.text ?? "" }
+            if let text = memory.skills, !text.isEmpty { system += "\n\n" + text }
+        }
+        let offered = schemas
+        let dispatch: (String, JSONValue) async -> ToolResult = { name, given in
+            let args = ToolArguments.coerced(name, given, in: offered)
             if readOnly, changing.contains(name) { return ToolResult(output: "Error: this job is read-only, so \(name) is not available.", log: nil, error: true) }
             if let room, RoomTools.names.contains(name) {
                 let reply = await room.callTool(name, args)
                 return ToolResult(output: reply.text, log: "\(name) \(EText.prefix(args["member"]?.string ?? "", 40))", error: reply.isError)
+            }
+            if let skills, SkillTools.names.contains(name) { return await SkillRunner.call(name, args, store: skills, workspace: workspace, limit: resultLimit.value, ask: ask) }
+            if vault != nil, name == "remember" || name == "recall", let refusal = ToolArguments.refusal(name, args, in: MEMORY_TOOLS.array ?? []) {
+                return ToolResult(output: refusal, log: nil, error: true)
             }
             guard let vault, name == "remember" || name == "recall" else { return await tools.call(name, args) }
             do {
@@ -321,10 +354,20 @@ public final class Engine: @unchecked Sendable {
             throw BlackTeamError("This conversation has no request to answer.")
         }
         memory.requests.append(request)
-        memory.messages.append(["role": "user", "content": .string(request)])
+        memory.messages.append(["role": "user", "content": .string(interrupted ? request + Engine.resumeNote(memory.run) : request)])
+        let skillTokens = (memory.skills ?? "").isEmpty ? 0 : Int((Double(memory.skills!.count) / Engine.CHARS_PER_TOKEN).rounded(.up))
         note("Black Team engine", cloud
             ? "Ready \u{00B7} cloud model at \(cloudTarget?.host ?? "") \u{00B7} working budget \(EText.grouped(limits.working)) of \(EText.grouped(contextWindow)) tokens \u{00B7} memory is not used"
             : "Ready \u{00B7} reads about \(EText.round(memory.readSpeed)) tokens/s \u{00B7} working budget \(EText.grouped(limits.working)) of \(EText.grouped(contextWindow)) tokens")
+        if skillTokens > 0 { note("Skills", "\(skills?.list(workspace: workspace).filter(\.enabled).count ?? 0) saved skills listed \u{00B7} about \(EText.grouped(skillTokens)) tokens added to the instructions") }
+        if interrupted {
+            let run = memory.run
+            note("Continuing", "The last run stopped at step \(run.steps)\(run.tool.map { " while using \($0)" } ?? ""). Carrying on from the saved todo list (\(tools.todo.filter(\.done).count) of \(tools.todo.count) done).")
+        }
+        tracker.update { run in
+            run.phase = (interrupted || run.steps > 0 || !tools.todo.isEmpty) ? .working : .planning
+            run.checks = 0; run.reason = nil; run.todo = tools.todo
+        }
         job.progress = "Reading the task\u{2026}"
 
         // Shown live beside the mode switch: measured speeds, and how full the working budget is.
@@ -335,12 +378,27 @@ public final class Engine: @unchecked Sendable {
         gauge(memory.promptTokens)
         let maxTokens = min(Engine.OUTPUT_TOKENS[mode] ?? 4096, contextWindow / 4)
         var finalText = "", unfinished = "", stuck = ""
-        var repeats: [String: Int] = [:]
+        var loopGuard = LoopGuard()
+        var reviewing = false, changed = false
         do {
             var step = 0
             while true {
                 step += 1
                 try checkStopped()
+                // Pause takes effect here, between steps, never in the middle of a tool.
+                if job.pauseControl.isRequested {
+                    let before = tracker.current.phase, pausedAt = now()
+                    tracker.phase(.paused); job.progress = "Paused. Resume when you are ready."
+                    memory.todo = tools.todo; memory.run = tracker.current
+                    try saveMemory(threadId, memory); try turn.persist(force: true)
+                    while job.pauseControl.isRequested { try checkStopped(); try await Task.sleep(nanoseconds: 100_000_000) }
+                    started = started.addingTimeInterval(now().timeIntervalSince(pausedAt))
+                    tracker.phase(before); job.progress = "Continuing\u{2026}"
+                }
+                let chosen = prefs()
+                if let reason = RunCeilings(tokens: chosen.tokenCeiling, money: chosen.moneyCeiling, price: chosen.price, model: config.model.name).reached(tracker.current) {
+                    unfinished = reason; break
+                }
                 if step > Engine.MAX_STEPS {
                     unfinished = "I stopped at the limit of \(Engine.MAX_STEPS) steps for one turn, and the task is not finished. Send \"continue\" and I will pick up from my todo list."; break
                 }
@@ -350,12 +408,28 @@ public final class Engine: @unchecked Sendable {
                 let size = max(memory.promptTokens != 0 ? memory.promptTokens + Engine.estimate(Array(memory.messages.dropFirst(memory.counted ?? 0))) : 0, Engine.estimate(memory.messages) + 900)
                 if size > limits.working {
                     memory.todo = tools.todo
+                    // Trimming needs no model call. A summary of the trimmed part is written only for a cloud model, or when the person asks.
+                    var written: String?
+                    let cut = Engine.cutPoint(memory.messages, limits.working)
+                    if cut >= 1, prefs().summarize {
+                        job.progress = "Summarizing earlier steps\u{2026}"
+                        if let made = await summarize(dropped: Array(memory.messages[0..<cut]), previous: memory.summary, model: model, endpoint: endpoint, headers: headers,
+                                                      cloudTarget: cloudTarget, stop: stop, idleMs: cloud ? 300_000 : 900_000) {
+                            memory.summary = made.text; written = made.text
+                            if let usage = made.usage {
+                                tracker.update { $0.promptTokens += usage.promptTokens; $0.completionTokens += usage.completionTokens }
+                                if cloud { thread.addUsage(CloudUsage(prompt: usage.promptTokens, completion: usage.completionTokens, cached: usage.cachedTokens)) }
+                            }
+                        }
+                    }
                     if Engine.trim(&memory, limits.working) {
                         memory.promptTokens = 0; memory.counted = 0
                         job.progress = "Trimming earlier steps\u{2026}"
-                        note("Context", "Trimmed earlier steps: about \(EText.grouped(size)) \u{2192} \(EText.grouped(Engine.estimate(memory.messages) + 900)) tokens. Work log and todo kept. No model call needed.")
+                        note("Context", "Trimmed earlier steps: about \(EText.grouped(size)) \u{2192} \(EText.grouped(Engine.estimate(memory.messages) + 900)) tokens. Work log and todo kept. \(written == nil ? "No model call needed." : "A summary was written.")")
+                        if let written { note("Summary of trimmed steps", written) }
                     }
                 }
+                tracker.update { $0.steps += 1; $0.todo = tools.todo }
                 let expected = Engine.estimate(memory.messages) + 900
                 // Allow for a cold read of everything at half the measured speed, plus slack.
                 // A cloud service answers at its own pace; five silent minutes is stuck.
@@ -402,6 +476,11 @@ public final class Engine: @unchecked Sendable {
                     }
                     throw error
                 }
+                // Tokens are counted from what the service reports; Black Team estimates only when it reports none.
+                let reportedUsage = result.usage.flatMap { $0.promptTokens + $0.completionTokens > 0 ? $0 : nil }
+                let promptNow = reportedUsage?.promptTokens ?? Engine.estimate(sending)
+                let completionNow = reportedUsage?.completionTokens ?? Int((Double(EText.length(result.text) + result.calls.reduce(0) { $0 + EText.length($1.arguments) }) / Engine.CHARS_PER_TOKEN).rounded(.up))
+                tracker.update { $0.promptTokens += promptNow; $0.completionTokens += completionNow; if reportedUsage == nil { $0.estimated = true } }
                 if cloud, let usage = result.usage { thread.addUsage(CloudUsage(prompt: usage.promptTokens, completion: usage.completionTokens, cached: usage.cachedTokens)); try turn.persist() }
                 if !cloud, let usage = result.usage { thread.addLocalUsage(prompt: usage.promptTokens, completion: usage.completionTokens) }
                 if !cloud, let timings = result.timings {
@@ -422,26 +501,43 @@ public final class Engine: @unchecked Sendable {
                 if let reported { memory.promptTokens = reported; memory.counted = memory.messages.count }
                 if !EText.trim(result.text).isEmpty { finalText = EText.trim(result.text) }
                 if calls.isEmpty {
-                    if result.finish == "length" { finalText += "\n\n(The reply reached its length limit. Send \"continue\" for the rest.)" }
+                    if result.finish == "length" { finalText += "\n\n(The reply reached its length limit. Send \"continue\" for the rest.)"; break }
+                    // The model says it is done: when checking is on, one short review turn compares the work with the request (at most twice).
+                    if !reviewing, prefs().check, tracker.current.checks < Engine.CHECK_ROUNDS, changed || tools.todo.contains(where: { !$0.done }) {
+                        reviewing = true
+                        tracker.update { $0.checks += 1; $0.phase = .checking; $0.todo = tools.todo }
+                        job.progress = "Checking the work\u{2026}"
+                        note("Check", "Checking the work against the request and the todo list (round \(tracker.current.checks) of \(Engine.CHECK_ROUNDS)).")
+                        memory.messages.append(["role": "user", "content": .string(Engine.reviewPrompt(request: request, todo: tools.todo, round: tracker.current.checks))])
+                        continue
+                    }
                     break
                 }
+                if reviewing { reviewing = false; tracker.phase(.working) }
                 for item in calls {
                     // Arguments that are not JSON, or are the JSON null, go back to the model as an error.
                     let parsed = try? JSONValue.parse(item.arguments)
                     let args = parsed == .null ? nil : parsed
                     let name = EText.prefix(item.name, 60)
+                    if tracker.current.phase == .planning, name != "todo" { tracker.phase(.working) }
+                    if ["edit", "write", "run", "publish"].contains(name) { changed = true }
+                    tracker.update { $0.tool = name; $0.toolStatus = "running" }
                     turn.event(["type": "tool_use", "name": .string(name), "output": .string(EText.prefix(redact(args?.text() ?? item.arguments), 4000))])
                     job.progress = "Using \(name)\u{2026}"; try turn.persist(force: true)
                     var outcome = args == nil
                         ? ToolResult(output: "Error: the arguments were not valid JSON. Call the tool again with valid JSON.", log: nil, error: true)
                         : await dispatch(name, args!)
                     try checkStopped()
-                    // A model that repeats a call and gets the same answer is stuck. Say so, then stop the turn.
-                    let repeatKey = "\(name) \(item.arguments) \(outcome.output)"
-                    let seen = (repeats[repeatKey] ?? 0) + 1
-                    repeats[repeatKey] = seen
-                    if seen == 3 { outcome.output += "\n\n[You have made this exact call three times with the same result. Repeating it will not help. Try a different approach, or tell the user what is blocking you.]" }
-                    if seen >= 5 { stuck = "I stopped because I was repeating the same \(name) call without progress. The last result was: \(EText.prefix(String(outcome.output.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""), 200))" }
+                    // The same call with the same arguments and the same result three times in a row is a loop. Say so, and stop the run.
+                    if loopGuard.note(name: name, arguments: item.arguments, output: outcome.output) {
+                        stuck = "I stopped because I was repeating the same \(name) call three times in a row and getting the same result, so I was going in circles. The last result was: \(EText.prefix(String(outcome.output.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""), 200))"
+                    }
+                    let declined = outcome.log?.contains(" declined") == true
+                    tracker.update {
+                        $0.toolStatus = outcome.error ? (declined ? "declined" : "failed") : "done"
+                        $0.todo = tools.todo
+                        if name != "todo" { $0.addRecent(redact(outcome.log ?? "\(name) \(outcome.error ? "failed" : "done")")) }
+                    }
                     if let artifact = outcome.artifact, turn.artifactCount < 100 { turn.addArtifact(artifact.json) }
                     if let log = outcome.log, !log.isEmpty { memory.log.append(log) }
                     memory.todo = tools.todo
@@ -455,10 +551,13 @@ public final class Engine: @unchecked Sendable {
                     turn.event(.object(done))
                     job.progress = "Finished \(name)"
                 }
+                memory.run = tracker.current
                 try saveMemory(threadId, memory); try turn.persist(force: true)
                 if !stuck.isEmpty { unfinished = stuck; break }
             }
             // A turn that stopped early says so plainly; it never borrows an earlier sentence as its answer.
+            tracker.update { $0.phase = unfinished.isEmpty ? .done : .stopped; $0.reason = unfinished.isEmpty ? nil : EText.prefix(redact(unfinished), 400); $0.todo = tools.todo }
+            memory.run = tracker.current
             let answer = EText.prefix(redact(!unfinished.isEmpty ? unfinished : !finalText.isEmpty ? finalText : "Done."), 256 * 1024)
             turn.set("content", .string(answer))
             if !unfinished.isEmpty { turn.set("note", "This turn stopped before the task was finished.") }
@@ -468,8 +567,12 @@ public final class Engine: @unchecked Sendable {
             if let vault { _ = try? vault.journal(workspace, request: request, log: Array(memory.log.dropFirst(logStart)), outcome: answer) }
             try saveMemory(threadId, memory); if !cloud { try saveProfile(identity, memory) }
         } catch {
+            let cancelled = stop.isCancelled || Task.isCancelled || error is CancellationError
+            tracker.update { $0.phase = cancelled ? .stopped : .failed; $0.reason = cancelled ? "Stopped." : EText.prefix(redact(error.localizedDescription), 300); $0.todo = tools.todo }
+            memory.run = tracker.current
             try? saveMemory(threadId, memory) // The original failure is the one to report.
-            if stop.isCancelled || Task.isCancelled || error is CancellationError { throw CancellationError() }
+            try? turn.persist(force: true)
+            if cancelled { throw CancellationError() }
             let text = error.localizedDescription
             throw BlackTeamError(redact(text.isEmpty ? "The agent ended unexpectedly." : text))
         }

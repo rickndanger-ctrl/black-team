@@ -749,3 +749,16 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .inbox-command { margin: 8px 0 0; padding: 10px 12px; max-height: 160px; overflow: auto; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--field); font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .settings-service .setup-details { margin-top: 6px; }
 .settings-service .sched-row { margin: 14px 0; max-width: 760px; }
+
+/* A Code run: its phase, Pause / Resume / Continue, spending, and the limits. */
+.run-bar { display: grid; gap: 8px; margin: 0 0 12px; font-size: 12px; }
+.run-state { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.run-state strong { font-weight: 550; color: var(--ink); line-height: 1.5; }
+.run-actions { display: flex; gap: 8px; margin-left: auto; }
+.run-total { color: var(--muted); font-size: 11px; }
+.run-settings summary { cursor: pointer; font-size: 11px; color: var(--muted); }
+.run-settings-body { display: grid; gap: 12px; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.run-limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-items: start; }
+.run-limits .button-row { grid-column: 1 / -1; }
+.skills-page { display: grid; gap: 12px; }
+.skills-list { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }

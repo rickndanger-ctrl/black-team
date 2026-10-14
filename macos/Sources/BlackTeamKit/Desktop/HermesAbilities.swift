@@ -49,6 +49,8 @@ public struct HermesAbilitySettings: Codable, Equatable, Sendable {
     public var skills: [String] = []
     /// Whether the "your own skills" folder is linked in.
     public var ownSkills = true
+    /// Whether Black Team Code's own skills (`skills/` in the data folder, in Hermes's format) are linked in.
+    public var blackTeamSkills = true
     /// Plugins switched on, as Hermes names them (`disk-cleanup`, `observability/langfuse`) or the folder of one the person installed.
     public var plugins: [String] = []
     /// The web search provider Hermes uses (`ddgs`, `searxng`, ...), or empty.
@@ -61,6 +63,7 @@ public struct HermesAbilitySettings: Codable, Equatable, Sendable {
         toolsets = try c.decodeIfPresent([String].self, forKey: .toolsets)
         skills = try c.decodeIfPresent([String].self, forKey: .skills) ?? []
         ownSkills = try c.decodeIfPresent(Bool.self, forKey: .ownSkills) ?? true
+        blackTeamSkills = try c.decodeIfPresent(Bool.self, forKey: .blackTeamSkills) ?? true
         plugins = try c.decodeIfPresent([String].self, forKey: .plugins) ?? []
         webSearch = try c.decodeIfPresent(String.self, forKey: .webSearch) ?? ""
         mcp = try c.decodeIfPresent([McpServer].self, forKey: .mcp) ?? []

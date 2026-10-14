@@ -122,6 +122,15 @@ import BlackTeamTerminal
             case "undo": try undoCommand()
             case "team": try await teamCommand(argument)
             case "status": try await statusCommand()
+            case "continue":
+                guard threadId != nil, mode == "code" else { problem("Nothing to continue here. /resume opens an earlier Code conversation."); return }
+                await send(argument.isEmpty ? "Continue." : argument)
+            case "skills":
+                let found = backend.skills.list(workspace: mode == "code" ? folder : nil)
+                if argument.isEmpty {
+                    if found.isEmpty { say("No skills saved yet. Code saves one when you approve it.") }
+                    for skill in found { say("\(style.cyan(skill.name))\(skill.enabled ? "" : style.dim(" (off)"))  \(oneLine(skill.description, 90))") }
+                } else if let text = try? backend.skills.text(argument, workspace: folder) { say(text) } else { problem("No skill named \(argument).") }
             case "memory":
                 guard !argument.isEmpty else { problem("Use /memory <what to look for>."); return }
                 let hits = try await backend.memorySearch(argument)
@@ -419,6 +428,10 @@ import BlackTeamTerminal
             newline(); say("  " + (failed ? style.red("\u{21B3} " + summary) : style.dim("\u{21B3} " + summary)))
         }
         hooks.stop = { Interrupts.stopReply.isSet }
+        hooks.phase = { [self] record in
+            // The ends are told in the facts line below; the phases on the way are shown as they change.
+            if record.phase.isUnfinished { newline(); say(style.dim("\u{2022} " + record.line())) }
+        }
         hooks.approval = { [self] approval in
             newline()
             say(style.yellow("Approval needed: ") + approval.description)
@@ -441,6 +454,8 @@ import BlackTeamTerminal
         if let read = finished.meter?["read"]?.int { facts.append("read \(read) tokens/s") }
         if let write = finished.meter?["write"]?.int { facts.append("write \(write) tokens/s") }
         if let usage = finished.usage { facts.append("\(usage["prompt"]?.int ?? 0) tokens in, \(usage["completion"]?.int ?? 0) out") }
+        if let run = runFacts(finished.run) { facts.append(run) }
+        if let phase = finished.run?["phase"]?.string, phase == "stopped" || phase == "failed" { facts.append("/continue picks it up from the saved state") }
         if let provider = finished.cloudProvider { facts.append("sent to \(provider)") }
         if !finished.changes.isEmpty { facts.append("\(finished.changes.count) file change(s), /undo to revert") }
         if finished.rollbackReady { facts.append("/undo rolls the task back") }

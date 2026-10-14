@@ -28,6 +28,7 @@ Commands (black-team <command> --help for details):
   vision status | install             can the model read pictures
   room ...                            a project's team: members, tasks, hand-offs, team runs
   memory core | list | search         what Black Team remembers
+  skills list | show | remove         the routines Code has saved (the same files Hermes can use)
   phone status | enable | disable | link | reset
   hermes tools | skills | plugins | mcp | key   what your connected Hermes may do in a conversation
   serve                               keep Black Team and phone access running
@@ -167,9 +168,13 @@ let commandHelp: [String: String] = [
     """,
     "code": """
     Usage: black-team code "<message>" [--workspace <folder>] [--thread <id>] [--mode ...] [--approve once|deny] [--allow-cloud] [--stop-other]
-    Lets the model work in a folder: it reads, edits and runs things, and prints each step.
+           black-team code --continue --thread <id>
+    Lets the model work in a folder: it reads, edits and runs things, and prints each step and each change of phase (planning, working,
+    checking, waiting for approval, paused). At the end it prints the steps, tokens and, for a cloud model with a price set, the cost.
       --workspace    the folder it works in
       --approve      once allows each command it asks about, one time; deny (the default) refuses them
+      --continue     carry on a task that stopped or was cut off, from its saved state (it keeps its todo list and what it did)
+    Ctrl-\\ pauses a running task after its current step (never in the middle of a tool); Ctrl-\\ again lets it go on. Ctrl-C stops it.
     """,
     "agent": """
     Usage: black-team agent claude|codex "<task>" [--workspace <folder>] [--thread <id>] [--allow-cloud]
@@ -203,6 +208,13 @@ let commandHelp: [String: String] = [
     When the lead is a paid member (a cloud model that does code work, Claude Code or Codex) the team run is DRIVEN: the lead works on the
     goal and hands real jobs to the other members while it works, then the tokens each side used are listed. --pipeline runs plan, work,
     review, report instead. The roster holds agents you made once; `roster use` adds one to a project's room.
+    """,
+    "skills": """
+    Usage: black-team skills list [--workspace <folder>]
+           black-team skills show <name>
+           black-team skills remove <name>
+    Skills are routines Code saved after they worked, as folders with a SKILL.md in Hermes's format, in Black Team's data folder
+    (skills/). A project's own skills/ folder is read too. Removing moves a skill to skills/.trash. Nothing in a skill runs by itself.
     """,
     "memory": """
     Usage: black-team memory core

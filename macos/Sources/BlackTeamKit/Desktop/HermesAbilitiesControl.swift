@@ -62,6 +62,8 @@ public final class HermesAbilitiesService: @unchecked Sendable {
         let wanted = Set(chosen.skills)
         let own = HermesAbilities.ownSkillsPath(dataFolder)
         let ownCount = HermesCatalog.ownSkillCount(own)
+        let shared = SkillStore(dataFolder: dataFolder).folder
+        let sharedCount = HermesCatalog.ownSkillCount(shared)
         let chosenSkills = skillList.skills.filter { wanted.contains($0.id) }
         func skillJSON(_ skill: HermesSkill, on: Bool?) -> JSONValue {
             var item: [String: JSONValue] = ["id": .string(skill.id), "name": .string(skill.name), "category": .string(skill.category), "description": .string(skill.description)]
@@ -73,7 +75,7 @@ public final class HermesAbilitiesService: @unchecked Sendable {
             return ["name": .string(category), "description": .string(skillList.categoryDescriptions[category] ?? ""),
                     "skills": .array(members.map { skillJSON($0, on: wanted.contains($0.id)) })]
         }
-        let skillsIndex = HermesCatalog.indexCharacters(for: chosenSkills, categoryDescriptions: skillList.categoryDescriptions) + (chosen.ownSkills ? ownCount * 200 : 0)
+        let skillsIndex = HermesCatalog.indexCharacters(for: chosenSkills, categoryDescriptions: skillList.categoryDescriptions) + (chosen.ownSkills ? ownCount * 200 : 0) + (chosen.blackTeamSkills ? sharedCount * 200 : 0)
 
         // Plugins.
         let pluginRows = plugins.filter { $0.kind != .provider }.map { plugin -> JSONValue in
@@ -121,6 +123,7 @@ public final class HermesAbilitiesService: @unchecked Sendable {
             "skills": ["linked": .bool(!plan.skillLinks.isEmpty), "categories": .array(categories),
                        "optional": .array(skillList.optional.map { skillJSON($0, on: nil) }),
                        "own": ["on": .bool(chosen.ownSkills), "count": .number(Double(ownCount)), "folder": .string(own)],
+                       "blackTeam": ["on": .bool(chosen.blackTeamSkills), "count": .number(Double(sharedCount)), "folder": .string(shared)],
                        "indexTokens": .number(Double(HermesAbilities.tokens(skillsIndex)))],
             "plugins": .array(pluginRows),
             "providers": .array(plugins.filter { $0.kind == .provider && $0.category != "web" }.map { ["key": .string($0.key), "name": .string($0.name), "label": .string($0.label.text)] }),
@@ -136,7 +139,7 @@ public final class HermesAbilitiesService: @unchecked Sendable {
     /// Saves some of the choices (each key given replaces that part). Checked against what the connected install offers.
     @discardableResult
     public func save(_ input: [String: JSONValue], refreshOnMissing: Bool = true) async throws -> JSONValue {
-        guard input.keys.allSatisfy({ ["toolsets", "skills", "ownSkills", "plugins", "webSearch", "mcp"].contains($0) }) else { throw BlackTeamError("Unsupported Hermes setting.") }
+        guard input.keys.allSatisfy({ ["toolsets", "skills", "ownSkills", "blackTeamSkills", "plugins", "webSearch", "mcp"].contains($0) }) else { throw BlackTeamError("Unsupported Hermes setting.") }
         guard let settings = install() else { throw BlackTeamError("Connect Hermes first.") }
         var next = store.read()
         let (found, _) = await probe(settings, refresh: false)
@@ -166,6 +169,10 @@ public final class HermesAbilitiesService: @unchecked Sendable {
         if let own = input["ownSkills"] {
             guard let flag = own.bool else { throw BlackTeamError("Invalid Hermes setting.") }
             next.ownSkills = flag
+        }
+        if let shared = input["blackTeamSkills"] {
+            guard let flag = shared.bool else { throw BlackTeamError("Invalid Hermes setting.") }
+            next.blackTeamSkills = flag
         }
         if let keysList = try strings("plugins", max: 200) {
             let all = HermesCatalog.plugins(source: settings.source, home: home)

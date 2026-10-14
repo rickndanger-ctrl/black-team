@@ -142,8 +142,12 @@ public struct JobSummary: Codable, Equatable, Sendable {
     public var context: JSONValue?
     public var meter: JobMeter?
     public var approval: ApprovalSummary?
+    public var phase: String? = nil
+    public var pausing: Bool? = nil
 
     public init(_ snapshot: JobSnapshot) {
+        phase = snapshot.phase.isEmpty ? nil : snapshot.phase
+        pausing = snapshot.pausing ? true : nil
         id = snapshot.id; threadId = snapshot.threadId; kind = snapshot.kind; state = snapshot.state; progress = snapshot.progress
         context = snapshot.context; meter = snapshot.meter
         approval = snapshot.approval.map { ApprovalSummary(id: $0.id, digest: $0.digest, command: $0.command, description: $0.description, expires: $0.expires) }

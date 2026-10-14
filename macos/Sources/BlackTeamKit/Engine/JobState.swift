@@ -53,6 +53,10 @@ public struct JobSnapshot: Equatable, Sendable {
     public var context: JSONValue?
     public var meter: JobMeter?
     public var approval: PendingApproval?
+    /// Where a Code run is (a `RunPhase` name); empty for anything else.
+    public var phase: String = ""
+    /// True from the moment Pause is pressed until the run reaches its next step boundary.
+    public var pausing: Bool = false
 }
 
 /// A job the interface polls or observes: the `job` object of the JavaScript backend.
@@ -96,6 +100,18 @@ public final class JobState: @unchecked Sendable {
     }
     /// The command waiting for an answer, if any.
     public var approval: PendingApproval? { snapshot.approval }
+    /// The phase of a Code run (`RunPhase.rawValue`).
+    public var phase: String {
+        get { snapshot.phase }
+        set { change { $0.phase = newValue } }
+    }
+    let pauseControl = PauseControl()
+
+    /// Asks a Code run to pause at its next step boundary. A tool that is running finishes first.
+    public func requestPause() { pauseControl.set(true); change { $0.pausing = true } }
+    /// Lets a paused (or pausing) run go on.
+    public func resume() { pauseControl.set(false); change { $0.pausing = false } }
+    public var pauseRequested: Bool { pauseControl.isRequested }
 
     /// Set only for a scheduled run, before it starts: what it may do without asking and how long a question may wait.
     public var unattended: UnattendedPolicy? {
