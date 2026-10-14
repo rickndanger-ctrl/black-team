@@ -27,7 +27,7 @@ final class HelperSupervisorTests: XCTestCase {
         return path
     }
 
-    func wait(_ what: String, timeout: TimeInterval = 10, _ condition: () -> Bool) async throws {
+    func wait(_ what: String, timeout: TimeInterval = 10, _ condition: @escaping () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
             if Date() > deadline { XCTFail("Timed out waiting for \(what)"); return }
