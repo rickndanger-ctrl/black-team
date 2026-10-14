@@ -109,11 +109,16 @@ import BlackTeamKit
     }
     var printed = ""
     var steps = 0
+    var lastPhase = ""
     var answered = Set<String>()
     func show() {
         guard let view = backend.thread(sent.threadId), let reply = view["messages"]?.array?.last else { return }
         let content = reply["content"]?.string ?? ""
         if kind == "agent" {
+            if let run = reply["run"], let phase = run["phase"]?.string, phase != lastPhase {
+                lastPhase = phase
+                if !asJSON, RunRecord(json: run).phase.isUnfinished { print("[\(phase)] \(RunRecord(json: run).line())") }
+            }
             let events = reply["events"]?.array ?? []
             while steps < events.count {
                 let event = events[steps]; steps += 1
@@ -149,6 +154,7 @@ import BlackTeamKit
     if asJSON {
         var out: [String: JSONValue] = ["threadId": .string(sent.threadId), "state": .string(state), "reply": .string(text)]
         if let meter { out["meter"] = meter }
+        if let run = reply?["run"] { out["run"] = run }
         if let error = reply?["error"]?.string { out["error"] = .string(error) }
         print(JSONValue.object(out).text(pretty: true))
     } else {
@@ -162,6 +168,8 @@ import BlackTeamKit
             if !parts.isEmpty { print("meter: " + parts.joined(separator: ", ")) }
         }
         print("state: \(state)")
+        if let run = runFacts(reply?["run"]) { print("run: \(run)") }
+        if let phase = reply?["run"]?["phase"]?.string, phase == "stopped" || phase == "failed" { print("to carry on from the saved state: black-team code \"Continue.\" --thread \(sent.threadId)") }
         if let usage = finalThread?["usage"] {
             print("usage: \(usage["prompt"]?.int ?? 0) tokens in, \(usage["completion"]?.int ?? 0) out" + ((usage["cached"]?.int ?? 0) > 0 ? ", \(usage["cached"]!.int!) cached" : ""))
         }
@@ -757,6 +765,10 @@ func ledgerText(_ ledger: RunLedger) -> String {
             }
             let thread = option("--thread"), mode = option("--mode") ?? "balanced"
             let workspace = command == "code" ? option("--workspace") : nil
+            // `code --continue --thread <id>` carries on a task that stopped or was cut off, from its saved state.
+            let carryOn = command == "code" && arguments.contains("--continue")
+            arguments.removeAll { $0 == "--continue" }
+            if carryOn { guard thread != nil, arguments.isEmpty else { fail("--continue takes --thread <id> and no message.", code: 2) }; arguments = ["Continue."] }
             let approve = option("--approve") ?? "deny"
             let allowCloud = arguments.contains("--allow-cloud"), stopOther = arguments.contains("--stop-other")
             arguments.removeAll { $0 == "--allow-cloud" || $0 == "--stop-other" }
@@ -806,6 +818,29 @@ func ledgerText(_ ledger: RunLedger) -> String {
 
         case "room":
             return await runRoom(backend)
+
+        case "skills":
+            let action = arguments.isEmpty ? "list" : arguments.removeFirst()
+            let skills = backend.skills
+            let workspace = option("--workspace").map { URL(fileURLWithPath: $0).standardizedFileURL.path }
+            switch action {
+            case "list":
+                let found = skills.list(workspace: workspace)
+                if asJSON { printJSON(backend.skillsView(workspace: workspace)); return 0 }
+                if found.isEmpty { print("No skills saved yet. Code saves one when it has a routine that worked and you approve it.") }
+                for skill in found { print("\(skill.name)\t\(skill.source)\t\(skill.enabled ? "on" : "off")\t\(skill.description)") }
+                if !found.isEmpty { print("\(found.count) skills in \(skills.folder)") }
+            case "show":
+                guard arguments.count == 1 else { fail("Give the skill's name: black-team skills show <name>", code: 2) }
+                let text = try skills.text(arguments[0], workspace: workspace)
+                if asJSON { printJSON(["name": arguments[0], "text": text]) } else { print(text) }
+            case "remove":
+                guard arguments.count == 1 else { fail("Give the skill's name: black-team skills remove <name>", code: 2) }
+                try skills.remove(arguments[0])
+                print("Removed \(arguments[0]). It was moved to \(skills.folder)/.trash.")
+            default: fail(usage, code: 2)
+            }
+            return 0
 
         case "memory":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()

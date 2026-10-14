@@ -25,6 +25,8 @@ struct FinishedReply {
     var rollbackNote: String?
     /// The ids of file changes the reply made (Code), oldest first.
     var changes: [String] = []
+    /// The Code run's saved state: phase, steps, tokens and cost.
+    var run: JSONValue?
 }
 
 /// How the person (or the lack of one) takes part while a reply is running.
@@ -39,6 +41,17 @@ struct ReplyHooks {
     var approval: (ApprovalSummary) async -> String = { _ in "deny" }
     /// Becomes true when the person wants the reply stopped.
     var stop: () -> Bool = { false }
+    /// A Code run changed phase (planning, working, checking, waiting for approval, paused).
+    var phase: (RunRecord) -> Void = { _ in }
+}
+
+/// "12 steps, 34,500 tokens, $0.0123 spent" for a finished Code run, or nil when it used no tokens.
+func runFacts(_ run: JSONValue?) -> String? {
+    guard let run, let tokens = run["tokens"]?.int, tokens > 0 else { return nil }
+    let grouped = NumberFormatter(); grouped.numberStyle = .decimal; grouped.locale = Locale(identifier: "en_US")
+    var text = "\(run["steps"]?.int ?? 0) steps, \(grouped.string(from: NSNumber(value: tokens)) ?? String(tokens)) tokens"
+    if let cost = run["cost"]?.double { text += ", \(RunRecord.money(cost)) spent" }
+    return text
 }
 
 func oneLine(_ text: String, _ limit: Int) -> String {
@@ -49,11 +62,12 @@ func oneLine(_ text: String, _ limit: Int) -> String {
 
 /// Follows a reply that has been submitted until it ends, passing on text, steps and approvals as they appear.
 @MainActor func followReply(_ backend: Backend, sent: SubmitResult, hooks: ReplyHooks) async -> FinishedReply {
-    var printed = "", steps = 0
+    var printed = "", steps = 0, lastPhase = ""
     var answered = Set<String>()
     var stopped = false
     func show() {
         guard let view = backend.thread(sent.threadId), let reply = view["messages"]?.array?.last else { return }
+        if let run = reply["run"], let phase = run["phase"]?.string, phase != lastPhase { lastPhase = phase; hooks.phase(RunRecord(json: run)) }
         let events = reply["events"]?.array ?? []
         while steps < events.count {
             let event = events[steps]; steps += 1
@@ -89,6 +103,7 @@ func oneLine(_ text: String, _ limit: Int) -> String {
     var finished = FinishedReply(threadId: sent.threadId, runId: sent.id, state: reply?["state"]?.string ?? "error", text: reply?["content"]?.string ?? "",
                                  error: reply?["error"]?.string, needsSignIn: reply?["needsSignIn"]?.string, meter: reply?["meter"], usage: view?["usage"])
     if view?["privacy"]?.string == "cloud" { finished.cloudProvider = view?["provider"]?.string ?? "a cloud service" }
+    finished.run = reply?["run"]
     finished.rollbackReady = reply?["rollback"]?.bool == true
     finished.rollbackNote = reply?["rollbackNote"]?.string
     finished.changes = (reply?["events"]?.array ?? []).compactMap { $0["change"]?["id"]?.string }

@@ -26,6 +26,15 @@ extension Backend {
         return true
     }
 
+    /// Ctrl-\\ in the terminal: pauses a running Code job, or lets a paused one go on. Nil when no Code job is running.
+    public func togglePause() -> String? {
+        lock.lock(); let current = job; lock.unlock()
+        guard let current, current.kind == "agent", current.state == "running", !current.phase.isEmpty else { return nil }
+        if current.pauseRequested { current.resume(); return "Continuing." }
+        current.requestPause()
+        return "Pausing after this step. Press Ctrl-\\ again to continue."
+    }
+
     /// The model in use as the settings know it: the service host and model id a cloud price is kept under.
     public func codeModelKey() -> (cloud: Bool, host: String, model: String, name: String) {
         guard let model = try? configStore.read().model else { return (false, "", "", "") }
