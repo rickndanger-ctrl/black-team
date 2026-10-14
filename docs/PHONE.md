@@ -53,6 +53,14 @@ phone/browser or losing connectivity does not cancel a turn already accepted by
 the computer. Request IDs avoid repeating a submitted turn after a network retry.
 Reopen its saved conversation to see the result.
 
+With the [background service](SERVICE.md) turned on, the computer does not need the window
+open: the service answers the phone, and quitting the window leaves the model and any task
+running. The phone's pages gain **Inbox** (questions from scheduled Code runs, with Approve and
+Deny, besides the usual approval card in the conversation) and **Schedules** (a read-only list
+with a link to each last result). A phone cannot add or change schedules, install the service, or
+change its settings. There is no push notification yet: the Inbox page and the approval card are
+where a waiting question shows.
+
 Quitting Black Team stops its owned model process and Agent task. An independently
 running model server stays running. A host restart preserves saved partial output
 but does not automatically restart a task. A Home Screen app can cache its shell;

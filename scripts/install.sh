@@ -41,6 +41,26 @@ sandbox_profile() {
   printf '%s\n' '# black-team-managed-v1' "# Lets Black Team's window use its own sandbox. Remove with:" "#   sudo apparmor_parser -R $profile_dir/$profile_name && sudo rm $profile_dir/$profile_name" 'abi <abi/4.0>,' 'include <tunables/global>' '' \
     "profile $profile_name $root/releases/*/electron flags=(unconfined) {" '  userns,' "  include if exists <local/$profile_name>" '}'
 }
+# The background service (`black-team service install`) is a per-user unit this program wrote, marked as ours and pointing into this install.
+# An update stops it while the files change and starts it again afterwards, but only if it was running; a unit that is not ours is never touched.
+# Nothing is ever enabled or started here that was not already running.
+unit=$HOME/.config/systemd/user/black-team.service
+service_was_running=false
+service_is_ours() {
+  [ -f "$unit" ] && [ ! -L "$unit" ] && grep -q '^# black-team-managed-v1$' "$unit" && grep -qF -- "$root/" "$unit" && command -v systemctl >/dev/null 2>&1
+}
+service_pause() {
+  service_is_ours || return 0
+  if systemctl --user is-active --quiet black-team.service >/dev/null 2>&1; then
+    service_was_running=true
+    systemctl --user stop black-team.service >/dev/null 2>&1 || echo 'The background service could not be stopped for the update; restart it afterwards: black-team service restart' >&2
+  fi
+}
+service_resume() {
+  [ "$service_was_running" = true ] || return 0
+  if systemctl --user start black-team.service >/dev/null 2>&1; then echo 'The background service was running and has been restarted.'
+  else echo 'The background service was running before the update and could not be restarted. Start it with: black-team service start'; fi
+}
 sandbox_help() {
   case "$1" in
     apparmor) printf '%s\n' '' 'Black Team cannot open its window on this system yet.' 'This system (Ubuntu 24.04 and later do this by default) blocks the sandbox the window runs in.' 'To allow it for Black Team only, run:' '' "  $launcher --enable-sandbox" '' 'That asks for your password once and installs one AppArmor profile. Do not use --no-sandbox.' ;;
@@ -88,8 +108,10 @@ if "$rollback"; then
   valid_link "$previous" || { echo 'Previous release is invalid.' >&2; exit 1; }
   ln -s "$previous" "$root/.current-new"
   ln -s "$current" "$root/.previous-new"
+  service_pause
   mv -Tf -- "$root/.previous-new" "$root/previous"
   mv -Tf -- "$root/.current-new" "$root/current"
+  service_resume
   printf 'Rolled back to %s. Restart Black Team to use it. Your data was preserved.\n' "${previous#releases/}"
   exit 0
 fi
@@ -162,7 +184,9 @@ if [ -n "$current" ]; then
   mv -Tf -- "$root/.previous-new" "$root/previous"
 fi
 ln -s "releases/$version" "$root/.current-new"
+service_pause
 mv -Tf -- "$root/.current-new" "$root/current"
+service_resume
 # The terminal command, when its name is free: a link through "current", so an update or a rollback is followed. A file or link
 # of that name that is not this one is left alone.
 command_link=$prefix/bin/black-team

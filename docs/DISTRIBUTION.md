@@ -2,7 +2,7 @@
 
 This is an unsigned Linux x86-64 alpha. It includes an upstream Electron runtime
 and the Black Team application. The `BUILD.json` inside the installed release
-records both versions. The alpha.29 package was tested with Electron 44.7.0.
+records both versions. The alpha.30 package was tested with Electron 44.7.0.
 Older archives may contain an older runtime and older application features;
 check their `BUILD.json` rather than assuming all alpha archives are equivalent.
 This preview is not a claim of support across all Linux distributions.
@@ -14,12 +14,12 @@ repository has no release assets yet, use the README’s **Run from source** ste
 The instructions below apply only to a packaged `linux-x64.tar.gz` release.
 
 Download both the archive and its matching `.sha256` file into the same folder,
-then verify and extract them. For alpha.29:
+then verify and extract them. For alpha.30:
 
 ```sh
-sha256sum -c black-team-0.1.0-alpha.29-linux-x64.tar.gz.sha256
-tar -xzf black-team-0.1.0-alpha.29-linux-x64.tar.gz
-cd black-team-0.1.0-alpha.29-linux-x64
+sha256sum -c black-team-0.1.0-alpha.30-linux-x64.tar.gz.sha256
+tar -xzf black-team-0.1.0-alpha.30-linux-x64.tar.gz
+cd black-team-0.1.0-alpha.30-linux-x64
 ```
 
 Extract the complete `black-team-<version>-linux-x64.tar.gz` archive. From the
@@ -57,6 +57,14 @@ An already-installed version is not overwritten.
 ```sh
 ~/.local/bin/black-team-desktop --rollback
 ```
+
+If you turned on the [background service](SERVICE.md) (`black-team service install`), an update
+or rollback stops it while the release changes and starts it again afterwards, only when it was
+running. The installer touches only the unit that Black Team wrote (it carries the
+`black-team-managed-v1` marker and points into this install), never starts or enables anything
+that was not already running, and never writes the unit itself. The unit names
+`.../current/resources/app/bin/black-team`, so it follows `current` to the new release. A window
+and a service of different versions ask you to restart the service.
 
 Rollback swaps `current` and `previous`. It does not roll back application data;
 future releases that change data formats must document compatibility. This alpha

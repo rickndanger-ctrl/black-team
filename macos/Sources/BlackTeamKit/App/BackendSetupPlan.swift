@@ -22,8 +22,17 @@ extension Backend {
                 .compactMap { inspectHermes(source: $0, python: $0 == settings.hermes.source ? settings.hermes.python : "") }
         }
         #endif
+        // The background service step is the desktop service's: the window offers the switch, and the terminal's plan lists it too.
+        let manager = ServiceManager(home: home, dataFolder: dataFolder)
+        #if os(Linux)
+        let serviceSupported = lookUpProgram("systemctl", path: setupEnvironment["PATH"] ?? "/usr/bin:/bin") != nil
+        #else
+        // The Mac app is not the `black-team` program that `service run` needs; only the command can turn the service on there.
+        let serviceSupported = Bundle.main.executableURL?.lastPathComponent == "black-team"
+        #endif
         var context = SetupContext(found: found, hermesInstalls: installs, settings: settings, hermesSupported: integrations.hermesSupported,
-                                   tooling: findHermesTooling(home: home, env: setupEnvironment), modelName: model, dataFolder: dataFolder)
+                            tooling: findHermesTooling(home: home, env: setupEnvironment), modelName: model, dataFolder: dataFolder,
+                            serviceSupported: serviceSupported, serviceInstalled: manager.isInstalled())
         context.modelContext = (try? configStore.read().model.context) ?? 0
         return context
     }
@@ -63,7 +72,8 @@ extension Backend {
             defer { locked { setupDownloads = [] } }
             let installer = hermesInstallerOverride?(downloader)
                 ?? HermesInstaller(dataFolder: dataFolder, downloader: downloader, home: home, environment: setupEnvironment)
-            let services = SetupServices(store: integrations, context: { [unowned self] in self.setupContext() }, installer: installer)
+            let services = SetupServices(store: integrations, context: { [unowned self] in self.setupContext() }, installer: installer,
+                                         service: serviceInstallerOverride ?? ServiceManager(home: home, dataFolder: dataFolder))
             let results = await BlackTeamKit.applySetup(approved: ids, services: services, progress: progress)
             changed()
             return results

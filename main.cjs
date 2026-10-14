@@ -3,7 +3,8 @@ const {app,BrowserWindow,ipcMain,dialog,shell,Menu,session}=require('electron');
 const path=require('node:path');
 const os=require('node:os');
 const fs=require('node:fs');
-const {EngineClient,resolveEngine}=require('./engine-client.cjs');
+const {execFile}=require('node:child_process');
+const {EngineClient,resolveEngine,openEngine}=require('./engine-client.cjs');
 
 const dataRoot=process.env.XDG_DATA_HOME && path.isAbsolute(process.env.XDG_DATA_HOME)?process.env.XDG_DATA_HOME:path.join(os.homedir(),'.local/share');
 const stateDir=path.join(dataRoot,'black-team-data');
@@ -19,7 +20,12 @@ const CHANGE_ACTIONS=new Set(['integrations-save','harness-connect','harness-lau
 // Whether the engine's status reports a response or a model task running; read from every status answer the window gets.
 // A finished job stays in the status so the window can show how it ended; only an unfinished one counts.
 const isBusy=status=>Boolean(status&&((status.job&&status.job.state==='running')||(status.runtime&&status.runtime.busy)));
-let window,engine,origin,quitting=false,shuttingDown=false,asking=false,busy=false;
+// The background service (Settings, App & data): when it is on, the window attaches to the engine it keeps running instead of starting its own.
+// These only ever run the fixed unit name with fixed arguments; nothing from the window or the engine reaches a command line.
+const UNIT='black-team.service';
+const systemctl=(...args)=>new Promise((resolve,reject)=>execFile('systemctl',['--user',...args],{timeout:20000},(error,stdout)=>error?reject(error):resolve(String(stdout).trim())));
+const unitEnabled=async()=>process.platform==='linux'&&(await systemctl('is-enabled',UNIT).catch(()=>''))==='enabled';
+let window,engine,attached=false,origin,quitting=false,shuttingDown=false,asking=false,busy=false;
 if(!app.requestSingleInstanceLock())app.quit();
 else {
   app.on('second-instance',()=>{if(window){if(window.isMinimized())window.restore();window.show();window.focus();}});
@@ -27,14 +33,26 @@ else {
     if(process.platform!=='linux')throw new Error('This Black Team preview supports Linux.');
     privateDirectory(stateDir);
     // The engine serves the web app and the API on its own port; a failed start is shown like any other startup failure.
-    engine=new EngineClient({command:resolveEngine({dirname:__dirname}),args:['desktop-service','--web',path.join(__dirname,'dist'),'--version',app.getVersion(),'--data',stateDir,'--scripts',path.join(__dirname,'scripts')]});
-    const ready=await engine.start();
+    const spawnEngine=()=>new EngineClient({command:resolveEngine({dirname:__dirname}),args:['desktop-service','--web',path.join(__dirname,'dist'),'--version',app.getVersion(),'--data',stateDir,'--scripts',path.join(__dirname,'scripts')]});
+    const open=()=>openEngine({dataDir:stateDir,version:app.getVersion(),spawn:spawnEngine,unitEnabled,startUnit:()=>systemctl('start',UNIT)});
+    let opened;
+    try{opened=await open();}
+    catch(error){
+      // A service of another version: offer to restart it (the same unit, nothing else), then try once more.
+      if(!error.restartable)throw error;
+      const choice=dialog.showMessageBoxSync({type:'question',buttons:['Restart the background service','Quit'],defaultId:0,cancelId:1,message:'Restart the background service',detail:error.message});
+      if(choice!==0)throw error;
+      await systemctl('restart',UNIT).catch(()=>{throw new Error('The background service could not be restarted. Run: black-team service restart');});
+      opened=await open();
+    }
+    engine=opened.engine;attached=opened.attached;
+    const ready=opened.ready;
     origin=new URL(ready.origin).origin;
     // Only once it is running: a crash from here on is an error to show, while a failed start is reported above.
     engine.on('exit',({expected})=>{
       if(expected||quitting||shuttingDown)return;
       quitting=true;
-      dialog.showErrorBox('Black Team Agent stopped','The local Black Team engine stopped unexpectedly. Reopen Black Team to continue.');
+      dialog.showErrorBox(attached?'Black Team background service stopped':'Black Team Agent stopped',attached?'The Black Team background service stopped. Start it again with "black-team service start", or turn it off in Settings and reopen Black Team.':'The local Black Team engine stopped unexpectedly. Reopen Black Team to continue.');
       app.quit();
     });
     session.defaultSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
@@ -69,8 +87,8 @@ else {
     });
     ipcMain.handle('black-team:pick',async(event,kind)=>{
       verify(event);
-      if(!['model','runtime','workspace','executable','hermes-source'].includes(kind))throw new Error('Unsupported chooser.');
-      const options=['workspace','hermes-source'].includes(kind)?{title:kind==='workspace'?'Choose your workspace':'Choose your Hermes installation',properties:['openDirectory']}:
+      if(!['model','runtime','workspace','executable','hermes-source','board-folder','repo-folder'].includes(kind))throw new Error('Unsupported chooser.');
+      const options=['workspace','hermes-source','board-folder','repo-folder'].includes(kind)?{title:{workspace:'Choose your workspace','hermes-source':'Choose your Hermes installation','board-folder':'Choose the Board folder (it holds Tickets)','repo-folder':'Choose the git repository the work happens in'}[kind],properties:['openDirectory']}:
         {title:kind==='model'?'Choose a local GGUF model':kind==='runtime'?'Choose llama-server from its extracted release':'Choose the application executable',properties:['openFile'],...(kind==='model'?{filters:[{name:'GGUF models',extensions:['gguf']}]}:{})};
       const result=await dialog.showOpenDialog(window,options);return result.canceled?null:result.filePaths[0]||null;
     });
@@ -81,7 +99,8 @@ else {
     window.webContents.on('will-attach-webview',event=>event.preventDefault());
     window.once('ready-to-show',()=>window.show());
     window.on('close',event=>{
-      if(!quitting&&busy) {
+      // Attached to the background service, closing the window leaves the model and any job running, so there is nothing to ask.
+      if(!quitting&&busy&&!attached) {
         const choice=dialog.showMessageBoxSync(window,{type:'question',buttons:['Keep open','Stop response and quit'],defaultId:0,cancelId:0,message:'A local response is still running.',detail:'Keep Black Team open or minimized to continue from your phone.'});
         if(choice===0)event.preventDefault();
       }
@@ -104,7 +123,7 @@ else {
     (async()=>{
       try{
         // Ask the engine now, so the prompt is about what is running at this moment.
-        try{busy=isBusy(await engine.request('status'));}catch{busy=false;}
+        try{busy=attached?false:isBusy(await engine.request('status'));}catch{busy=false;}
         if(busy&&window&&!window.isDestroyed()) {
           const choice=dialog.showMessageBoxSync(window,{type:'question',buttons:['Keep open','Stop response and quit'],defaultId:0,cancelId:0,message:'A local response is still running.',detail:'Quit stops the model and disconnects Companion until you reopen Black Team.'});
           if(choice===0)return;

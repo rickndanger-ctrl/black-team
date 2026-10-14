@@ -8,10 +8,14 @@ public final class DesktopSession: @unchecked Sendable {
     public static let cookieName = "black_team_session"
     public let bootstrapKey: String
     public let sessionKey: String
+    /// For the background service's control route only (Service/ServiceRoutes.swift): written to the private connection file, so the window's
+    /// main process can use it and the page, which has the session cookie, cannot.
+    public let controlKey: String
 
     public init() {
         bootstrapKey = PhoneKeys.randomKey()
         sessionKey = PhoneKeys.randomKey()
+        controlKey = PhoneKeys.randomKey()
     }
 
     /// The address the desktop window loads first.

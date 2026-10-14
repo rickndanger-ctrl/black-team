@@ -24,6 +24,11 @@ computer" on Linux:
   history was sent. A cloud conversation is also refused for a different service until converted again.
 - **Projects** are local only until you allow cloud models in one (its menu, confirmed once). Cloud
   models are refused for conversations inside a local-only project.
+- **Skills stay local too.** A cloud conversation is not told about the skills Code has saved and has no
+  `skill` or `save_skill` tool, for the same reason as memory. What a cloud model costs is worked out on
+  this computer from the token counts the service reports and the prices you typed in; nothing is fetched.
+  The optional written summary of trimmed steps, and the review before finishing, are extra requests to the
+  same model the conversation already uses; for a model on this computer they stay on this computer.
 - **Memory stays local.** A cloud conversation gets no Core, no recalled notes and no `remember` or
   `recall` tools; nothing is written to the vault from it, including the Code journal. Converting a
   conversation removes the Core and recalled notes already in it. Memory tidying (which asks a model to
@@ -40,7 +45,8 @@ computer" on Linux:
   spelling, not a name ending `.local`, `.lan`, `.internal` and the like, and no credentials, query or
   fragment. Local sources still accept only loopback.
 - **Requests** carry standard fields only (no llama.cpp extras). Token counts from the service's own
-  `usage` are shown per cloud conversation. Prices are not.
+  `usage` are shown per cloud conversation. Black Team knows no prices: the cost line appears only after you
+  enter what the model charges per million tokens.
 - **Harnesses** (Claude Code, DeepSeek Harness and the rest) are not launched against a cloud model.
 - **A driven Room run** ([ROOM.md](ROOM.md)) has a paid member, the driver, hand pieces of work to the other members and receive their
   results. So what local members read and write for those pieces is sent to the driver's service. The agreement shown before the run
@@ -49,6 +55,20 @@ computer" on Linux:
   and Codex the two tools are an MCP server started for that one launch (their own configuration is not edited); it talks to Black Team
   over a socket in a private folder with a secret made for the run, which is deleted when the run ends. The roster of saved agents
   (`roster.json`) holds no keys.
+
+- **An organization** ([ORGANIZATION.md](ORGANIZATION.md)) runs a project's tickets through roles that may be paid. What leaves this
+  computer is shown before it starts (the ticket's words, the earlier stages' work including what local roles wrote, the project files
+  paid roles read, the output of commands they run) and needs your confirmation; it does not start unless the agreement's digest still
+  matches the roles, the project allows cloud models, and the request is not from a phone. A ticket whose next stage would go to a
+  service you have not agreed to waits at a privacy gate that only the computer can answer. The vault is not used by any role when any
+  role is paid, and every stage is a new conversation. Its files (`orgs/`) hold no keys; a role names a saved model by its key.
+  Engineering work is on a branch of its own in a separate working folder; your branch and folder are not changed.
+- **An Obsidian board** (a folder of ticket notes the organization works from, [ORGANIZATION.md](ORGANIZATION.md#working-from-an-obsidian-board))
+  is a folder you choose. Black Team reads the notes in its `Tickets/` folder and writes into them (front matter fields, Log lines) and
+  into an `Artifacts/` folder beside them (stage results). It stores only the two paths in `org.json`. Every role is local unless you
+  chose a paid one and agreed to the agreement, which is the same agreement as for any organization; nothing about the board sends
+  anything anywhere. The folder cannot be inside Black Team's data folder, and links that lead out of it are not followed. Other
+  programs and agents that can read that folder (your sync, backups, other agents) see what Black Team writes there.
 
 What this does not cover: the service's own retention and training policy (read it); what a model says
 back, which is saved locally; and a model that quotes vault text it was shown in a *local* turn before a
@@ -126,6 +146,17 @@ project list, undo records and artifacts live under
 directories and owner-only files. They are **not application-encrypted**. Your OS
 account, disk encryption and backups still matter. Other processes running as the
 same user can read your files and process environment.
+
+If you turn on "Keep Black Team running in the background" (off by default, see
+[Background service](SERVICE.md)), your engine keeps running when the window is closed. It runs
+as you, listens only on `127.0.0.1` (the same listener the window uses), and writes one extra
+private file, `service.json`, holding that run's loopback port and a secret made fresh for each
+start; whoever can read it can do what the window does, so it is `0600` in the `0700` data
+folder and refused if wider. Scheduled work runs only what you scheduled, at the level you
+chose; a step that needs your yes waits for you and ends "not approved" if nobody answers.
+Schedules, the inbox and the service's settings are stored in the data folder like the rest.
+The service sends nothing anywhere that the window would not; a scheduled run with a cloud
+model follows the same cloud rules as any conversation.
 
 Server keys are excluded from renderer status responses, phone responses and
 harness command arguments. The runtime/harness receives the needed local key

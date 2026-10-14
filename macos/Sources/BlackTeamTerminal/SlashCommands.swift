@@ -22,6 +22,8 @@ public enum Slash {
         SlashCommand(name: "image", usage: "/image <path>|clear", summary: "attach a picture to your next chat message"),
         SlashCommand(name: "undo", usage: "/undo", summary: "undo the last file change, or roll back the last agent task"),
         SlashCommand(name: "team", usage: "/team \"<goal>\"", summary: "have the project's team work on a goal"),
+        SlashCommand(name: "continue", usage: "/continue", summary: "carry on a Code task that stopped or was cut off (Ctrl-\\ pauses a running one)"),
+        SlashCommand(name: "skills", usage: "/skills [name]", summary: "list the skills Code has saved, or show one"),
         SlashCommand(name: "status", usage: "/status", summary: "model, mode, conversation and folder"),
         SlashCommand(name: "memory", usage: "/memory <query>", summary: "search what Black Team remembers"),
         SlashCommand(name: "quit", usage: "/quit", summary: "leave (Ctrl-D on an empty line works too)"),

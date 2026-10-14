@@ -27,10 +27,18 @@ Commands (black-team <command> --help for details):
   agent claude|codex "<task>"         hand a task to your Claude Code or Codex subscription
   vision status | install             can the model read pictures
   room ...                            a project's team: members, tasks, hand-offs, team runs
+  org ...                             an organization of agents on a project: roles, gates, budgets
+  ticket ...                          the organization's tickets: add, list, show, approve, send back
   memory core | list | search         what Black Team remembers
+  skills list | show | remove         the routines Code has saved (the same files Hermes can use)
   phone status | enable | disable | link | reset
   hermes tools | skills | plugins | mcp | key   what your connected Hermes may do in a conversation
-  serve                              keep Black Team and phone access running
+  serve                               keep Black Team and phone access running
+  service install | uninstall | start | stop | status | logs
+                                      keep Black Team running in the background, from login
+  schedule list | add | remove | pause | resume | run
+                                      messages sent on a schedule, as normal conversations
+  inbox [approve|deny <id>]           what is waiting for your answer
   install-command [--to <folder>]     put `black-team` on your PATH
 
 Options for everything: --json prints JSON; --help and --version.
@@ -38,6 +46,42 @@ The data folder is the app's own; BLACK_TEAM_DATA=<folder> uses another.
 """
 
 let commandHelp: [String: String] = [
+    "service": """
+    Usage: black-team service install | uninstall | start | stop | restart | status | logs [-n <lines>]
+           black-team service set idle-minutes|approval-hours|runs-per-day <number>
+           black-team service run [--data <folder>] [--port <n>]
+    Keeps Black Team's engine running in the background from login, so scheduled work carries on when the window is closed.
+    It is off until you turn it on, and it never runs as root.
+      install     writes a per-user unit (a systemd user unit on Linux, a launchd agent on a Mac) and turns it on for your next login
+                  Nothing else is written or changed. It does not start the service: use start (or log in again).
+      uninstall   stops the service and removes exactly what install wrote
+      start|stop|restart   control the installed service
+      status      is it running, what it is doing, and what waits for you. Exit status 0 when running, 3 when not
+      logs        the last lines it wrote
+      set         idle-minutes: stop the model after this many idle minutes (default 10, 0 = never);
+                  approval-hours: how long a question waits for you before the run ends as not approved (default 24);
+                  runs-per-day: the most scheduled runs that may start in a day (default 24)
+      run         the service itself, in the foreground (this is what the unit starts)
+    The window and this command attach to the running service instead of starting a second engine.
+    """,
+    "schedule": """
+    Usage: black-team schedule list
+           black-team schedule add --name <name> --message <text> --when <when> [--project <name>] [--kind chat|code]
+                                   [--permission read-only|ask|allow-in-project] [--model <key>]
+           black-team schedule remove|pause|resume|run <name or id>
+    Sends a message on a schedule, as a normal conversation in the project (it shows in the window, on the phone and in history).
+    <when> is one of: every 30 minutes, every 2 hours, daily at 9:30, weekdays at 17:00, once at 2026-10-14 09:30.
+    Permission (Code only): read-only never changes anything or asks; ask (default) waits for your answer before a file change or a command;
+    allow-in-project changes files in the project folder without asking and still asks before a command.
+    A question waits in the inbox (black-team inbox) and ends the run as "not approved" if nobody answers in time.
+    Schedules run while the background service is on (black-team service install). Without it you can still edit them and run none.
+    A run missed while the computer was off runs once when the service starts. Up to 20 schedules and 24 runs a day.
+    """,
+    "inbox": """
+    Usage: black-team inbox
+           black-team inbox approve|deny <id>
+    Lists the questions that wait for you (from scheduled Code runs), with what they want to do. approve lets that one step run; deny refuses it.
+    """,
     "status": """
     Usage: black-team [--json] status
     Shows whether set-up is complete, the model in use, the runtime, the number of saved models and conversations, memory, and warnings.
@@ -126,9 +170,13 @@ let commandHelp: [String: String] = [
     """,
     "code": """
     Usage: black-team code "<message>" [--workspace <folder>] [--thread <id>] [--mode ...] [--approve once|deny] [--allow-cloud] [--stop-other]
-    Lets the model work in a folder: it reads, edits and runs things, and prints each step.
+           black-team code --continue --thread <id>
+    Lets the model work in a folder: it reads, edits and runs things, and prints each step and each change of phase (planning, working,
+    checking, waiting for approval, paused). At the end it prints the steps, tokens and, for a cloud model with a price set, the cost.
       --workspace    the folder it works in
       --approve      once allows each command it asks about, one time; deny (the default) refuses them
+      --continue     carry on a task that stopped or was cut off, from its saved state (it keeps its todo list and what it did)
+    Ctrl-\\ pauses a running task after its current step (never in the middle of a tool); Ctrl-\\ again lets it go on. Ctrl-C stops it.
     """,
     "agent": """
     Usage: black-team agent claude|codex "<task>" [--workspace <folder>] [--thread <id>] [--allow-cloud]
@@ -162,6 +210,48 @@ let commandHelp: [String: String] = [
     When the lead is a paid member (a cloud model that does code work, Claude Code or Codex) the team run is DRIVEN: the lead works on the
     goal and hands real jobs to the other members while it works, then the tokens each side used are listed. --pipeline runs plan, work,
     review, report instead. The roster holds agents you made once; `roster use` adds one to a project's room.
+    """,
+    "skills": """
+    Usage: black-team skills list [--workspace <folder>]
+           black-team skills show <name>
+           black-team skills remove <name>
+    Skills are routines Code saved after they worked, as folders with a SKILL.md in Hermes's format, in Black Team's data folder
+    (skills/). A project's own skills/ folder is read too. Removing moves a skill to skills/.trash. Nothing in a skill runs by itself.
+    """,
+    "org": """
+    Usage: black-team org create <project> [--template software|studio|small] [--name N] [--local <model key>] [--lead-model <key> | --lead-agent claude|codex]
+           black-team org show <project>
+           black-team org role <project> list | add <kind> [--name N] | remove <role>
+           black-team org role <project> set <role> [--model <key> | --agent claude|codex] [--work chat|code] [--access read|ask|edit|auto] [--name N] [--charter T]
+                                              [--skill NOTE] [--price-in X --price-out Y] [--tokens-per-day N] [--money-per-day X]
+           black-team org set <project> [--gates spec,ship] [--tokens-per-day N] [--money-per-day X] [--standup "daily at 9:00"|off] [--name N]
+           black-team org start <project> [--yes]        shows what would leave this computer, then starts picking up tickets with --yes
+           black-team org link <project> --board <folder> [--repo <path>] [--backlog]   work from an Obsidian board of ticket notes
+           black-team org work <project> on|off [--yes]   put your local models to work for the board, or stop (tickets are given back)
+           black-team org board <project>                 what the board holds and who owns what
+           black-team org unlink <project>
+           black-team org pause <project> | resume <project> | step <project> | standup <project> | remove <project>
+           black-team org routine <project> [add "<title>" --when "weekdays at 9:00" [--detail D] | remove <n>]
+    An organization is a team of agents (lead, product manager, designer, architect, engineers, reviewer, QA, docs, release manager) that
+    works through tickets like a small company: intake, spec, design, plan, build, review, QA, ship. You approve the spec and shipping by
+    default (they wait in `black-team inbox`). Engineering happens on a branch of its own per ticket; nothing is merged for you. Paid roles
+    use the prices you enter, and a daily ceiling pauses the organization. Local models are slow: expect hours for a full ticket.
+    <role> is its number from `org show`, or its name. `org start` keeps picking up tickets while Black Team runs; for work that
+    carries on with the window closed, use `black-team service install`.
+    `org link` points the organization at a folder of ticket notes (an Obsidian board) that other agents work from too. `org work ... on`
+    takes free `ready` tickets from it, claims each with a 2 hour lease, works on its own branch org/T-<n>-..., and writes progress and
+    artifacts back into the note. It never touches a ticket another owner holds. Nothing leaves this computer unless a role is paid.
+    """,
+    "ticket": """
+    Usage: black-team ticket add <project> "<title>" [--detail D] [--ui yes|no]
+           black-team ticket list <project>
+           black-team ticket show <project> <ticket> [--artifact <name>]
+           black-team ticket approve <project> <ticket> [--note N]
+           black-team ticket send-back <project> <ticket> --note N [--to intake|spec|design|plan|build|review|qa|ship]
+           black-team ticket answer <project> <ticket> "<answer>"
+           black-team ticket retry <project> <ticket> | cancel <project> <ticket>
+    <ticket> is its number from `ticket list` (3 or T-3). A ticket waits at a gate for you to approve or send it back; a ticket that asked a
+    question waits for `answer`. `show` lists the artifacts each stage made (spec, design files, plan, diff, review, test report, release notes).
     """,
     "memory": """
     Usage: black-team memory core

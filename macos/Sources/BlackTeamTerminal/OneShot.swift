@@ -16,8 +16,8 @@ public struct OneShotOptions: Equatable {
 
     public enum ParseError: Error, Equatable { case message(String) }
 
-    public static let commandNames: Set<String> = ["status", "hermes", "chat", "code", "agent", "room", "starter", "setup", "runtime", "vision", "cloud", "phone", "models", "find",
-                                                   "use", "memory", "serve", "install-command", "help", "version", "recommend", "search", "download"]
+    public static let commandNames: Set<String> = ["status", "skills", "hermes", "chat", "code", "agent", "room", "starter", "setup", "runtime", "vision", "cloud", "phone", "models", "find",
+                                                   "use", "memory", "serve", "install-command", "help", "version", "recommend", "search", "download", "service", "schedule", "inbox", "org", "ticket"]
 
     /// True when the arguments ask for one-shot use: -p or --print, with no subcommand first.
     public static func isOneShot(_ arguments: [String]) -> Bool {

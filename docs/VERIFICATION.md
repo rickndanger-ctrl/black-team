@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.29**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.30**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -1062,3 +1062,38 @@ subscription or key; tested with stand-ins only), the Hermes Agent download
 on a computer without Hermes (run once by its builder in a sealed scratch
 home), the Mac app and its screens, which do not show the new pages yet, and a
 computer other than the Dell.
+
+## Live follow-up — October 14, 2026 (alpha.30)
+
+Four pieces: the background service (a per-user systemd or launchd unit the
+window attaches to, with schedules, an inbox for questions asked while nobody
+is watching, unattended permissions, unloading an idle model and restarting
+helpers that stop answering); Black Team Code's run controls (phases shown as
+it plans, works and checks, pause, resume and continue, token and money
+ceilings, tool arguments checked and repaired before they run, and skills it
+can save in the same `SKILL.md` form Hermes uses); the organization (roles
+staffed by any model, tickets moving Intake → Spec → Design → Plan → Build →
+Review → QA → Ship with approvals at the gates, a branch and folder per ticket,
+a ledger and a stand-up), and an organization that works from a board of
+ticket notes in an Obsidian vault.
+
+Checked: Linux 948 engine tests (8 skipped), Node 83, Python 32; Mac 888 engine
+tests (8 skipped); no failures. On the Dell with the real Ornith 1.5 35B-A3B: a
+Code task showed its phases and finished in 88 s; a skill was saved only after
+approval and written as `SKILL.md`; an organization ticket ("Add greet.sh") on a
+scratch project went from Intake through the spec gate, Build on its own branch,
+Review and the Ship gate to done, about 152,000 local tokens, with the main
+branch untouched. alpha.30 installed over alpha.29 in a clean home kept working;
+the window test passed there with the tiny model, including approve and deny.
+
+Found and fixed while testing: `org start` ended at once; a ticket stayed
+"running" after its run had ended; approvals could not be answered without the
+service (the terminal now asks); roles had no model when none was named (the
+model in use is now used); the model changed folder into the main checkout
+during Build; the Ship step asked for a file instead of a reply; and on the Mac
+a stopped helper could hang the service because the wait for it blocked.
+
+Not checked for this release: a real driven Room run (it needs a paid
+subscription or key), a service left running for days, the organization on a
+real project rather than a scratch one, the Mac app's screens, which do not
+show the new pages yet, and a computer other than the Dell.

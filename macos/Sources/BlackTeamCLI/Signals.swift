@@ -27,6 +27,11 @@ enum Interrupts {
                     backend.cancel()
                     return
                 }
+                // Ctrl-\ pauses a running Code job between steps, and lets a paused one go on.
+                if number == SIGQUIT, let message = backend.togglePause() {
+                    FileHandle.standardError.write(Data(("\n" + message + "\n").utf8))
+                    return
+                }
                 Terminal.leaveRaw()
                 backend.cancel()
                 backend.cancelSetUp()

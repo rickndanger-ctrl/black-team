@@ -33,6 +33,9 @@ if rawArguments.first == "mcp-room" {
     exit(0)
 }
 
+// The background service: its own commands never open an engine of their own (`service run` is the engine).
+if rawArguments.first == "service" && !rawArguments.contains("--help") && !rawArguments.contains("-h") { exit(await runServiceCommand(Array(rawArguments.dropFirst()))) }
+
 if rawArguments.contains("--version") || rawArguments.first == "version" {
     print("black-team \(programVersion)")
     exit(0)
@@ -56,6 +59,24 @@ asJSON = oneShot == nil && arguments.contains("--json")
 arguments.removeAll { $0 == "--json" }
 if oneShot == nil, let first = arguments.first, !first.hasPrefix("-"), !OneShotOptions.commandNames.contains(first) {
     fail("Unknown command: \(first)\n\n\(usage)", code: 2)
+}
+
+// Chat from the command line and `status` also go to the running background service, which holds the model.
+if let transport = await attachedTransport() {
+    if let oneShot, let code = await runOneShotViaService(transport, oneShot) { exit(code) }
+    if oneShot == nil, arguments == ["status"], let code = await runStatusViaService(transport) { exit(code) }
+}
+
+// Schedules and the inbox go to the running background service when there is one, instead of opening a second engine.
+if oneShot == nil, let first = arguments.first, first == "schedule" || first == "inbox", let transport = await attachedTransport() {
+    arguments.removeFirst()
+    exit(first == "schedule" ? await runScheduleCommand(transport) : await runInboxCommand(transport))
+}
+
+// An organization and its tickets go to the running background service too, because the service is the one that picks tickets up.
+if oneShot == nil, let first = arguments.first, first == "org" || first == "ticket", let transport = await attachedTransport(), case .remote(let client) = transport {
+    arguments.removeFirst()
+    exit(await runOrgCommand(first, .remote(client)))
 }
 
 let backend: Backend

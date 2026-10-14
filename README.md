@@ -19,7 +19,7 @@ You can use it at your desk or connect privately from your phone. The model and
 agent run on your computer; your phone is a window into that same workspace.
 The phone interface supports browser access from **iPhone and Android**.
 
-**Status: Linux alpha, 0.1.0-alpha.29.** Source and automated tests are available;
+**Status: Linux alpha, 0.1.0-alpha.30.** Source and automated tests are available;
 the portable agent/server integrations still need live testing on fresh machines
 and physical phones. See [verification and known limits](docs/VERIFICATION.md).
 
@@ -45,6 +45,12 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   model's reading and writing speed, budgets its context from that, and trims
   without spending a model call. A gauge shows the speeds and how full the
   budget is.
+- **Work that carries on without the window.** Turn on "Keep Black Team running in the
+  background" and Black Team's engine runs from login. Schedule a message (every
+  day at 9:30, weekdays at 5, once), and each run is a normal conversation in its
+  project. A step that needs your yes waits in an Inbox, on your phone and in
+  `black-team inbox` instead of going ahead. Off by default; the model is
+  unloaded when idle. See [Background service](docs/SERVICE.md).
 - **A map of your code.** With [graphify](https://pypi.org/project/graphifyy/)
   installed, Code asks a graph of the project where things live before it reads,
   so a local model reads far less. See [Black Team Code](docs/CODE.md).
@@ -58,6 +64,14 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   Codex can take a goal and hand real jobs (reading files, summarising, first drafts, tests) to your local models while it works,
   then check the results. You see who was given what, and how many tokens the local and the paid side used. You confirm
   first exactly what is sent where.
+- **An organization of agents.** In a project's [organization](docs/ORGANIZATION.md) a lead, product manager, designer, architect,
+  engineers, reviewer, QA, docs writer and release manager work through tickets (intake, spec, design, plan, build, review, QA, ship)
+  like a small company. You approve the spec and shipping; each ticket is built on its own git branch and nothing is merged for you; a
+  daily ceiling on paid work pauses it; a daily stand-up report says what moved. Local models do the bulk, so expect hours for a full
+  ticket, and read the work before you merge it. It can also work from an **Obsidian board**: link a folder of ticket notes and one
+  switch ("Start working") puts your local models to work on the free tickets there, next to other agents that use the same board,
+  with the progress written back into each note. It writes into the folder you choose, nothing leaves the computer, and it never
+  merges or pushes ([Working from an Obsidian board](docs/ORGANIZATION.md#working-from-an-obsidian-board)).
 - **Projects in the sidebar.** Name a project and it gets a folder to work in
   and its own notes and journal. Open it later and pick up where you left off.
 - **See what your computer is doing.** The desktop shows live whole-system CPU
@@ -101,6 +115,10 @@ Your Linux computer
               │
      Your phone browser / Home Screen app
 ```
+
+Optionally one more piece runs without a window: the [background service](docs/SERVICE.md),
+the same engine started at login, which the window, the phone and the `black-team` command
+attach to. Without it, the window starts the engine and stops it when it closes.
 
 Black Team supplies the workspace, the agent loop and the memory. Your model
 supplies the inference. Other harnesses remain their

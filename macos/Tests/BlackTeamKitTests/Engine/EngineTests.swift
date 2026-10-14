@@ -221,14 +221,14 @@ final class EngineTests: XCTestCase {
         do { try await task.value; XCTFail("should have stopped") } catch { XCTAssertTrue(error is CancellationError, "\(error)") }
     }
 
-    func testAStuckModelIsToldThenStoppedAndAnUnfinishedTurnNeverReadsAsDone() async throws {
+    func testAStuckModelIsStoppedOnTheThirdIdenticalCallAndAnUnfinishedTurnNeverReadsAsDone() async throws {
         let s = try setup(); let seen = Seen()
         let again = Step(text: "Let me look.", calls: [("read", ["path": "/nowhere/part01.txt"])])
         try await run(s, fakeModel([again, again, again, again, again, Step(text: "never reached")], seen: seen))
-        XCTAssertEqual(seen.count, 5)
+        XCTAssertEqual(seen.count, 3)
         assertMatch(seen[1]["messages"]!.array!.last!["content"]!.string!, "relative to the workspace")
-        assertMatch(seen[3]["messages"]!.array!.last!["content"]!.string!, "three times with the same result")
-        assertMatch(s.reply["content"]!.string!, "^I stopped because I was repeating the same read call")
+        assertMatch(s.reply["content"]!.string!, "^I stopped because I was repeating the same read call three times in a row")
+        XCTAssertEqual(s.reply["run"]?["phase"], "stopped")
         XCTAssertEqual(s.reply["note"], "This turn stopped before the task was finished.")
         XCTAssertFalse(s.reply["content"]!.string!.contains("Let me look."))
     }

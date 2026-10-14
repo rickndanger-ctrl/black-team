@@ -333,14 +333,14 @@ extension Backend {
 
     /// `roomStart`, with the message given (a team run builds its own) and a switch that keeps the memory vault out of the run.
     func roomStartTask(projectId: String, taskId: String, from origin: SubmitOrigin, message override: String?, useMemory: Bool,
-                       nested: DriverScope? = nil, readOnly: Bool = false) async throws -> RoomState {
+                       nested: DriverScope? = nil, readOnly: Bool = false, workspace: String? = nil, unattended: UnattendedPolicy? = nil) async throws -> RoomState {
         let project = try roomProject(projectId)
         if nested == nil, isBusy { throw BlackTeamError("A response is already running. Wait or stop it before starting a task.") }
         let (member, task) = try roomStartable(projectId: projectId, taskId: taskId)
         let sentBack = task.failed ? nil : (task.note.isEmpty ? nil : task.note)
         let message = override ?? roomMessage(title: task.title, detail: task.detail, inherited: task.inherited, sentBack: sentBack)
         let send = try await roomSender(member: member, message: message, threadId: task.threadId, projectId: projectId, project: project, origin: origin,
-                                        useMemory: useMemory, readOnly: readOnly, nested: nested)
+                                        useMemory: useMemory, readOnly: readOnly, nested: nested, workspace: workspace, unattended: unattended)
         return try roomLaunch(projectId: projectId, taskId: taskId, project: project, nested: nested, send)
     }
 
@@ -351,7 +351,8 @@ extension Backend {
     /// `nested` makes the run a member run beneath a driver: it does not take the foreground slot, picks its model without the busy check, and
     /// "read only" then means Code work without the tools that change files. `driving` is the run this member drives (its `team` and `delegate` tools).
     func roomSender(member: RoomMember, message: String, threadId: String?, projectId: String, project: Project, origin: SubmitOrigin,
-                    useMemory: Bool, readOnly: Bool, nested: DriverScope? = nil, driving: DriverScope? = nil) async throws -> (String) throws -> SubmitResult {
+                    useMemory: Bool, readOnly: Bool, nested: DriverScope? = nil, driving: DriverScope? = nil, workspace: String? = nil,
+                    unattended: UnattendedPolicy? = nil) async throws -> (String) throws -> SubmitResult {
         let existing = threadId.flatMap { history.get($0) }
         if let key = member.modelKey {
             guard let saved = savedModels.find(key) else { throw BlackTeamError("The model for \(member.name) is no longer in your list.") }
@@ -365,14 +366,15 @@ extension Backend {
                 if let nested { try await driverSelect(nested, key: key) } else if driving != nil { try await driverSelect(driving!, key: key) } else { _ = try await switchTo(key: key) }
             }
             return { requestId in
-                try self.submitCore(message: message, kind: kind, mode: "balanced", requestId: requestId, threadId: threadId, project: projectId, workspace: nil,
-                                    images: [], from: origin, useMemory: useMemory, nested: nested, room: driving, readOnly: readOnly && nested != nil && kind == "agent")
+                try self.submitCore(message: message, kind: kind, mode: "balanced", requestId: requestId, threadId: threadId, project: projectId, workspace: workspace,
+                                    images: [], from: origin, useMemory: useMemory, nested: nested, room: driving, readOnly: readOnly && nested != nil && kind == "agent",
+                                    unattended: kind == "agent" ? unattended : nil)
             }
         }
         guard let service = member.service else { throw BlackTeamError("\(member.name) has nothing to run.") }
         let level = readOnly ? AgentPermission.ask : (member.permission.flatMap { AgentPermission(rawValue: $0) } ?? .edit)
         return { requestId in
-            try self.submitAgentCore(service: service, message: message, requestId: requestId, threadId: threadId, project: projectId, workspace: nil,
+            try self.submitAgentCore(service: service, message: message, requestId: requestId, threadId: threadId, project: projectId, workspace: workspace,
                                      permission: level, from: origin, nested: nested, driving: driving)
         }
     }

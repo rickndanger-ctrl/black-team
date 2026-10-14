@@ -18,6 +18,7 @@ mark is the switch: the chat bubble is Chat, the terminal is Code.
 | `todo` | Keep a task list that survives trimming |
 | `publish` | Attach a finished file to the conversation for download |
 | `remember`, `recall` | Save and look up facts in [memory](MEMORY.md) |
+| `skill`, `save_skill` | Load a saved routine, or save one that just worked (see [skills](MEMORY.md#skills-routines-that-worked)) |
 
 Your model must support tool calling.
 
@@ -41,7 +42,77 @@ and how full the working budget is.
 
 Code needs a context window of at least 8,192 tokens; 32,768 or more is a better
 fit for real work. One turn is limited to 48 steps or 30 minutes; send
-"continue" to pick up from the todo list.
+"continue" (or press **Continue**) to pick up from the todo list.
+
+## You can see where a run is, and pause it
+
+Each Code task has a **phase**, shown above the conversation and in the terminal:
+*Planning* (the model is writing its to-do list, before its first action), *Working*, *Checking the work*,
+*Waiting for your approval*, *Paused*, and the ends *Done*, *Stopped* and *Failed*. Beside it are the step,
+the tool in use, the tokens used and, for a cloud model with a price set, the money spent.
+
+- **Pause** takes effect between steps: the step on its way finishes, including a tool that is running, and
+  nothing more is asked of the model until you press **Resume**. Pausing does not count against the task's
+  time limit. In the terminal, Ctrl-\ pauses and Ctrl-\ again resumes; `/continue` and
+  `black-team code --continue --thread <id>` pick a task up again.
+- **The state is saved with the conversation** after every step: the to-do list and which items are done, the
+  steps taken, the tool that was running and the counters. If Black Team is closed or crashes mid-task, the
+  conversation shows where it stopped, with a **Continue** button. Continue sends the model the whole
+  saved history and to-do list and a note of where it was cut off (a tool call that never finished is marked
+  as interrupted); it does not start again.
+
+## Limits
+
+- One turn is limited to 48 steps or 30 minutes, as before.
+- A **token limit** per conversation (2,000,000 by default; 0 means none) counts everything read and written,
+  as the model server or cloud service reports it. When it is reached the task stops with a plain message,
+  and stays stopped until you raise the limit.
+- A **spending limit** and **prices** for cloud models only. You enter the price per million tokens read and
+  per million written for each cloud model; Black Team has no price list and fetches none. The running cost
+  is worked out from the usage the service reports. If a spending limit is set but no price is, the task does
+  not start another step and says why. A model on this computer has no money limit because it costs nothing
+  per token.
+- **A loop is stopped.** The same tool called with the same arguments and giving the same result three times
+  in a row ends the task, and the message says so.
+
+Set these under **Limits and checks** in the conversation (for that conversation) or before you start (for new
+ones).
+
+## Strict tool arguments
+
+Every tool call is checked against that tool's own JSON schema before it runs: required fields, unknown
+fields, text, whole number and true/false types, allowed values and the length limits the schemas state. A
+mismatch goes back to the model as a short observation, such as ``argument `path` is required`` or ``argument
+`lines` must be a whole number``, and counts as a step. It never reaches the tool and never crashes. A
+command's result always starts with `exit <code>` (or `timed out after <n>s`) and then its output, with the
+two output streams of the command shown together in the order they arrived.
+
+## Check the work before finishing
+
+**Check the work before finishing** (per conversation) makes the model review its result once it says it is
+done: one short extra turn compares what it did with the request and the to-do list and either gives the final
+summary or carries on with what is missing, at most twice. It runs only when the task changed something or the
+to-do list still has open items. It is **on by default for a cloud model** and **off by default for a model on
+this computer**, because each check has to read the whole task again and can take minutes there.
+
+## Working memory
+
+Trimming costs no model call, as above. A **written summary of the trimmed part** is added only for a cloud
+model, or when you turn on **Summarize earlier steps when trimming** (it asks the model to read the steps it
+is about to drop, which can take minutes on a processor). The summary is kept with the conversation as a note
+and goes into the record that replaces the trimmed steps.
+
+## Where the owner's brief is done
+
+| Point of the brief | Where Black Team Code does it |
+| --- | --- |
+| 1. State machine and core loop; state tracker; token, loop and money caps | `Engine/Engine.swift` is the think, act, observe loop. `Engine/RunControl.swift` holds the phases (`RunPhase`: idle, planning, working, checking, waiting, paused, done, stopped, failed), the saved state (`RunRecord`: to-do items, steps, tool and its status, counters), pause/resume and the ceilings (`RunCeilings`) and loop guard (`LoopGuard`). The per-turn limits (steps, time, working budget) and the new per-conversation token and money limits are checked at every step. |
+| 2. Typed tool registry, strict validation, results formatted for the model | `Tools/Tools.swift` is the registry (`Tools.SCHEMAS`). `Tools/ToolValidation.swift` checks each call against its schema; failures come back as observations. `run` returns `exit <code>` then the output. |
+| 3. Tiered memory: working window, long-term and skill memory | Working: the budget, trimming and the optional summary in `Engine/EngineMemory.swift` and `Engine/EngineRun.swift`. Long-term: the [vault](MEMORY.md) (`Memory/`). Skills: `Skills/SkillStore.swift`, `skill` and `save_skill`, in Hermes's `SKILL.md` format. |
+| 4. Resilient execution | A tool error, invalid JSON, invalid arguments or a declined command is returned to the model as its next observation (`Engine.swift`, `ToolValidation.swift`). A run cut off by a crash is repaired and continued (`Engine.repairDangling`, `Engine.resumeNote`). |
+
+The brief names states IDLE, PLANNING, EXECUTING, CRITIQUING and PAUSED; Black Team calls them idle, planning,
+working, checking and paused, and adds waiting (for an approval) and the three ends.
 
 ## Every change is shown, and can be undone
 
@@ -79,9 +150,9 @@ installs it for you.
   system state, reaches the network, rewrites git history or touches dotfiles
   shows an approval card first. Approve once or deny; nothing is approved
   permanently. Unanswered requests deny themselves after five minutes.
-- **A stuck model is stopped.** A call repeated with the same result is pointed
-  out to the model on the third time and ends the turn on the fifth. A turn that
-  ends early says so; it never reports "done".
+- **A stuck model is stopped.** The same call with the same result three times in
+  a row ends the task, and says so. A turn that ends early says so; it never
+  reports "done".
 
 The `run` tool is a shell running as your Linux user. The approval list is a
 guard against accidents, **not a sandbox**: a command that does not match it runs

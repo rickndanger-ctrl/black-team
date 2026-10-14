@@ -52,6 +52,7 @@ import BlackTeamTerminal
     var wrote = false
     if !options.json { hooks.text = { piece in if !piece.isEmpty { emit(piece); wrote = true } } }
     if options.code {
+        hooks.phase = { record in if record.phase.isUnfinished { emitError("[\(record.phase.rawValue)] \(record.line())\n") } }
         hooks.step = { name, detail in emitError("[\(name)] \(detail)\n") }
         hooks.result = { summary, _ in emitError("  -> \(summary)\n") }
     }
@@ -64,11 +65,13 @@ import BlackTeamTerminal
     if options.json {
         var out: [String: JSONValue] = ["threadId": .string(finished.threadId), "state": .string(finished.state), "reply": .string(finished.text)]
         if let meter = finished.meter { out["meter"] = meter }
+        if let run = finished.run { out["run"] = run }
         if let error = finished.error { out["error"] = .string(error) }
         print(JSONValue.object(out).text(pretty: true))
     } else if wrote {
         emit("\n")
     }
+    if options.code, let run = runFacts(finished.run) { emitError("run: \(run)\n") }
     if finished.state != "done", let error = finished.error { emitError(error + "\n") }
     return finished.state == "done" ? 0 : 1
 }

@@ -85,10 +85,18 @@ public final class Backend: @unchecked Sendable {
     var teamControl: TeamControl?
     /// Driven runs in progress and the member runs beneath them (App/BackendDriver.swift).
     let drivers = DriverRegistry()
+    /// The organization of each project, picking up tickets (Org/, App/BackendOrg.swift).
+    let orgRuntime = OrgRuntime()
+    /// What working from an Obsidian board keeps in memory between ticks (Org/OrgBoard.swift).
+    let orgBoardRuntime = OrgBoardRuntime()
     /// The `black-team` program a driven run's MCP server is started from; nil finds it (tests set it).
     var bridgeProgramOverride: String?
     /// Replaces the standard limits of a driven run (tests use small ones).
     var driveCapsOverride: DriveCaps?
+    /// The background-service parts (Service/ServiceHooks.swift): schedules, the inbox and the service's own status. Set by the desktop service.
+    var service: ServiceHooks?
+    /// Tests only: what writes the background service's unit when the setup plan is approved.
+    var serviceInstallerOverride: ServiceInstalling?
     /// Set only by the Linux desktop service (Desktop/): where the app's scripts are, and that Hermes is supported. Nil on the Mac.
     var desktopOptions: DesktopOptions?
     /// The window's vision file download and how far it is (Desktop/DesktopVision.swift). Idle everywhere else.
@@ -162,7 +170,7 @@ public final class Backend: @unchecked Sendable {
         }, memoryGuard: MemoryGuard(), tuning: tunedLaunch(store: tuningStore))
         tuneTrial = { scratch, startupMs in ModelRuntime(configStore: scratch, fetch: fetch, startupTimeoutMs: startupMs, launchGuard: localGuard) }
         runtime = backendRuntime
-        engine = try customEngine ?? Engine(stateDir: dataFolder, vault: memory, fetch: stream, graph: { cache.get().graph }, cloud: cloud)
+        engine = try customEngine ?? Engine(stateDir: dataFolder, vault: memory, fetch: stream, graph: { cache.get().graph }, cloud: cloud, skills: SkillStore(dataFolder: dataFolder))
         self.fetch = fetch
         self.stream = stream
         planner = contextPlanner ?? { messages, context, mode, endpoint, headers, signal in
@@ -337,16 +345,16 @@ public final class Backend: @unchecked Sendable {
     public func submit(message rawMessage: String, kind: String = "chat", mode: String = "balanced", requestId: String,
                        threadId givenThread: String? = nil, project givenProject: String? = nil,
                        workspace workspaceOverride: String? = nil, images uploads: [ImageUpload] = [], from origin: SubmitOrigin = .mac,
-                       useMemory: Bool = true) throws -> SubmitResult {
+                       useMemory: Bool = true, unattended: UnattendedPolicy? = nil) throws -> SubmitResult {
         try submitCore(message: rawMessage, kind: kind, mode: mode, requestId: requestId, threadId: givenThread, project: givenProject,
-                       workspace: workspaceOverride, images: uploads, from: origin, useMemory: useMemory, nested: nil, room: nil, readOnly: false)
+                       workspace: workspaceOverride, images: uploads, from: origin, useMemory: useMemory, nested: nil, room: nil, readOnly: false, unattended: unattended)
     }
 
     /// `submit`, plus the three things a driven run adds: `nested` makes this a member run beneath a driver (it does not take the one
     /// foreground slot), `room` gives a cloud-model driver its `team` and `delegate` tools, and `readOnly` takes the tools that change files away.
     func submitCore(message rawMessage: String, kind: String, mode: String, requestId: String, threadId givenThread: String?, project givenProject: String?,
                     workspace workspaceOverride: String?, images uploads: [ImageUpload], from origin: SubmitOrigin, useMemory: Bool,
-                    nested: DriverScope?, room: RoomToolHost?, readOnly: Bool) throws -> SubmitResult {
+                    nested: DriverScope?, room: RoomToolHost?, readOnly: Bool, unattended: UnattendedPolicy? = nil) throws -> SubmitResult {
         if locked({ closing }) { throw BlackTeamError("Black Team is closing.") }
         // Images are Chat only, and an empty message with images asks for a description, as the daily app does.
         let kinds = try ImageRules.validate(uploads)
@@ -402,7 +410,7 @@ public final class Backend: @unchecked Sendable {
             let hermesSettings = desktopOptions?.scripts == nil ? nil : try? integrations.read()
             let hermesOn = hermesSettings?.hermes.enabled == true
             agentEngine = existing.map { $0["engine"]?.string ?? ($0["hermesSession"] != nil ? "hermes" : "black-team") }
-                ?? (hermesOn && hermesSettings?.engine == "hermes" ? "hermes" : "black-team")
+                ?? (hermesOn && hermesSettings?.engine == "hermes" && unattended == nil ? "hermes" : "black-team")   // a scheduled run's limits are Black Team Code's
             if agentEngine == "hermes" && !hermesOn {
                 throw BlackTeamError("This conversation uses Hermes. Enable it in desktop Settings, or start a new Code conversation.")
             }
@@ -445,6 +453,7 @@ public final class Backend: @unchecked Sendable {
 
         let current = JobState(id: requestId, threadId: thread["id"]?.string, kind: kind, state: "running",
                                progress: cloudModel ? "Contacting \(cloudHost(config.model.endpoint, rules: cloudRules))\u{2026}" : "Preparing local model\u{2026}")
+        current.unattended = unattended
         _ = current.observe { [hub] _ in hub.notify() }
         let signal = CancelSignal()
         let ref = ThreadRef(thread)
@@ -909,6 +918,9 @@ public final class Backend: @unchecked Sendable {
     public func shutdown() async {
         let timer = locked { () -> Task<Void, Never>? in closing = true; setupDownloads.forEach { $0.cancel() }; return keeperTask }
         timer?.cancel()
+        orgStopLoop()
+        // Tickets held on an Obsidian board are given back, so another team can take them over.
+        for id in orgProjectIds() where orgLoad(id)?.board?.working == true { orgBoardReleaseAll(id, why: "Black Team is closing.") }
         stopPhoneAccess()
         installer.cancel()
         cancel()
