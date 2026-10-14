@@ -80,7 +80,7 @@ public final class DesktopControl: @unchecked Sendable {
             }
             return ["servers": .array(report.servers.map { flat($0.server, $0.key, $0.saved, $0.ignored) }),
                     "files": .array(report.files.map { flat($0.file, $0.key, $0.saved, $0.ignored) }),
-                    "runtime": .string(report.runtime), "looked": .encoded(report.looked)]
+                    "runtime": .string(report.runtime), "looked": .encoded(report.looked), "added": .array(report.added.map { .string($0) })]
         case "model-inspect":
             try unsupported(["file"], "Unsupported setup setting.")
             let file = input["file"]?.string ?? ""

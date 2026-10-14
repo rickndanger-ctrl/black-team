@@ -101,11 +101,12 @@ final class SavedModelsTests: XCTestCase {
         try saved.ignore(key)
         XCTAssertEqual(saved.ignored(), [key])
         XCTAssertThrowsError(try saved.ignore("nope")) { XCTAssertTrue(messageOf($0).contains("found model")) }
-        // Saving and removing models keeps the passed-over keys; adding the passed-over model clears its key.
+        // Saving a model keeps the passed-over keys. Removing one passes it over too, so finding it again does not
+        // put it back; adding it again clears its key.
         let ornith = try saved.remember(server("ornith"))
-        try saved.forget(ornith)
         XCTAssertEqual(saved.ignored(), [key])
-        try saved.ignore(ornith)
+        try saved.forget(ornith)
+        XCTAssertEqual(saved.ignored(), [key, ornith])
         try saved.remember(server("ornith"))
         XCTAssertEqual(saved.ignored(), [key])
     }

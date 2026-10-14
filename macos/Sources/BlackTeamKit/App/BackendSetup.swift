@@ -167,19 +167,46 @@ extension Backend {
     }
 
     /// Looks for running servers and model files. The downloaded llama.cpp is the runtime they would use.
+    /// Once Black Team is set up, every found model that can run joins the list, so a model that turns up
+    /// later works like the ones chosen at setup. One the person removed or passed over stays out.
     public func findMyModels() async -> FoundModelsReport {
         let downloaded = downloadedRuntimePath()
         let found = await findModels(home: home, fetch: fetch, runtime: downloaded.isEmpty ? discoveryRuntime() : downloaded, dataFolder: dataFolder)
+        var report = await marked(found)
+        report.added = await connect(report)
+        return report.added.isEmpty ? report : await marked(found, added: report.added)
+    }
+
+    /// Adds what was found and is not in the list yet. Returns the names added.
+    private func connect(_ report: FoundModelsReport) async -> [String] {
+        guard let config = try? configStore.read(), setupComplete(config) else { return [] }
+        let saved = savedModels.read()
+        // llama.cpp names a served model by its file. So a saved server entry and that file are one model, and a
+        // file Black Team is serving itself is the saved file, not somebody's server.
+        let known = Set(saved.flatMap { [$0.file, $0.id] }.filter { $0.hasPrefix("/") })
+        let own = await runtime.status().port.map { "http://127.0.0.1:\($0)/v1" }
+        var items: [JSONValue] = []
+        for item in report.servers where !item.saved && !item.ignored && item.server.endpoint != own && !known.contains(item.server.id) { items.append(item.server.json) }
+        for item in report.files where !item.saved && !item.ignored && !item.file.runtime.isEmpty && !item.file.tooBig && !known.contains(item.file.file) { items.append(item.file.json) }
+        // The list has a size limit; what does not fit stays an offer.
+        items = Array(items.prefix(max(0, 24 - saved.count)))
+        guard !items.isEmpty, let result = try? await add(models: items) else { return [] }
+        return result.added
+    }
+
+    private func marked(_ found: FoundModels, added: [String] = []) async -> FoundModelsReport {
         let have = Set(savedModels.list().map(\.key)), passed = Set(savedModels.ignored())
+        let served = Set(savedModels.read().filter { $0.source == "server" && $0.id.hasPrefix("/") }.map(\.id))
         let servers = found.servers.map { item -> MarkedServer in
             let key = keyOf(ModelConfig(source: "server", endpoint: item.endpoint, id: item.id))
             return MarkedServer(server: item, key: key, saved: have.contains(key), ignored: passed.contains(key))
         }
         let files = found.files.map { item -> MarkedFile in
             let key = keyOf(ModelConfig(source: "gguf", file: item.file))
-            return MarkedFile(file: item, key: key, saved: have.contains(key), ignored: passed.contains(key))
+            // A file a saved server entry serves is already in the list, under that entry.
+            return MarkedFile(file: item, key: key, saved: have.contains(key) || served.contains(item.file), ignored: passed.contains(key))
         }
-        return FoundModelsReport(servers: servers, files: files, runtime: found.runtime, looked: .init(ports: found.looked.ports, folders: found.looked.folders))
+        return FoundModelsReport(servers: servers, files: files, runtime: found.runtime, looked: .init(ports: found.looked.ports, folders: found.looked.folders), added: added)
     }
 
     private func discoveryRuntime() -> String { discovery.get().runtime }

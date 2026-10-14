@@ -141,7 +141,8 @@ public final class SavedModels: @unchecked Sendable {
         let stored = load()
         let kept = stored.models.filter { keyOf($0) != key }
         if kept.count == stored.models.count { throw BlackTeamError("That model is not in your list.") }
-        try write(kept, stored.ignored)
+        // A removed model is passed over too, so finding it again does not put it back. Adding it by hand still does.
+        try write(kept, Array((stored.ignored.filter { $0 != key } + [key]).suffix(100)))
     }
 
     public func find(_ key: String) -> ModelConfig? { read().first { keyOf($0) == key } }

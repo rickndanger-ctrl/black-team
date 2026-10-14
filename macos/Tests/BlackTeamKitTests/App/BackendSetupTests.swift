@@ -75,19 +75,42 @@ final class BackendSetupTests: XCTestCase {
         XCTAssertThrowsError(try backend.inspectModelFile(fixture.files.dir + "/nothing.gguf"))
     }
 
-    func testFindingModelsMarksWhatIsSavedAndIgnoredAndIgnoringIsRemembered() async throws {
+    func testAModelFoundAfterSetupJoinsTheListAndARemovedOneStaysOut() async throws {
         let fixture = try BackendFixture(self)
         let backend = try fixture.make()
         ggufFile(backend.dataFolder + "/models/Found-3B-Q4.gguf")
         let report = await backend.findMyModels()
         let item = try XCTUnwrap(report.files.first { $0.file.file.hasSuffix("Found-3B-Q4.gguf") })
-        XCTAssertFalse(item.saved)
-        XCTAssertFalse(item.ignored)
         XCTAssertEqual(item.key, keyOf(ModelConfig(source: "gguf", file: item.file.file)))
-        let ignoredNow = try await backend.ignore(key: item.key)
-        XCTAssertTrue(ignoredNow)
+        // It works like the model chosen at setup: in the list with no step of its own, and the model in use is unchanged.
+        XCTAssertTrue(item.saved)
+        XCTAssertEqual(report.added, [item.file.name])
+        XCTAssertEqual(backend.savedModels.read().map(\.name).sorted(), ["Fixture model", item.file.name].sorted())
+        XCTAssertEqual(try backend.configStore.read().model.name, "Fixture model")
         let again = await backend.findMyModels()
-        XCTAssertTrue(again.files.first { $0.key == item.key }?.ignored ?? false)
+        XCTAssertEqual(again.added, [])
+        // Removing it is remembered: the next look does not put it back.
+        try await backend.forget(key: item.key)
+        let after = await backend.findMyModels()
+        XCTAssertEqual(after.added, [])
+        let left = try XCTUnwrap(after.files.first { $0.key == item.key })
+        XCTAssertFalse(left.saved)
+        XCTAssertTrue(left.ignored)
+        XCTAssertEqual(backend.savedModels.read().map(\.name), ["Fixture model"])
+    }
+
+    func testAFoundModelThatWasPassedOverIsMarkedAndStaysOut() async throws {
+        let fixture = try BackendFixture(self)
+        let backend = try fixture.make()
+        let file = backend.dataFolder + "/models/Found-3B-Q4.gguf"
+        ggufFile(file)
+        let ignoredNow = try await backend.ignore(key: keyOf(ModelConfig(source: "gguf", file: file)))
+        XCTAssertTrue(ignoredNow)
+        let report = await backend.findMyModels()
+        let item = try XCTUnwrap(report.files.first { $0.file.file.hasSuffix("Found-3B-Q4.gguf") })
+        XCTAssertFalse(item.saved)
+        XCTAssertTrue(item.ignored)
+        XCTAssertEqual(report.added, [])
     }
 
     func testSetupActionsDoNotOverlap() async throws {

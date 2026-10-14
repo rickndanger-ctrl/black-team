@@ -10,16 +10,20 @@ const detail = item => item.source === 'server'
   : `Model file · ${size(item.bytes)} · ${item.runtime ? 'Black Team starts it when you use it' : 'needs llama.cpp, which was not found'}${item.tooBig ? ' · larger than this computer’s memory' : item.tight ? ' · may not fit beside what is loaded now' : ''}`;
 const plain = ({source, endpoint, id, file, runtime, name, context}) => source === 'server' ? {source, endpoint, id, name, context} : {source, file, runtime, name, context};
 
-// The home page's offer: models found on this computer that are not in the list yet. Add, or not now.
+// The home page: a model found on this computer joins the list by itself, and this says so. What could not join
+// (a file larger than memory, a full list) is offered here: add, or not now.
 export function FoundPrompt({busy, onAction}) {
   const [found, setFound] = useState(null);
-  const look = () => native('models-find').then(setFound).catch(() => setFound({servers: [], files: []}));
+  const [joined, setJoined] = useState([]);
+  const look = () => native('models-find').then(value => {setFound(value); if (value.added?.length) setJoined(value.added);}).catch(() => setFound({servers: [], files: []}));
   useEffect(() => {look();}, []);
   const items = found ? [...found.servers, ...found.files].filter(item => usable(item) && !item.ignored) : [];
-  if (!items.length) return null;
+  const news = joined.length > 0 && <p className="inline-note" role="status">{joined.join(', ')} {joined.length === 1 ? 'was' : 'were'} found on this computer and added to your models. Choose {joined.length === 1 ? 'it' : 'one'} from the model menu to use it.</p>;
+  if (!items.length) return news || null;
   const add = async item => {const result = await onAction('models-add', {items: [plain(item)]}, `${item.name} added. Choose it from the model menu when you want it.`); if (result) look();};
   const pass = async item => {if (await onAction('models-ignore', {key: item.key})) look();};
   return <section className="found-prompt" aria-label="Models found on this computer">
+    {news}
     <span className="eyebrow">ALSO ON THIS COMPUTER</span>
     <h2>{items.length === 1 ? 'A model you have not connected' : `${items.length} models you have not connected`}</h2>
     <ul>{items.map(item => <li key={keyOf(item)}>
