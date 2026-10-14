@@ -201,7 +201,11 @@ final class RoomBridge: @unchecked Sendable {
             socketPath = socketFolder + "/r.sock"
         }
         guard var address = BridgeSocket.address(socketPath) else { throw BlackTeamError("Black Team could not open a private channel for this run.") }
+        #if os(Linux)
         let fd = socket(AF_UNIX, posixSockStream, 0)
+        #else
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        #endif
         guard fd >= 0 else { throw BlackTeamError("Black Team could not open a private channel for this run.") }
         let bound = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
         guard bound == 0, chmod(socketPath, 0o600) == 0, listen(fd, 16) == 0 else {
@@ -277,7 +281,11 @@ enum RoomBridgeClient {
         let gone = RoomToolReply("The room is no longer running, so this tool cannot be used. Finish your answer without it.", isError: true)
         guard let data = FileManager.default.contents(atPath: runFile), let file = try? JSONValue.parse(data), let path = file["socket"]?.string,
               let secret = file["secret"]?.string, var address = BridgeSocket.address(path) else { return gone }
+        #if os(Linux)
         let fd = socket(AF_UNIX, posixSockStream, 0)
+        #else
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        #endif
         guard fd >= 0 else { return gone }
         defer { close(fd) }
         let connected = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }

@@ -126,7 +126,12 @@ public enum HermesProbeRunner {
     static func stamp(source: String, scripts: String) -> String {
         func mark(_ path: String) -> String {
             var info = stat()
-            return stat(path, &info) == 0 ? "\(info.st_size):\(info.st_mtim.tv_sec)" : "-"
+            guard stat(path, &info) == 0 else { return "-" }
+            #if os(Linux)
+            return "\(info.st_size):\(info.st_mtim.tv_sec)"
+            #else
+            return "\(info.st_size):\(info.st_mtimespec.tv_sec)"
+            #endif
         }
         let root = URL(fileURLWithPath: scripts).deletingLastPathComponent().path
         return [mark(source + "/toolsets.py"), mark(source + "/install-stamp.json"), mark(scripts + "/hermes-abilities.py"), mark(root + "/plugins/companion-tools/__init__.py")].joined(separator: "|")
