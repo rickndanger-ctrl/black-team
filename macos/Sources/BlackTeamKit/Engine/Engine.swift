@@ -243,13 +243,13 @@ public final class Engine: @unchecked Sendable {
                 }
                 timer.task = Task { try? await Task.sleep(nanoseconds: UInt64(Engine.APPROVAL_SECONDS) * 1_000_000_000); finish("deny") }
                 gate.set { finish("deny") }
+                tracker.waiting()
                 job.present(PendingApproval(id: id, digest: digest, command: EText.prefix(redact(request.command), 8000), description: request.description,
                                             expires: EText.millis(now()) + Int64(Engine.APPROVAL_SECONDS) * 1000)) { answer in
                     guard answer.id == id, answer.digest == digest, ["once", "deny"].contains(answer.choice) else { throw BlackTeamError("No matching active approval.") }
                     job.progress = answer.choice == "once" ? "Approved. Continuing\u{2026}" : "Declined. Continuing\u{2026}"
                     finish(answer.choice)
                 }
-                tracker.waiting()
                 if stop.isCancelled { finish("deny"); return }
                 job.progress = "Waiting for your approval"
                 try? turn.persist(force: true)

@@ -56,6 +56,7 @@ final class CodeRoutesTests: XCTestCase {
         XCTAssertEqual(paused["paused"], false)
         let resumed = await r.desktop("POST", "/api/resume", [:])
         XCTAssertEqual(resumed["resumed"], false)
+        XCTAssertNil(r.backend.togglePause(), "Ctrl-\\ in the terminal does nothing when no Code job runs")
         let phone = await r.phone("POST", "/api/pause", [:])
         XCTAssertEqual(phone.status, 403)
         let skills = await r.phone("GET", "/api/skills")

@@ -45,6 +45,39 @@ a graph, lets you search, open and edit any note, and create projects.
 Write `Core.md` yourself, briefly: how you like answers, what you are working
 on. It is limited to 1,500 characters because every conversation reads it.
 
+## Skills: routines that worked
+
+Memory holds facts; **skills** hold routines. When Code finishes something that worked (say, how to run
+this project's checks and fix what they find), it can save the steps as a skill with `save_skill`. Later
+conversations are told each skill's name and one line saying when to use it, and Code loads the steps with
+`skill` only when a task fits.
+
+| Place | Purpose |
+| --- | --- |
+| `skills/<name>/SKILL.md` in Black Team's data folder | Skills Code saved, and ones you add |
+| `skills/<name>/SKILL.md` inside a project's folder | A project's own skills. Code reads them; it writes there only if you allow it |
+
+A skill is **Hermes's own `SKILL.md` format**: a folder with a `SKILL.md` that starts with a YAML front
+matter holding `name` and `description` between `---` lines, then Markdown. The same folder therefore works
+in Black Team Code and in Hermes: the Hermes screen can link it into a conversation (Black Team reads the
+front matter with the same reader it uses for Hermes's skills), and a skill written for Hermes, even under a
+category folder, is read by Code.
+
+- **The index is short and its cost is shown.** The list in Code's instructions holds at most 30 skills and
+  about 2,400 characters (descriptions are cut to one line); the conversation notes how many tokens it adds.
+  It is read once per conversation, like Core, so the model server's prompt cache stays valid. A skill saved
+  later is found with `skill` and listed in the next conversation.
+- **Saving asks like a file write.** Code shows the name, when to use it and the steps, and waits for your
+  yes. **Save skills without asking** (Memory page, Skills) turns that off for new skills; replacing a
+  skill, or writing into a project's folder, always asks. A skill that looks like it holds a key or password
+  is refused.
+- **Nothing in a skill runs by itself.** A skill is text the model reads. Anything it tells Code to do goes
+  through the normal tools and their approvals.
+- **Manage them on the Memory page, Skills.** View, edit, turn off (a skill that is off is not listed or
+  loadable) or delete. A deleted skill is moved to `skills/.trash`. `black-team skills list|show|remove`
+  does the same in the terminal.
+- **Cloud conversations get none**, like memory.
+
 ## The keeper: staying within limits
 
 Memory is only useful while it stays quick to search and cheap to read, so it

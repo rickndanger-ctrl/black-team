@@ -829,7 +829,7 @@ func ledgerText(_ ledger: RunLedger) -> String {
                 if asJSON { printJSON(backend.skillsView(workspace: workspace)); return 0 }
                 if found.isEmpty { print("No skills saved yet. Code saves one when it has a routine that worked and you approve it.") }
                 for skill in found { print("\(skill.name)\t\(skill.source)\t\(skill.enabled ? "on" : "off")\t\(skill.description)") }
-                if !found.isEmpty { print("\(found.count) skills in \(skills.folder)") }
+                if !found.isEmpty { print("\(found.count) skill\(found.count == 1 ? "" : "s") in \(skills.folder)") }
             case "show":
                 guard arguments.count == 1 else { fail("Give the skill's name: black-team skills show <name>", code: 2) }
                 let text = try skills.text(arguments[0], workspace: workspace)
