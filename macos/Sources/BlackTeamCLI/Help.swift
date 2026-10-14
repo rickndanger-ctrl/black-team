@@ -69,15 +69,16 @@ let commandHelp: [String: String] = [
       models   ask the service which models it offers (the saved cloud model's service, by default)
     """,
     "chat": """
-    Usage: black-team chat "<message>" [--image <path>]... [--thread <id>] [--mode fast|balanced|deep|extended] [--allow-cloud]
+    Usage: black-team chat "<message>" [--image <path>]... [--thread <id>] [--mode fast|balanced|deep|extended] [--allow-cloud] [--stop-other]
     Sends one message to the model in use and prints the reply, then details (thread, speed, usage).
       --image        attach a picture (the model must be able to read pictures); can be repeated
       --thread       continue a conversation
       --mode         how long and careful the reply is
       --allow-cloud  send an existing private conversation to the cloud model's service, after you have chosen so
+      --stop-other   if the model will not fit beside another model server you run, stop that server first (otherwise nothing is stopped)
     """,
     "code": """
-    Usage: black-team code "<message>" [--workspace <folder>] [--thread <id>] [--mode ...] [--approve once|deny] [--allow-cloud]
+    Usage: black-team code "<message>" [--workspace <folder>] [--thread <id>] [--mode ...] [--approve once|deny] [--allow-cloud] [--stop-other]
     Lets the model work in a folder: it reads, edits and runs things, and prints each step.
       --workspace    the folder it works in
       --approve      once allows each command it asks about, one time; deny (the default) refuses them
@@ -134,8 +135,9 @@ let commandHelp: [String: String] = [
 
 let helpTopicText = """
 Interactive session: run `black-team` with no arguments in a terminal. Type /help in it for the slash commands.
-One message: black-team -p "<message>" [--code] [--json] [--approve once] [--allow-cloud] [--mode fast|balanced|deep|extended]
+One message: black-team -p "<message>" [--code] [--json] [--approve once] [--allow-cloud] [--stop-other] [--mode fast|balanced|deep|extended]
              [--workspace <folder>] [--image <path>]... [--thread <id>]
   Prints only the reply on stdout and errors on stderr; the exit status is non-zero on failure. It never asks anything: an approval
-  is denied, and a question about sending a conversation to the cloud is refused, unless --approve once or --allow-cloud is given.
+  is denied, and a question about sending a conversation to the cloud is refused, unless --approve once or --allow-cloud is given. A model that will
+  not fit beside another model server you run is not started until you add --stop-other, which stops that server.
 """

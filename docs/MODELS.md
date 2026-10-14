@@ -177,10 +177,26 @@ The model in use cannot be removed. The list holds up to 24 models and is stored
 in `saved-models.json` in Black Team's data folder, readable only by you because
 an entry can hold a local server key.
 
-A model on a local server has to be running for Black Team to use it. If your
-computer can hold only one model in memory, start that server yourself before
-switching to it, or set the model up as a **Model file** so Black Team starts and
-stops it for you.
+A model Black Team found running on your computer works when you choose it, even
+if that server has since stopped (for example because you loaded a different model
+into memory). When nothing answers at the saved address and the model is a GGUF
+file on this computer, Black Team starts the file itself with llama.cpp, the same
+way it starts a **Model file**: the vision projector and draft model beside it, the
+saved context and threads, and it stops the model when you quit. The list keeps one
+entry for it. If the server is running again, Black Team connects to it as before.
+If there is no llama.cpp on this computer to start it with, Black Team says so;
+download it under **Settings → Models → Get a starter model**. A model on a server
+that Black Team did not find as a file (a model name from Ollama, for example) still
+has to be running; start that server yourself.
+
+Before Black Team starts a model itself, it checks that the model fits in memory
+beside any other llama.cpp-style model server you are running. If it does not, it
+asks, for example "Qwen3 27B is using 18.4 GB. Stop it to start Gemma 3 4B?", and
+starts nothing yet. Choose **Stop it and send** (or **Stop it and start**) and
+Black Team ends that one server and starts your model; **Cancel** changes nothing.
+It only ever stops a model server that you own, never anything else, and never
+without that answer. On the command line it asks the same question; with `-p`,
+`chat` or `code` add `--stop-other` to say yes beforehand.
 
 To add a model, stop active work, then in **Settings → Models** choose **Change
 model** in the connected-model card to unlock the setup form. Save the new

@@ -7,6 +7,8 @@ public struct OneShotOptions: Equatable {
     public var json = false
     public var approve = "deny"
     public var allowCloud = false
+    /// Agrees beforehand to stop another model server that holds the memory the model needs.
+    public var stopOther = false
     public var pace = "balanced"
     public var workspace: String?
     public var images: [String] = []
@@ -41,6 +43,7 @@ public struct OneShotOptions: Equatable {
             case "--code": o.code = true
             case "--json": o.json = true
             case "--allow-cloud": o.allowCloud = true
+            case "--stop-other": o.stopOther = true
             case "--approve":
                 o.approve = try value(a)
                 guard ["once", "deny"].contains(o.approve) else { throw ParseError.message("--approve takes once or deny.") }

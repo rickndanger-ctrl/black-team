@@ -14,6 +14,7 @@ import {ModelList} from './Models.jsx';
 import Harnesses from './Harnesses.jsx';
 import FindModels, {FoundPrompt} from './FindModels.jsx';
 import {Chat} from './Chat.jsx';
+import StopCard from './StopCard.jsx';
 import {CloudPanel} from './Cloud.jsx';
 import Room from './Room.jsx';
 import MicButton from './Dictate.jsx';
@@ -75,6 +76,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [sending, setSending] = useState(false);
   const [pendingRequest, setPendingRequest] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
@@ -179,7 +181,23 @@ export default function App() {
   };
   const currentKind = thread?.kind || pendingRequest?.kind || newChatKind;
   const showSettings = section => {setSettingsSection(section||'model');navigate('settings');};
-  const switchModel = async key => {const result = await action('model-switch', {key}); if (result?.name) setNotice(`Now using ${result.name}. Your next message starts it.`); return result;};
+  const switchModel = async key => {
+    const result = await action('model-switch', {key});
+    if (result?.name) {
+      setNotice(`Now using ${result.name}. Your next message starts it.`);
+      // If it would not fit beside another model that is running, ask now; the card shows up from the status.
+      try {await api('/api/runtime/approval'); await refresh();} catch {}
+    }
+    return result;
+  };
+  // The person said yes to stopping the other model: the engine stops that one server and starts the chosen model.
+  const approveStop = async approval => {
+    setStopping(true); setError('');
+    try {await post('/api/runtime/approve', {pid: approval.pid}); setNotice(`Stopped ${approval.otherName}. ${approval.modelName} is starting.`); await refresh(); return true;}
+    catch (cause) {setError(cause.message); await refresh(); return false;}
+    finally {setStopping(false);}
+  };
+  const cancelStop = async () => {try {await post('/api/runtime/decline', {});} catch {} await refresh();};
   const threadLine = item => `${item.kind === 'agent' ? 'Code' : 'Chat'} · ${date(item.updated)}${item.privacy === 'cloud' ? ` · Leaves this computer · ${item.provider}` : ''}`;
   const forgetModel = key => action('model-forget', {key}, 'Removed from your list. Nothing was deleted from your computer.');
   const saveModel = async value => {if(await action('setup-save',value,'Model saved. Send a message to begin.'))startChat('chat');};
@@ -201,8 +219,9 @@ export default function App() {
       {error && <div className="notice error" role="alert"><p>{error}</p><button aria-label="Dismiss error" onClick={() => setError('')}>×</button></div>}
       {pendingRequest&&page!=='conversations'&&<div className="notice" role="status"><p>Your last message needs to reconnect before you start another conversation.</p><button className="secondary" onClick={()=>navigate('conversations')}>Recover last message</button></div>}
       {notice && <div className="notice" role="status"><p>{notice}</p><button aria-label="Dismiss message" onClick={() => setNotice('')}>×</button></div>}
+      {desktop && page !== 'conversations' && status.runtime?.approval && <StopCard approval={status.runtime.approval} busy={stopping} onApprove={() => approveStop(status.runtime.approval)} onCancel={cancelStop}/>}
       {desktop && page === 'workspace' && <Workspace status={status} busy={busy} onAction={action} onChat={startChat} onSettings={showSettings} onPhone={()=>navigate("phone")} onSave={saveModel}/>}
-      {page === 'conversations' && <Chat key={`${threadId||"new"}:${chatKey}`} drafts={drafts} onSwitchModel={desktop?switchModel:undefined} onOpenThread={openThread} initialKind={newChatKind} onSetup={showSettings} status={status} thread={thread} threadId={threadId} connection={connection} onSend={send} onCancel={cancel} onApproval={approval} sending={sending} pendingRequest={pendingRequest} project={activeProject} onLeaveProject={leaveProject} onNotice={setNotice} onError={setError}/>}
+      {page === 'conversations' && <Chat key={`${threadId||"new"}:${chatKey}`} drafts={drafts} onSwitchModel={desktop?switchModel:undefined} onOpenThread={openThread} initialKind={newChatKind} onSetup={showSettings} status={status} thread={thread} threadId={threadId} connection={connection} onSend={send} onCancel={cancel} onApproval={approval} sending={sending} pendingRequest={pendingRequest} project={activeProject} onLeaveProject={leaveProject} onNotice={setNotice} onError={setError} stopping={stopping} onApproveStop={approveStop} onCancelStop={cancelStop}/>}
       {desktop && page === 'room' && status.access === 'desktop' && <Room status={status} project={project} onOpenChat={() => navigate('conversations')}/>}
       {page === 'memory' && <MemoryPage call={call} onError={setError} status={status} onUseProject={openProject}/>}
       {desktop && page === 'phone' && <PhoneSettings status={status} busy={busy} onAction={action}/>}

@@ -26,6 +26,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var name: String
     public var port: Int?
     public var features: [String]
+    /// Set while a start waits for the person's yes: another model server holds the memory this model needs.
+    public var approval: StopApproval? = nil
 }
 
 // MARK: Process seam
@@ -313,6 +315,13 @@ private func removeCredentials(_ directory: String?) {
     try? FileManager.default.removeItem(atPath: directory)
 }
 
+/// Holds the last error a fetch threw, so the caller can look at the cause after a wrapper has turned it into a message.
+private final class ErrorBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Error?
+    var value: Error? { get { lock.lock(); defer { lock.unlock() }; return stored } set { lock.lock(); stored = newValue; lock.unlock() } }
+}
+
 private final class OwnedLaunch: @unchecked Sendable {
     var process: ModelProcess?
     var exited = false
@@ -337,6 +346,11 @@ public actor ModelRuntime {
     private let startupTimeoutMs: Int, pollIntervalMs: Int, stopTimeoutMs: Int, killTimeoutMs: Int
     /// Asked before this runtime starts a model process of its own; throwing refuses the start (another Black Team holds the model).
     private let launchGuard: (@Sendable () throws -> Void)?
+    /// The llama.cpp program that can start a found model file when the server that held it is not running ("" when none is known).
+    private let fallbackRuntime: @Sendable () -> String
+    /// Checks the memory before a start of our own (nil: not checked) and stops the one server the person approved.
+    private let memoryGuard: MemoryGuard?
+    private let approvalStopTimeoutMs: Int
 
     private var state = RuntimeState.off
     private var error: String?
@@ -348,6 +362,7 @@ public actor ModelRuntime {
     private var launch: OwnedLaunch?
     private var features: [String] = []
     private var helpCache: [String: String] = [:] // help text by executable and modification time, read once per build
+    private var pendingApproval: StopApproval?
     private var generation = 0
     private var operationNumber = 0
     private var startTask: (number: Int, task: Task<String, Error>)?
@@ -360,8 +375,10 @@ public actor ModelRuntime {
                 appleSilicon: Bool = SystemInfo.isAppleSilicon,
                 cores: @escaping @Sendable () -> Int = { SystemInfo.cpuTopology().cores },
                 startupTimeoutMs: Int = 120_000, pollIntervalMs: Int = 350, stopTimeoutMs: Int = 3000, killTimeoutMs: Int = 1000,
-                launchGuard: (@Sendable () throws -> Void)? = nil) {
+                launchGuard: (@Sendable () throws -> Void)? = nil,
+                fallbackRuntime: @escaping @Sendable () -> String = { "" }, memoryGuard: MemoryGuard? = nil, approvalStopTimeoutMs: Int = 15_000) {
         self.launchGuard = launchGuard
+        self.fallbackRuntime = fallbackRuntime; self.memoryGuard = memoryGuard; self.approvalStopTimeoutMs = approvalStopTimeoutMs
         self.configStore = configStore; self.spawn = spawn; self.fetch = fetch; self.reservePort = reservePort
         self.helpProbe = help; self.environment = environment; self.appleSilicon = appleSilicon; self.cores = cores
         self.startupTimeoutMs = startupTimeoutMs; self.pollIntervalMs = pollIntervalMs
@@ -373,7 +390,7 @@ public actor ModelRuntime {
 
     public func status() -> RuntimeStatus {
         RuntimeStatus(state: state, ready: state == .ready, busy: busy, error: error, name: name, port: port,
-                      features: state == .ready && externalEndpoint == nil ? features : [])
+                      features: state == .ready && externalEndpoint == nil ? features : [], approval: pendingApproval)
     }
 
     /// The model process Black Team started, while it runs; a connected server is not ours.
@@ -472,17 +489,31 @@ public actor ModelRuntime {
             if config.model.source == "cloud" { throw BlackTeamError("A cloud model runs at its service, so there is nothing to start on \(Place.this).") }
             _ = try validateModelFiles(config.model, cloud: configStore.cloud)
             name = config.model.name
-            if config.model.source == "server" {
-                let found = try await discoverModels(endpoint: config.model.endpoint, apiKey: config.model.apiKey, fetch: fetch)
-                try assertCurrent(generation)
-                if !found.models.contains(config.model.id) { throw BlackTeamError("The selected model is no longer available. Discover models again in Settings.") }
-                externalEndpoint = found.endpoint
-                key = config.model.apiKey
-                state = .ready
-                return found.endpoint
+            var model = config.model
+            if model.source == "server" {
+                // The reason the server could not be asked, kept so "nobody is listening" is told from every other failure.
+                let refusal = ErrorBox()
+                let fetch = self.fetch
+                do {
+                    let found = try await discoverModels(endpoint: model.endpoint, apiKey: model.apiKey, fetch: { request in
+                        do { return try await fetch(request) } catch { refusal.value = error; throw error }
+                    })
+                    try assertCurrent(generation)
+                    if !found.models.contains(model.id) { throw BlackTeamError("The selected model is no longer available. Discover models again in Settings.") }
+                    externalEndpoint = found.endpoint
+                    key = model.apiKey
+                    state = .ready
+                    pendingApproval = nil
+                    return found.endpoint
+                } catch {
+                    // Only a server nobody is listening for, and a model that is a file on this computer, is started here.
+                    guard let reason = refusal.value, isRefusedConnection(reason), let own = try ownedLaunch(for: model) else { throw error }
+                    model = own
+                }
             }
             externalEndpoint = nil
             try launchGuard?()
+            try checkMemory(for: model)
             let chosenPort = try await reservePort()
             try assertCurrent(generation)
             if chosenPort < 1 || chosenPort > 65535 { throw BlackTeamError("Could not reserve a local model port.") }
@@ -493,15 +524,15 @@ public actor ModelRuntime {
             // restricted file instead of exposing it through the arguments.
             let credentials = try makeCredentials(newKey)
             credentialDirectory = credentials.directory
-            let help = await helpFor(config.model.runtime)
+            let help = await helpFor(model.runtime)
             try assertCurrent(generation)
-            let plan = planLaunch(model: config.model, port: chosenPort, keyFile: credentials.file, cores: cores(), help: help, appleSilicon: appleSilicon)
+            let plan = planLaunch(model: model, port: chosenPort, keyFile: credentials.file, cores: cores(), help: help, appleSilicon: appleSilicon)
             features = plan.features
             let owned = OwnedLaunch(credentialDirectory: credentials.directory)
             launch = owned
             let process: ModelProcess
             do {
-                process = try spawn(ProcessLaunch(executable: config.model.runtime, arguments: plan.args, environment: environment())) { [weak self] exit in
+                process = try spawn(ProcessLaunch(executable: model.runtime, arguments: plan.args, environment: environment())) { [weak self] exit in
                     Task { await self?.finish(owned, exit) }
                 }
             } catch {
@@ -526,13 +557,14 @@ public actor ModelRuntime {
                         if !(200..<300).contains(props.statusCode) { throw FatalStart(message: "The runtime could not verify its model. Choose a current llama.cpp release.") }
                         let identity = try JSONValue.parse(propsData)
                         var matching = false
-                        if let path = identity["model_path"]?.string, let reported = realPath(path), let expected = realPath(config.model.file) { matching = reported == expected }
+                        if let path = identity["model_path"]?.string, let reported = realPath(path), let expected = realPath(model.file) { matching = reported == expected }
                         if !matching { throw FatalStart(message: "The runtime reported a different model. Start was cancelled.") }
                         let (_, bare) = try await get(root + "/props", key: nil, timeoutMs: 2000)
                         // /health is public; /props must enforce our launch-specific key.
                         if ![401, 403].contains(bare.statusCode) { throw FatalStart(message: "The runtime did not enforce private authentication. Choose a current llama.cpp release.") }
                         try assertCurrent(generation, owned)
                         state = .ready
+                        pendingApproval = nil
                         return root + "/v1"
                     }
                 } catch let fatal as FatalStart {
@@ -550,14 +582,89 @@ public actor ModelRuntime {
             }
             if launch == nil || launch?.exited == true { removeCredentials(credentialDirectory) }
             if generation == self.generation {
-                state = .error
-                self.error = messageOf(failure)
                 port = nil
                 key = nil
+                if let question = failure as? NeedsApprovalError {
+                    // A question, not a failure: nothing is shown as an error, and nothing was started or stopped.
+                    state = .off
+                    self.error = nil
+                    pendingApproval = question.approval
+                } else {
+                    state = .error
+                    self.error = messageOf(failure)
+                }
             }
             if failure is CancellationError { throw BlackTeamError("Model start cancelled.") }
             throw failure
         }
+    }
+
+    /// A refused connection: the address answered "nobody is listening", not "slow" or "wrong".
+    private func isRefusedConnection(_ error: Error) -> Bool {
+        if let url = error as? URLError { return url.code == .cannotConnectToHost }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain { return nsError.code == NSURLErrorCannotConnectToHost }
+        if nsError.domain == NSPOSIXErrorDomain { return nsError.code == Int(ECONNREFUSED) }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError { return isRefusedConnection(underlying) }
+        return false
+    }
+
+    /// A found model that is not served right now, as the model Black Team starts itself: the same entry, run like a model file
+    /// with the companion files beside it and the saved context and threads. nil when the entry is not a file on this computer;
+    /// throws when it is one and there is no llama.cpp to start it with.
+    private func ownedLaunch(for saved: ModelConfig) throws -> ModelConfig? {
+        guard saved.id.hasPrefix("/"), (try? inspectModel(saved.id)) != nil else { return nil }
+        var model = saved
+        model.source = "gguf"
+        model.file = saved.id
+        model.apiKey = ""
+        let beside = companionsFor(saved.id)
+        if model.mmproj.isEmpty { model.mmproj = beside.mmproj }
+        if model.draft.isEmpty { model.draft = beside.draft }
+        let program = fallbackRuntime()
+        guard !program.isEmpty, (try? inspectRuntime(program)) != nil else {
+            throw BlackTeamError("\(saved.name) is not running and Black Team has no llama.cpp to start it with. Download llama.cpp under Settings, Models, Get a starter model, then choose it again.")
+        }
+        model.runtime = program
+        _ = try validateModelFiles(model, cloud: configStore.cloud)
+        return model
+    }
+
+    /// Asks before a start that would not fit beside another model server. Nothing is stopped here.
+    private func checkMemory(for model: ModelConfig) throws {
+        guard let memoryGuard else { return }
+        let bytes = CoreFS.stat(model.file).size
+        if let approval = memoryGuard.conflict(modelName: model.name, modelBytes: bytes) { throw NeedsApprovalError(approval) }
+    }
+
+    /// Whether starting the selected model now would first need a yes. Remembers the question for the window to show.
+    public func startApproval() async throws -> StopApproval? {
+        if state == .ready || state == .starting { return nil }
+        let config = try configStore.read()
+        var model = config.model
+        if model.source == "cloud" { return nil }
+        if model.source == "server" {
+            // Only a model that would be started from its file can need the memory; a server that answers is just connected to.
+            guard (try? await discoverModels(endpoint: model.endpoint, apiKey: model.apiKey, fetch: fetch)) == nil,
+                  model.id.hasPrefix("/"), (try? inspectModel(model.id)) != nil else { pendingApproval = nil; return nil }
+            model.file = model.id
+        }
+        do { try checkMemory(for: model); pendingApproval = nil; return nil }
+        catch let question as NeedsApprovalError { pendingApproval = question.approval; return question.approval }
+    }
+
+    /// The person said yes: stops that one server. Anything but the question that was asked is refused.
+    public func approveStop(pid: Int) async throws {
+        guard let approval = pendingApproval, approval.pid == pid, let memoryGuard else {
+            throw BlackTeamError("There is nothing waiting for your approval. Choose the model again.")
+        }
+        try await memoryGuard.stop(pid: pid, timeoutMs: approvalStopTimeoutMs)
+        pendingApproval = nil
+    }
+
+    /// The person said no: the question goes away and nothing changes.
+    public func declineStop() async {
+        pendingApproval = nil
     }
 
     /// Sleeps; returns early when the start is cancelled.
@@ -636,6 +743,7 @@ public actor ModelRuntime {
             key = nil
             launch = nil
             externalEndpoint = nil
+            pendingApproval = nil
         } catch {
             state = .error
             self.error = messageOf(error)

@@ -126,9 +126,13 @@ public final class Backend: @unchecked Sendable {
         let sharedLock = EngineLock(dataFolder: dataFolder, program: program ?? EngineLock.defaultProgram())
         sharedLock.acquire()
         engineLock = sharedLock
+        let madeInstaller = runtimeInstaller ?? RuntimeInstaller(dataFolder: URL(fileURLWithPath: dataFolder))
         let backendRuntime = customRuntime ?? ModelRuntime(configStore: configStore, launchGuard: {
             if let refusal = sharedLock.refusalForLocalModel() { throw BlackTeamError(refusal) }
-        })
+        }, fallbackRuntime: {
+            // A found model that is not running is started with the downloaded llama.cpp, or one found on this computer.
+            madeInstaller.installedRuntime()?.executable ?? cache.get().runtime
+        }, memoryGuard: MemoryGuard())
         runtime = backendRuntime
         engine = try customEngine ?? Engine(stateDir: dataFolder, vault: memory, fetch: stream, graph: { cache.get().graph }, cloud: cloud)
         self.fetch = fetch
@@ -136,7 +140,7 @@ public final class Backend: @unchecked Sendable {
         planner = contextPlanner ?? { messages, context, mode, endpoint, headers, signal in
             try await prepareContext(messages: messages, context: context, mode: mode, endpoint: endpoint, headers: headers, fetch: fetch, signal: signal)
         }
-        installer = runtimeInstaller ?? RuntimeInstaller(dataFolder: URL(fileURLWithPath: dataFolder))
+        installer = madeInstaller
         makeDownloader = downloader
         self.terminal = terminal
         self.now = now
@@ -231,7 +235,8 @@ public final class Backend: @unchecked Sendable {
         // A cloud model has no process of its own: it is "ready" when it is set up, and busy while a reply is being written.
         let runtimeSummary = cloudModel
             ? RuntimeSummary(state: setupComplete(config) ? "ready" : "off", ready: setupComplete(config), busy: snapshot?.state == "running" && snapshot?.kind != "memory", name: model.name, error: nil, features: [], kind: "cloud", provider: host)
-            : RuntimeSummary(state: state.state.rawValue, ready: state.ready, busy: state.busy, name: model.name, error: state.error, features: state.features)
+            : RuntimeSummary(state: state.state.rawValue, ready: state.ready, busy: state.busy, name: model.name, error: state.error, features: state.features,
+                             approval: state.approval)
         let listed = savedModels.list(active: model)
         let localAlternative = listed.first { !$0.isCloud }
         return BackendStatus(

@@ -9,6 +9,7 @@ import {responseActivity} from './responseActivity.mjs';
 import {api, call, post} from './http.mjs';
 import {AGENT_NAMES, CloudNotice, CloudUsage, PrivacyCard, PrivacyTag, ProjectCloud} from './Privacy.jsx';
 import {AgentPicker, AgentRunActions, PermissionPicker, VersionLine} from './Agents.jsx';
+import StopCard from './StopCard.jsx';
 import {MAX_PICTURES, MessageImages, PictureButton, PictureChips, VisionDownload} from './Pictures.jsx';
 
 const desktop = Boolean(window.blackTeam?.request);
@@ -25,7 +26,7 @@ export function ContextReport({report}) {
   return <details className="context-inspector"><summary><span>Context control</span><span>{Math.round(used)}% used{omitted > 0 ? ' · Adjusted' : ' · Within budget'}</span></summary><div className="context-inspector-body"><div className="context-meter" role="meter" aria-label="Input context used" aria-valuemin={0} aria-valuemax={report.context} aria-valuenow={Math.min(report.context,report.measuredInputTokens)} aria-valuetext={`${report.measuredInputTokens.toLocaleString()} input tokens of ${report.context.toLocaleString()}`}><span style={{width:`${used}%`}}/><i style={{width:`${reserve}%`}}/></div><dl><div><dt>{report.method === 'estimated-bytes' ? 'Estimated conversation input' : 'Conversation input'}</dt><dd>{report.measuredInputTokens.toLocaleString()} tokens</dd></div><div><dt>Reserved for reply</dt><dd>{Number.isSafeInteger(report.maxTokens) ? report.maxTokens.toLocaleString() : '—'} tokens</dd></div><div><dt>Model context</dt><dd>{report.context.toLocaleString()} tokens</dd></div></dl><p>{omitted > 0 ? `${omitted} older ${omitted === 1 ? 'message was' : 'messages were'} left out of this reply’s context. The full conversation stays saved on your computer.` : 'This reply includes all eligible completed turns. Your current message and system instructions are preserved.'}</p><small>{report.method === 'estimated-bytes' ? 'Estimated locally, not a tokenizer measurement. Match context settings to your server; its template and truncation behavior can differ.' : 'Measured locally · No hosted context service'}</small></div></details>;
 }
 
-export function Chat({status, thread, threadId, connection, onSend, onCancel, onApproval, sending, pendingRequest, initialKind, onSetup, onOpenThread, drafts, project, onLeaveProject, onNotice, onError, onSwitchModel}) {
+export function Chat({status, thread, threadId, connection, onSend, onCancel, onApproval, sending, pendingRequest, initialKind, onSetup, onOpenThread, drafts, project, onLeaveProject, onNotice, onError, onSwitchModel, stopping, onApproveStop, onCancelStop}) {
   const draftKey=threadId||'new';
   const draft = () => drafts.current[draftKey] || {};
   const [message, setMessage] = useState(()=>draft().message||'');
@@ -44,6 +45,8 @@ export function Chat({status, thread, threadId, connection, onSend, onCancel, on
   const [preparing, setPreparing] = useState(false);
   const [check, setCheck] = useState(null);
   const [card, setCard] = useState(null);
+  // A message that waits for the person's yes to stop another model; the words stay in the box meanwhile.
+  const [stopWait, setStopWait] = useState(null);
   const endRef = useRef(null), box = useRef(null);
   const keep=async item=>{try{const result=await call('memory/remember',{title:item.content.replace(/[#*_`>\[\]]/g,'').replace(/\s+/g,' ').trim().slice(0,48)||'Saved reply',text:item.content.slice(0,4000),project:project?.id||null});onNotice(`Saved to memory as ${result.id}. Open Memory to rename or edit it.`);}catch(cause){onError(cause.message);}};
   const undo=async id=>{try{const result=await call('undo',{id});onNotice(result.removed?`Removed ${result.path}, which this edit had created.`:`Put ${result.path} back as it was.`);return true;}catch(cause){onError(cause.message);return false;}};
@@ -94,8 +97,21 @@ export function Chat({status, thread, threadId, connection, onSend, onCancel, on
       const found = await askPrivacy();
       if (found?.refused) {setCard({check: found, content, extra, view: 'choice', threadId}); return;}
     }
+    if (desktop && !pendingRequest && !agentEngine) {
+      // Would the model fit beside the one that is running? If not, ask first; the message is kept and nothing is sent.
+      const start = await api('/api/runtime/approval').catch(() => null);
+      if (start?.approval) {setStopWait({approval: start.approval, content, extra}); return;}
+    }
     await deliver(content, extra, false);
   };
+  const askedStop = stopWait?.approval || (desktop && !agentEngine ? status.runtime?.approval : null);
+  const approveStop = async () => {
+    const waiting = stopWait;
+    if (!await onApproveStop(askedStop)) return;
+    setStopWait(null);
+    if (waiting) await deliver(waiting.content, waiting.extra, false);
+  };
+  const cancelStop = async () => {setStopWait(null); await onCancelStop();};
   const cardAction = {
     startNew: () => deliver(card.content, card.extra, true),
     switchBack: async () => {const key = card.check.localModelKey; setCard(null); const result = await onSwitchModel?.(key); if (result) await deliver(card.content, card.extra, false);},
@@ -152,6 +168,7 @@ export function Chat({status, thread, threadId, connection, onSend, onCancel, on
     </div>
     {activity && !thread?.messages?.at(-1)?.context && <ContextReport report={status.job?.context}/>}
     {desktop && check?.outcome === 'startsCloud' && !threadId && <CloudNotice check={check}/>}
+    {askedStop && <StopCard approval={askedStop} busy={stopping} sends={Boolean(stopWait)} onApprove={approveStop} onCancel={cancelStop}/>}
     {card && <PrivacyCard card={card} busy={sending} canConvert={Boolean(card.threadId)} onStartNew={cardAction.startNew} onSwitch={cardAction.switchBack} onConvert={cardAction.convert} onConfirm={cardAction.confirm} onClose={cardAction.close}/>}
     {status.job?.approval&&status.job.threadId===threadId&&<section className="notice approval-card" role="status"><div><strong>Your decision</strong><p>{status.job.approval.description}</p><pre>{status.job.approval.command}</pre><div className="button-row"><button className="primary" disabled={sending} onClick={()=>onApproval('once')}>Approve once</button><button className="secondary" disabled={sending} onClick={()=>onApproval('deny')}>Deny</button></div></div></section>}
     {status.job?.approval&&status.job.threadId!==threadId&&<div className="notice"><p>Code is waiting for your approval in another conversation.</p><button className="secondary" disabled={sending||Boolean(pendingRequest)} onClick={()=>onOpenThread(status.job.threadId)}>Open that task</button></div>}

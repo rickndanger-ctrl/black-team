@@ -13,6 +13,19 @@ public protocol BackendRuntime: AnyObject, Sendable {
     func start() async throws -> String
     func stop(force: Bool) async throws
     func dispose() async throws
+    /// Whether starting the selected model would first need the person's yes to stop another model server. Nil: it does not.
+    func startApproval() async throws -> StopApproval?
+    /// The person said yes: stop that one server.
+    func approveStop(pid: Int) async throws
+    /// The person said no.
+    func declineStop() async
+}
+
+extension BackendRuntime {
+    // Runtimes that start nothing of their own (tests, other apps) never ask.
+    public func startApproval() async throws -> StopApproval? { nil }
+    public func approveStop(pid: Int) async throws { throw BlackTeamError("There is nothing waiting for your approval.") }
+    public func declineStop() async {}
 }
 
 extension ModelRuntime: BackendRuntime {}
@@ -95,6 +108,8 @@ public struct RuntimeSummary: Codable, Equatable, Sendable {
     public var kind: String = "local"
     /// For a cloud model, the service's host name.
     public var provider: String = ""
+    /// Set while a start waits for the person's yes to stop another model server.
+    public var approval: StopApproval? = nil
 }
 
 public struct ApprovalSummary: Codable, Equatable, Sendable {

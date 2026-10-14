@@ -50,6 +50,20 @@ final class DesktopRoutes: @unchecked Sendable {
         switch (method, path) {
         case ("POST", "/api/chat"): return try await mine { try self.chat(try self.json(head, body), who) }
         case ("GET", "/api/privacy"): return try await mine { try self.privacy(head, who) }
+        case ("GET", "/api/runtime/approval"):
+            // Would starting the model first need a yes to stop another model server? Asking stops nothing.
+            try who.requireDesktopHTTP()
+            return try await mine { .json(200, ["approval": .encoded(try await self.backend.startApproval())]) }
+        case ("POST", "/api/runtime/approve"):
+            try who.requireDesktopHTTP()
+            return try await mine {
+                let input = try self.json(head, body)
+                guard let pid = input["pid"]?.double, pid.rounded() == pid, pid > 0, pid < 4_194_305 else { throw BlackTeamError("Choose the model to stop from the question that was asked.") }
+                return .json(200, .encoded(try await self.backend.approveStop(pid: Int(pid))))
+            }
+        case ("POST", "/api/runtime/decline"):
+            try who.requireDesktopHTTP()
+            return try await mine { await self.backend.declineStop(); return .json(200, ["declined": true]) }
         case ("POST", "/api/privacy/convert"):
             try who.requireDesktopHTTP()
             return try await mine { try self.convert(try self.json(head, body)) }

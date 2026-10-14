@@ -147,6 +147,29 @@ extension Backend {
         return try await runtimeSummary()
     }
 
+    /// Whether starting the selected model now would first need a yes to stop another model server that holds the memory.
+    /// Nothing is stopped by asking. A cloud model, or one that is running, never needs it.
+    public func startApproval() async throws -> StopApproval? {
+        if try configStore.read().model.source == "cloud" { return nil }
+        let question = try await runtime.startApproval()
+        if question != nil { changed() }
+        return question
+    }
+
+    /// The person said yes: stops that one model server (SIGTERM, then waits), then starts the selected model in the background.
+    @discardableResult
+    public func approveStop(pid: Int) async throws -> RuntimeSummary {
+        _ = try await exclusive { try await runtime.approveStop(pid: pid) }
+        changed()
+        return try await startModel()
+    }
+
+    /// The person said no: the question goes away, and nothing was stopped or started.
+    public func declineStop() async {
+        await runtime.declineStop()
+        changed()
+    }
+
     func runtimeSummary() async throws -> RuntimeSummary {
         let config = try configStore.read()
         if config.model.source == "cloud" {
@@ -155,7 +178,7 @@ extension Backend {
         }
         let state = await runtime.status()
         return RuntimeSummary(state: state.state.rawValue, ready: state.ready, busy: state.busy, name: try configStore.read().model.name,
-                              error: state.error, features: state.features)
+                              error: state.error, features: state.features, approval: state.approval)
     }
 
     // MARK: Finding models

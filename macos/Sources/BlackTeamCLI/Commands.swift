@@ -85,7 +85,12 @@ import BlackTeamKit
 /// Runs one Chat or Code turn and prints it. Returns the exit status.
 /// `allowCloud` answers the one question the Backend asks before a private conversation goes to a cloud service.
 @MainActor func runTurn(_ backend: Backend, message: String, kind: String, mode: String, thread: String?, workspace: String?, approve: String, images: [ImageUpload] = [],
-                        allowCloud: Bool = false) async -> Int32 {
+                        allowCloud: Bool = false, stopOther: Bool = false) async -> Int32 {
+    // A model that would not fit beside another model server waits for a yes; --stop-other is that yes given beforehand.
+    if let question = try? await backend.startApproval() {
+        guard stopOther else { fail(question.question + "\nNothing was stopped or sent. Add --stop-other to stop it and go on.") }
+        do { try await backend.approveStop(pid: question.pid) } catch { fail(describe(error)) }
+    }
     if allowCloud, let thread {
         let check = backend.privacyCheck(threadId: thread, project: nil, kind: kind)
         if check.outcome == .needsChoice {
@@ -539,11 +544,11 @@ import BlackTeamKit
             let thread = option("--thread"), mode = option("--mode") ?? "balanced"
             let workspace = command == "code" ? option("--workspace") : nil
             let approve = option("--approve") ?? "deny"
-            let allowCloud = arguments.contains("--allow-cloud")
-            arguments.removeAll { $0 == "--allow-cloud" }
+            let allowCloud = arguments.contains("--allow-cloud"), stopOther = arguments.contains("--stop-other")
+            arguments.removeAll { $0 == "--allow-cloud" || $0 == "--stop-other" }
             guard ["once", "deny"].contains(approve) else { fail("--approve takes once or deny.", code: 2) }
             guard let message = arguments.first, arguments.count == 1 else { fail("Give one message in quotes.\n\n\(usage)", code: 2) }
-            return await runTurn(backend, message: message, kind: command == "chat" ? "chat" : "agent", mode: mode, thread: thread, workspace: workspace, approve: approve, images: uploads, allowCloud: allowCloud)
+            return await runTurn(backend, message: message, kind: command == "chat" ? "chat" : "agent", mode: mode, thread: thread, workspace: workspace, approve: approve, images: uploads, allowCloud: allowCloud, stopOther: stopOther)
 
         case "agent":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()

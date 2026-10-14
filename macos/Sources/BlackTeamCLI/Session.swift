@@ -374,8 +374,17 @@ import BlackTeamTerminal
         return false
     }
 
+    /// The question asked before a model start that would not fit beside another model server. True when the message may go.
+    func startGate() async -> Bool {
+        guard let question = try? await backend.startApproval() else { return true }
+        guard confirm(style.yellow("Approval needed: ") + question.question) else { say("Nothing was stopped or sent."); return false }
+        do { try await backend.approveStop(pid: question.pid); return true }
+        catch { problem(describe(error)); return false }
+    }
+
     func send(_ text: String) async {
         guard await privacyGate() else { return }
+        guard await startGate() else { return }
         let sent: SubmitResult
         let images = pendingImages.map(\.upload)
         do {
