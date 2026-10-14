@@ -420,7 +420,12 @@ public actor ModelRuntime {
     @discardableResult
     public func start() async throws -> String {
         if let stopping = stopTask { try await stopping.task.value; return try await start() }
-        if state == .ready { return externalEndpoint ?? "http://127.0.0.1:\(port ?? 0)/v1" }
+        if state == .ready {
+            // A server we connected to earlier may have been stopped since (the person loaded another model). Then this is a new
+            // start, which can start the model file itself.
+            guard let external = externalEndpoint, await serverIsGone(external) else { return externalEndpoint ?? "http://127.0.0.1:\(port ?? 0)/v1" }
+            state = .off; externalEndpoint = nil; error = nil
+        }
         if let starting = startTask { return try await starting.task.value }
         generation += 1
         operationNumber += 1
@@ -601,6 +606,14 @@ public actor ModelRuntime {
             if failure is CancellationError { throw BlackTeamError("Model start cancelled.") }
             throw failure
         }
+    }
+
+    /// True only when nothing listens at a server's address any more. Slow, busy or erroring servers are still there.
+    private func serverIsGone(_ endpoint: String) async -> Bool {
+        guard let url = URL(string: endpoint + "/models") else { return false }
+        var request = URLRequest(url: url, timeoutInterval: 3)
+        if let key, !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
+        do { _ = try await fetch(request); return false } catch { return isRefusedConnection(error) }
     }
 
     /// A refused connection: the address answered "nobody is listening", not "slow" or "wrong".

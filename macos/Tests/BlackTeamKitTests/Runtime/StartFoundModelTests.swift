@@ -100,6 +100,27 @@ final class StartFoundModelTests: XCTestCase {
         XCTAssertTrue(r.spawned.value.isEmpty)
     }
 
+    func testAServerThatGoesAwayAfterConnectingIsReplacedByTheFile() async throws {
+        let up = RuntimeBox(true)
+        let model = RuntimeBox("")
+        let r = try rig(server: { request in
+            guard up.value else { throw URLError(.cannotConnectToHost) }
+            return (Data(#"{"data":[{"id":"\#(model.value)"}]}"#.utf8), response(request.url!))
+        })
+        model.value = r.files.model
+        let connected = try await r.runtime.start()
+        XCTAssertEqual(connected, "http://127.0.0.1:18081/v1")
+        // Still there: the next message uses it as it is.
+        let again = try await r.runtime.start()
+        XCTAssertEqual(again, connected)
+        XCTAssertTrue(r.spawned.value.isEmpty)
+        // Stopped outside Black Team (another model was loaded): the next message starts the file itself.
+        up.value = false
+        let started = try await r.runtime.start()
+        XCTAssertEqual(started, "http://127.0.0.1:45231/v1")
+        XCTAssertEqual(r.spawned.value.count, 1)
+    }
+
     func testDoesNotStartAnythingWhenTheServerAnswersWithoutTheModel() async throws {
         let r = try rig(server: { request in (Data(#"{"data":[{"id":"something-else"}]}"#.utf8), response(request.url!)) })
         do { _ = try await r.runtime.start(); XCTFail("refused") }
@@ -142,9 +163,16 @@ final class StartFoundModelTests: XCTestCase {
 
     // MARK: Memory
 
+    func testAnotherModelsWeightsCountAsInUseThoughTheSystemCallsThemFree() {
+        // 13 GiB reads as available, but 12 of it is the other model's weights, read from its file.
+        let asked = guardWith(free: RuntimeBox(13 << 30), reusable: 12 << 30).conflict(modelName: "Mine", modelBytes: 8 << 30)
+        XCTAssertEqual(asked?.pid, 777)
+        XCTAssertNil(guardWith(free: RuntimeBox(13 << 30)).conflict(modelName: "Mine", modelBytes: 8 << 30), "really free memory needs no question")
+    }
+
     /// One other llama-server (pid 777) holding 12 GiB, on a computer with 16 GiB of which 1 GiB is free.
     func guardWith(free: RuntimeBox<Int> = RuntimeBox(1 << 30), owner: UInt32 = 1000, alive: RuntimeBox<Bool> = RuntimeBox(true),
-                   signals: RuntimeBox<[[Int32]]> = RuntimeBox([]), running: RuntimeBox<Bool> = RuntimeBox(true)) -> MemoryGuard {
+                   signals: RuntimeBox<[[Int32]]> = RuntimeBox([]), running: RuntimeBox<Bool> = RuntimeBox(true), reusable: Int = 0) -> MemoryGuard {
         MemoryGuard(
             processes: {
                 running.value ? AnySequence([ProcessEntry(pid: 777, argv: ["/opt/llama/llama-server", "--port", "18080", "-m", "/models/Other Model Q4.gguf"]),
@@ -154,6 +182,7 @@ final class StartFoundModelTests: XCTestCase {
             owner: { _ in owner }, user: { 1000 },
             memory: { MemoryFigures(total: 16 << 30, free: free.value) },
             held: { $0 == 777 ? 12 << 30 : nil },
+            reusable: { $0 == 777 ? reusable : 0 },
             signal: { pid, number in
                 signals.update { $0.append([pid, number]) }
                 if number == SIGTERM { alive.value = false; running.value = false; free.value = 13 << 30 }
@@ -264,7 +293,7 @@ final class StartFoundModelTests: XCTestCase {
         let stuck = MemoryGuard(
             processes: { AnySequence([ProcessEntry(pid: 777, argv: ["/opt/llama/llama-server", "-m", "/m/a.gguf"])]) },
             executablePath: { _ in "/opt/llama/llama-server" }, owner: { _ in 1000 }, user: { 1000 },
-            memory: { MemoryFigures(total: 16 << 30, free: 1 << 30) }, held: { _ in 12 << 30 },
+            memory: { MemoryFigures(total: 16 << 30, free: 1 << 30) }, held: { _ in 12 << 30 }, reusable: { _ in 0 },
             signal: { pid, number in signals.update { $0.append([pid, number]) } }, alive: { _ in alive.value })
         let runtime = ModelRuntime(configStore: files.store, spawn: { _, _ in XCTFail("not started"); throw SpawnError(code: "EPERM") },
                                    fetch: { r in (Data("{}".utf8), response(r.url!)) }, reservePort: { 45231 }, memoryGuard: stuck, approvalStopTimeoutMs: 60)

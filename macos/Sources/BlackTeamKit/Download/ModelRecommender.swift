@@ -32,7 +32,7 @@ public struct ModelFitReport: Codable, Sendable, Equatable {
     public var speed: SpeedEstimate
 }
 
-public struct ModelAssessment: Codable, Sendable, Equatable, Identifiable {
+public struct ModelAssessment: Sendable, Equatable, Identifiable {
     public var model: StarterModel
     public var installed: Bool
     public var fit: FitLevel
@@ -48,6 +48,26 @@ public struct ModelAssessment: Codable, Sendable, Equatable, Identifiable {
     /// "best", "code" and "fastest", for the picks this model is.
     public var picks: [String]
     public var id: String { model.id }
+}
+
+extension ModelAssessment: Codable {
+    enum CodingKeys: String, CodingKey { case id, model, installed, fit, neededBytes, fitsDisk, runsOn, speed, goodFor, reason, picks }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        model = try c.decode(StarterModel.self, forKey: .model); installed = try c.decode(Bool.self, forKey: .installed)
+        fit = try c.decode(FitLevel.self, forKey: .fit); neededBytes = try c.decode(Int64.self, forKey: .neededBytes)
+        fitsDisk = try c.decode(Bool.self, forKey: .fitsDisk); runsOn = try c.decode(String.self, forKey: .runsOn)
+        speed = try c.decode(SpeedEstimate.self, forKey: .speed); goodFor = try c.decode([String].self, forKey: .goodFor)
+        reason = try c.decode(String.self, forKey: .reason); picks = try c.decode([String].self, forKey: .picks)
+    }
+    /// The window and `--json` read each entry's `id` beside its other fields, so it is written out though it is the model's own.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(model, forKey: .model); try c.encode(installed, forKey: .installed)
+        try c.encode(fit, forKey: .fit); try c.encode(neededBytes, forKey: .neededBytes); try c.encode(fitsDisk, forKey: .fitsDisk)
+        try c.encode(runsOn, forKey: .runsOn); try c.encode(speed, forKey: .speed); try c.encode(goodFor, forKey: .goodFor)
+        try c.encode(reason, forKey: .reason); try c.encode(picks, forKey: .picks)
+    }
 }
 
 public struct ModelRecommendations: Codable, Sendable, Equatable {

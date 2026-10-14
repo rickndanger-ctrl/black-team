@@ -51,6 +51,9 @@ public struct MemoryGuard: Sendable {
     public var memory: @Sendable () -> MemoryFigures
     /// Memory a process holds in RAM and swap, in bytes.
     public var held: @Sendable (Int) -> Int?
+    /// The part of a process's memory the system counts as free to reuse although the process is using it: a loaded model's
+    /// weights are read straight from its file, so the system reports them as available. In bytes; 0 where it cannot be read.
+    public var reusable: @Sendable (Int) -> Int
     public var signal: @Sendable (Int32, Int32) -> Void
     public var alive: @Sendable (Int32) -> Bool
 
@@ -63,10 +66,11 @@ public struct MemoryGuard: Sendable {
                     return MemoryFigures(total: info.total, free: info.available)
                 },
                 held: @escaping @Sendable (Int) -> Int? = { pid in SystemInfo.processMemory(pid).map { $0.resident + $0.swapped } },
+                reusable: @escaping @Sendable (Int) -> Int = { reusableMemory($0) },
                 signal: @escaping @Sendable (Int32, Int32) -> Void = { _ = kill($0, $1) },
                 alive: @escaping @Sendable (Int32) -> Bool = { kill($0, 0) == 0 || errno == EPERM }) {
         self.processes = processes; self.executablePath = executablePath; self.owner = owner; self.user = user
-        self.memory = memory; self.held = held; self.signal = signal; self.alive = alive
+        self.memory = memory; self.held = held; self.reusable = reusable; self.signal = signal; self.alive = alive
     }
 
     /// A model server of this user that is running right now: found by its command line, owned by the same user.
@@ -79,12 +83,15 @@ public struct MemoryGuard: Sendable {
     /// `modelBytes` is the model file's size; `ownPid` is a process Black Team started itself, never offered.
     func conflict(modelName: String, modelBytes: Int, ownPid: Int? = nil) -> StopApproval? {
         let figures = memory()
-        let estimate = estimateMemory(modelBytes, totalBytes: figures.total, freeBytes: figures.free)
+        let servers = runningServerProcesses(processes: processes, executablePath: executablePath).filter { $0.pid != ownPid && owner($0.pid) == user() }
+        // What another loaded model is reading from its file is in use, though the system calls it available.
+        let free = max(0, figures.free - servers.reduce(0) { $0 + reusable($1.pid) })
+        let estimate = estimateMemory(modelBytes, totalBytes: figures.total, freeBytes: free)
         // A model that does not fit this computer at all is not helped by stopping anything.
         if !estimate.exceedsFree || estimate.exceedsTotal { return nil }
         var best: (pid: Int, server: RunningServer, bytes: Int)?
-        for (pid, server) in runningServerProcesses(processes: processes, executablePath: executablePath) where pid != ownPid && owner(pid) == user() {
-            guard let bytes = held(pid), bytes > 0, figures.free + bytes >= estimate.estimatedBytes else { continue }
+        for (pid, server) in servers {
+            guard let bytes = held(pid), bytes > 0, free + bytes >= estimate.estimatedBytes else { continue }
             if best == nil || bytes > best!.bytes { best = (pid, server, bytes) }
         }
         guard let best else { return nil }
@@ -100,6 +107,20 @@ public struct MemoryGuard: Sendable {
         while alive(Int32(pid)) && ProcessInfo.processInfo.systemUptime < deadline { try await Task.sleep(nanoseconds: 20_000_000) }
         if alive(Int32(pid)) { throw BlackTeamError("The other model did not stop in time. Close it yourself, then try again.") }
     }
+}
+
+/// A process's file-backed and shared resident memory on Linux (`RssFile` + `RssShmem`), which `MemAvailable` counts as free. 0 elsewhere.
+public func reusableMemory(_ pid: Int) -> Int {
+    #if os(Linux)
+    guard let text = try? String(contentsOfFile: "/proc/\(pid)/status", encoding: .utf8) else { return 0 }
+    var total = 0
+    for line in text.split(separator: "\n") where line.hasPrefix("RssFile:") || line.hasPrefix("RssShmem:") {
+        total += (Int(line.split(whereSeparator: { $0 == " " || $0 == "\t" }).dropFirst().first ?? "") ?? 0) * 1024
+    }
+    return total
+    #else
+    return 0
+    #endif
 }
 
 /// The user id that owns a process, from the system.

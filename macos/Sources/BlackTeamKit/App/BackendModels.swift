@@ -83,10 +83,11 @@ extension Backend {
         let hardware = hardwareProfile()
         let folder = URL(fileURLWithPath: dataFolder)
         var note: String?
-        if let gpu = hardware.gpu, hardware.appleSilicon == false, !hardware.gpuUsable {
+        // Graphics built into an Intel processor never run a model here, so they need no remark.
+        if let gpu = hardware.gpu, hardware.appleSilicon == false, !hardware.gpuUsable, gpu.vendor != "Intel" {
             note = (gpu.vramBytes ?? 0) > 0
-                ? "A \(gpu.name) was found, but the llama.cpp Black Team downloads uses the processor only, so models are ranked for the processor. A GPU build of llama.cpp would run bigger models faster."
-                : "A \(gpu.name) was found, but its memory could not be read, so models are ranked for the processor."
+                ? "A graphics card (\(gpu.name)) was found, but the llama.cpp Black Team downloads uses the processor only, so models are ranked for the processor. A GPU build of llama.cpp would run bigger models faster."
+                : "A graphics card (\(gpu.name)) was found, but its memory could not be read, so models are ranked for the processor."
         }
         return ModelRecommender.recommend(hardware: hardware, installed: { $0.isInstalled(in: folder) }, runtime: installer.installedRuntime(), note: note)
     }
