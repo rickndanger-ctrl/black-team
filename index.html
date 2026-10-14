@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Black Team Agent</title>
+  <meta name="description" content="Black Team Agent is a local-first AI agent harness for Linux and Mac. Run models on your own computer, use your own cloud key if you choose, and work with agents under your control. Alpha software.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Black Team Agent">
+  <meta property="og:description" content="Private AI. Total control. A local-first AI agent harness for Linux and Mac. Alpha software.">
+  <meta property="og:image" content="https://blackteamagent.com/black-team-logo.png">
+  <meta property="og:url" content="https://blackteamagent.com/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="black-team-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="black-team-180.png" sizes="180x180">
+  <link rel="stylesheet" href="site.css">
+  <script src="site.js" defer></script>
+</head>
+<body data-version="0.1.0-alpha.30">
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <nav class="nav" aria-label="Main">
+    <a class="brand" href="#top" aria-label="Black Team Agent, top of page"><img src="black-team-mark.png" width="28" height="28" alt=""><span>Black Team <span class="dim">Agent</span></span></a>
+    <div class="nav-links">
+      <a href="#watch">Watch</a>
+      <a href="#what">What it does</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#install">Install</a>
+      <a href="#screens">Screens</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <img class="hero-logo" src="black-team-logo.png" width="2048" height="768" alt="Black Team">
+  <h1 id="hero-title" class="sr-only">Black Team Agent</h1>
+  <p class="tagline">Private AI. Total control.</p>
+  <p class="lede">Black Team Agent is a local-first AI agent harness for Linux and Mac. Run models on your own computer, optionally add a cloud model with your own key, and let agents work on your files and commands under your approval.</p>
+
+  <div class="downloads">
+    <a class="btn btn-primary" data-dl="linux" href="https://github.com/rickndanger-ctrl/black-team/releases">Download for Linux <span class="btn-sub">x86-64 &middot; tar.gz</span></a>
+    <a class="btn btn-primary" data-dl="mac" href="https://github.com/rickndanger-ctrl/black-team/releases">Download for macOS <span class="btn-sub">Apple Silicon &middot; zip</span></a>
+  </div>
+  <p class="meta">
+    <span class="badge">Alpha</span>
+    Version <span data-version-text>0.1.0-alpha.30</span>.
+    <a href="https://github.com/rickndanger-ctrl/black-team/releases">All releases</a>
+  </p>
+  <p class="note">Alpha software: expect rough edges, and read the <a href="https://github.com/rickndanger-ctrl/black-team/blob/main/docs/VERIFICATION.md">verification and known limits</a> before relying on it.</p>
+</section>
+
+<section class="block" id="watch" aria-labelledby="watch-title">
+  <h2 id="watch-title">See it work</h2>
+  <p class="lead-in">72 seconds, no sound. Every run on screen is real: a model download, a chat, a coding task, and a team of agents finishing a job together. Sped-up parts say so on screen.</p>
+  <video class="film" controls preload="none" playsinline poster="video/poster.jpg" width="1920" height="1080" aria-label="Black Team Agent in 72 seconds">
+    <source src="video/black-team-agent.mp4" type="video/mp4">
+    <a href="video/black-team-agent.mp4">Download the video (MP4, 7 MB)</a>
+  </video>
+  <p class="note film-note">Also on <a href="https://youtu.be/WEKZ1CKsT0k" rel="noopener">YouTube</a>, on the <a href="https://www.youtube.com/@BlackTeamAgent" rel="noopener">Black Team Agent channel</a>. The player above loads the video from this site, not from YouTube.</p>
+</section>
+
+<section class="block" id="what" aria-labelledby="what-title">
+  <h2 id="what-title">What it does</h2>
+  <div class="grid">
+    <article class="card">
+      <h3>Your own models</h3>
+      <p>Load a compatible GGUF through llama.cpp, or connect to a local OpenAI-compatible server such as Ollama or LM Studio. Keep several models in one list and switch between them.</p>
+    </article>
+    <article class="card">
+      <h3>Chat and Code</h3>
+      <p>Chat for conversations. Code reads, searches and edits files and runs commands in your chosen folder. It measures your model's speed and sizes its work to match.</p>
+    </article>
+    <article class="card">
+      <h3>Every change shown, with Undo</h3>
+      <p>File edits appear as diffs in the conversation and can be undone. Commands that delete, install or reach the network wait for your approval.</p>
+    </article>
+    <article class="card">
+      <h3>Claude Code and Codex</h3>
+      <p>Use Claude Code or Codex under your own subscription from Code. Choose how much they may do on their own: Ask, Edit or Auto, and roll back a task's changes.</p>
+    </article>
+    <article class="card">
+      <h3>The Room</h3>
+      <p>A room per project, with members and roles. Give the team a goal: the lead plans, members work in turn, and the lead writes a report.</p>
+    </article>
+    <article class="card">
+      <h3>Memory that stays local</h3>
+      <p>A small vault of linked notes that only your local models use. It is not used in cloud conversations or in teams with a cloud member.</p>
+    </article>
+    <article class="card">
+      <h3>Work from your phone</h3>
+      <p>Pair a phone over your own Tailscale network and use the same workspace from a browser on iPhone or Android. Your computer does the work.</p>
+    </article>
+    <article class="card">
+      <h3>A terminal command</h3>
+      <p><code>black-team</code> starts a session in a terminal, or asks one question with <code>black-team -p</code>. It uses the same models, conversations, projects and memory as the app.</p>
+    </article>
+  </div>
+</section>
+
+<section class="block" id="privacy" aria-labelledby="privacy-title">
+  <h2 id="privacy-title">Your privacy</h2>
+  <p class="intro">With a local model, prompts and inference stay on your computer. These are the rules, in short. The <a href="privacy.html">privacy page</a> has more, and the full rules are in <a href="https://github.com/rickndanger-ctrl/black-team/blob/main/docs/PRIVACY.md">docs/PRIVACY.md</a>.</p>
+  <ul class="rules">
+    <li>Model requests go only to a loopback address on your computer. Black Team never switches silently to a hosted AI service.</li>
+    <li>A cloud model is opt-in: you add it with your own key. Before a private conversation would leave your computer, Black Team stops and asks, and says what would be sent.</li>
+    <li>Your key is kept in a private file readable only by you, is never shown again, and is sent only to the service you entered it for.</li>
+    <li>Agent tools run as your Linux user. The chosen workspace is a working folder, not a sandbox.</li>
+    <li>Your data stays on your computer, but it is not encrypted by Black Team. Your account, disk encryption and backups still matter.</li>
+    <li>Tools that browse the web or use online services make network requests. Phone access uses Tailscale's own account and network.</li>
+    <li>There is no Black Team account, analytics, or hosted chat backend.</li>
+  </ul>
+</section>
+
+<section class="block" id="install" aria-labelledby="install-title">
+  <h2 id="install-title">Install</h2>
+  <p class="intro">Black Team Agent does not bundle models, llama.cpp, Hermes or other harnesses. You connect those yourself, from Settings. Each release also has a <code>.sha256</code> file to check your download.</p>
+
+  <div class="platforms">
+    <article class="card">
+      <h3>Linux (x86-64)</h3>
+      <ol>
+        <li>Download <code data-file="linux">black-team-<span data-version-text>0.1.0-alpha.30</span>-linux-x64.tar.gz</code> and its <code>.sha256</code> file into one folder. <a data-dl="linux" href="https://github.com/rickndanger-ctrl/black-team/releases">Open the releases page</a> if the links do not work.</li>
+        <li>Check it: <code>sha256sum -c black-team-<span data-version-text>0.1.0-alpha.30</span>-linux-x64.tar.gz.sha256</code></li>
+        <li>Extract it: <code>tar -xzf black-team-<span data-version-text>0.1.0-alpha.30</span>-linux-x64.tar.gz</code></li>
+        <li>From the extracted folder, run <code>./install.sh</code>. No administrator access is needed. Open <strong>Black Team</strong> from your applications menu, or run <code>~/.local/bin/black-team-desktop</code>.</li>
+      </ol>
+      <p class="small">Updating: quit the app, extract the newer archive and run its <code>./install.sh</code>. Your data stays in place. <code>black-team-desktop --rollback</code> returns to the previous release. On Ubuntu 24.04 and later the window may need a one-time sandbox step; see the <a href="https://github.com/rickndanger-ctrl/black-team/blob/main/docs/DISTRIBUTION.md">installation notes</a>.</p>
+      <p class="small">The installer also links the <code>black-team</code> terminal command next to <code>black-team-desktop</code> when that name is free. The Mac app includes it, as shown in the macOS steps.</p>
+    </article>
+
+    <article class="card">
+      <h3>macOS (Apple Silicon)</h3>
+      <ol>
+        <li>Download <code data-file="mac">Black-Team-<span data-version-text>0.1.0-alpha.30</span>-mac-arm64.zip</code> and its <code>.sha256</code> file. <a data-dl="mac" href="https://github.com/rickndanger-ctrl/black-team/releases">Open the releases page</a> if the links do not work.</li>
+        <li>Check it: <code>shasum -a 256 -c Black-Team-<span data-version-text>0.1.0-alpha.30</span>-mac-arm64.zip.sha256</code></li>
+        <li>Unzip it and move <strong>Black Team.app</strong> to Applications. The app is signed and notarized by Apple.</li>
+        <li>To use the terminal command, run once: <code>/Applications/Black\ Team.app/Contents/MacOS/black-team install-command</code></li>
+      </ol>
+    </article>
+  </div>
+
+  <div class="after">
+    <h3>Next: connect a model</h3>
+    <p>On first start, Workspace lists the local model servers and model files it finds on your computer. Choose one, then choose <strong>Save and open chat</strong>. Ollama and LM Studio are found at their usual local addresses. The <a href="https://github.com/rickndanger-ctrl/black-team/blob/main/docs/MODELS.md">model setup guide</a> explains the rest.</p>
+  </div>
+</section>
+
+<section class="block" id="screens" aria-labelledby="screens-title">
+  <h2 id="screens-title">Screens</h2>
+  <div class="gallery">
+    <figure>
+      <a href="img/linux-workspace.png"><img src="img/linux-workspace.png" width="1600" height="744" loading="lazy" alt="The Workspace page on Linux: processor, memory and disk, and the local model in use"></a>
+      <figcaption>Workspace on Linux</figcaption>
+    </figure>
+    <figure>
+      <a href="img/linux-chat.png"><img src="img/linux-chat.png" width="1600" height="1000" loading="lazy" alt="A chat on Linux: a question and the local model's answer, marked "On this computer""></a>
+      <figcaption>Chat with a local model</figcaption>
+    </figure>
+    <figure>
+      <a href="img/linux-room.png"><img src="img/linux-room.png" width="1600" height="1000" loading="lazy" alt="The Room on Linux: three team members with roles, and a goal for the team"></a>
+      <figcaption>The Room</figcaption>
+    </figure>
+    <figure>
+      <a href="img/linux-cloud.png"><img src="img/linux-cloud.png" width="1600" height="1280" loading="lazy" alt="Cloud model setup on Linux: the service, its address, the key field and the models found"></a>
+      <figcaption>Cloud model setup</figcaption>
+    </figure>
+    <figure>
+      <a href="img/mac-command.png"><img src="img/mac-command.png" width="1600" height="1500" loading="lazy" alt="The Mac app's Command center: choose a model, a harness and a pace"></a>
+      <figcaption>Mac app: Command center</figcaption>
+    </figure>
+  </div>
+  <p class="note">Screens from 0.1.0-alpha.20 with sample data. Select one to see it full size.</p>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot-inner">
+    <img src="black-team-mark.png" width="40" height="40" alt="" class="foot-mark">
+    <div>
+      <p class="foot-line"><strong>Black Team Agent</strong> &middot; <span class="badge">Alpha</span> Alpha software. Expect rough edges.</p>
+      <p class="small">
+        <a href="https://github.com/rickndanger-ctrl/black-team">Source on GitHub</a> &middot;
+        <a href="https://github.com/rickndanger-ctrl/black-team/releases">Releases</a> &middot;
+        <a href="https://github.com/rickndanger-ctrl/black-team/blob/main/docs/PRIVACY.md">Privacy rules</a> &middot;
+        <a href="privacy.html">Privacy of this website</a>
+      </p>
+      <p class="small">Licence: GNU Affero General Public License, version 3 (AGPL-3.0-only). Copyright &copy; 2026 the Black Team authors. Third-party components keep their own licences.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
