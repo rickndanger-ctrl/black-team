@@ -62,6 +62,9 @@ public final class DesktopService: @unchecked Sendable {
                                           "dataFolder": .string(backend.dataFolder), "version": .string(options.version)]
         // Another Black Team on this data folder runs the local model; this one still serves everything else.
         if let notice = backend.engineLock.noticeOnce() { ready["notice"] = .string(notice) }
+        // An organization that was running when Black Team last closed carries on (Org/OrgLoop.swift). Only the Black Team that holds the
+        // engine runs the model, so only it picks tickets up: the window when it is open alone, the background service when it runs.
+        if backend.engineLock.isHeld, backend.orgAnyRunning() { backend.orgStartLoop() }
         return JSONValue.object(ready).text()
     }
 

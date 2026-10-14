@@ -64,6 +64,11 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   Codex can take a goal and hand real jobs (reading files, summarising, first drafts, tests) to your local models while it works,
   then check the results. You see who was given what, and how many tokens the local and the paid side used. You confirm
   first exactly what is sent where.
+- **An organization of agents.** In a project's [organization](docs/ORGANIZATION.md) a lead, product manager, designer, architect,
+  engineers, reviewer, QA, docs writer and release manager work through tickets (intake, spec, design, plan, build, review, QA, ship)
+  like a small company. You approve the spec and shipping; each ticket is built on its own git branch and nothing is merged for you; a
+  daily ceiling on paid work pauses it; a daily stand-up report says what moved. Local models do the bulk, so expect hours for a full
+  ticket, and read the work before you merge it.
 - **Projects in the sidebar.** Name a project and it gets a folder to work in
   and its own notes and journal. Open it later and pick up where you left off.
 - **See what your computer is doing.** The desktop shows live whole-system CPU

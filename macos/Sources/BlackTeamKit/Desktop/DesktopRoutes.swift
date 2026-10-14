@@ -99,6 +99,8 @@ final class DesktopRoutes: @unchecked Sendable {
             try who.requireDesktopHTTP()
             return try await mine { try await self.room(head, body) }
         }
+        // An organization (Org/OrgRoutes.swift); a phone may read the tickets, add one and approve a gate.
+        if OrgRoutes.owns(path) { return try await mine { try await OrgRoutes(self.backend).handle(head, body: body, who: who) } }
         return nil
     }
 

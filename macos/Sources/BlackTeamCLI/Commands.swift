@@ -807,6 +807,9 @@ func ledgerText(_ ledger: RunLedger) -> String {
         case "room":
             return await runRoom(backend)
 
+        case "org", "ticket":
+            return await runOrgCommand(command, .local(backend))
+
         case "memory":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()
             switch action {
