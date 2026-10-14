@@ -36,6 +36,12 @@ import BlackTeamTerminal
     case .projectLocalOnly, .phoneNeedsMac:
         emitError(check.message + "\n"); return 1
     }
+    if let question = try? await backend.startApproval() {
+        guard options.stopOther else {
+            emitError(question.question + "\nNothing was stopped or sent. Add --stop-other to stop it and go on.\n"); return 1
+        }
+        do { try await backend.approveStop(pid: question.pid) } catch { emitError(describe(error) + "\n"); return 1 }
+    }
     let workspace = options.code ? (options.workspace ?? FileManager.default.currentDirectoryPath) : nil
     let sent: SubmitResult
     do {

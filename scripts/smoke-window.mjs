@@ -108,21 +108,23 @@ try {
   if (state.version === version) pass(`the window reports version ${version}`); else fail('the window reports its version', `it says ${state.version}, the package says ${version}`);
 
   if (!state.setupComplete) {
-    const recommended = await until(() => page.run(`document.querySelector('.starter-models .starter-tag')?.closest('li').querySelector('strong').innerText || ''`), 15000);
-    if (recommended) pass(`the starter list recommends a model (${recommended})`); else fail('the starter list recommends a model');
+    const recommended = await until(() => page.run(`document.querySelector('[aria-label="Recommended for this computer"] li strong')?.innerText || ''`), 15000);
+    if (recommended) pass(`Get a model recommends a model for this computer (${recommended})`); else fail('Get a model recommends a model for this computer');
     if (options.install) {
       const start = Date.now();
-      const list = JSON.parse(await page.run(`window.blackTeam.request('starter-list').then(JSON.stringify)`));
+      const list = JSON.parse(await page.run(`window.blackTeam.request('models-recommend').then(JSON.stringify)`));
       const name = list.models.find(entry => entry.model.id === options.install)?.model.name;
-      const pressed = name ? await press('Download', `[...document.querySelectorAll('.starter-models li')].find(entry => entry.querySelector('strong').innerText === ${JSON.stringify(name)})`) : `no starter model is called ${options.install}`;
+      // The full list is folded away; open it so every model's Download button can be pressed.
+      await page.run(`(() => { const all = document.querySelector('.get-all'); if (all) all.open = true; return ''; })()`);
+      const pressed = name ? await press('Download', `[...document.querySelectorAll('.starter-list li')].find(entry => entry.querySelector('strong')?.innerText === ${JSON.stringify(name)})`) : `no catalogue model is called ${options.install}`;
       let problem = pressed;
       if (!pressed) {
-        const progress = await until(async () => { const now = await status(); return now.starterInstall.running || now.setupComplete; }, 15000);
+        const progress = await until(async () => { const now = await status(); return now.modelInstall?.running || now.setupComplete; }, 15000);
         if (!progress) problem = 'pressing Download started nothing';
         else {
-          const done = await until(async () => { state = await status(); return state.setupComplete || state.starterInstall.error || !state.starterInstall.running; }, 30 * 60000, 1000);
+          const done = await until(async () => { state = await status(); return state.setupComplete || state.modelInstall?.error || !state.modelInstall?.running; }, 30 * 60000, 1000);
           if (!done) problem = 'the download did not finish in 30 minutes';
-          else if (state.starterInstall.error) problem = state.starterInstall.error;
+          else if (state.modelInstall?.error) problem = state.modelInstall.error;
         }
       }
       if (problem) fail(`the Download button sets up starter model ${options.install}`, problem); else { pass(`the Download button sets up starter model ${options.install}`); console.log(`      took ${seconds(start)} s`); }

@@ -1,11 +1,55 @@
 # Model connections
 
-Black Team accepts model choices from the user (the Mac app can also use a cloud service, see
-below; Linux is local only). It loads GGUF with an owned
+Black Team accepts model choices from the user (both apps can also use a cloud service, see
+below). It loads GGUF with an owned
 llama.cpp runtime, or connects to an existing local OpenAI-compatible server.
 A model's architecture, file format, quantization and hardware requirements are
 handled by the inference engine. Black Team cannot directly load every weight
-format and does not convert or download models automatically.
+format and does not convert models. It downloads a model only when you choose
+one (see **Get a model**), and never in the background.
+
+## Get a model
+
+**Settings → Models** (and the first-run setup) has **Get a model**; the command
+line has `black-team recommend`, `search` and `download`.
+
+- **Best for this computer.** Black Team reads this computer's physical cores,
+  memory, free disk space in its models folder and, where it can, the graphics
+  card (Apple silicon shares memory with the graphics; on Linux an AMD card's memory
+  is read from sysfs, and an NVIDIA card's is estimated from its PCI memory window,
+  or left unknown; no program such as nvidia-smi is run). Each model in the
+  catalogue is marked *fits well*, *tight* or *too big*, with an **estimated** speed
+  and what it is good for (chat, Code agent with tools, images). One is picked as
+  best for this computer, one as best for Code (tools), and the fastest is named
+  when it is another.
+- **How it decides.** A model needs its file plus working memory (the larger of
+  2 GiB and a quarter of the file; 1.5 GiB on a graphics card's own memory). It
+  fits well within 60% of memory, tightly within 85%. Speed is about
+  memory bandwidth divided by the bytes read for each word: 4 GB/s per physical core
+  up to 45 GB/s on a processor, the chip family's bandwidth on Apple silicon,
+  and a rough figure by memory size for a card. A mixture-of-experts model reads only
+  its active share. This is a rule of thumb, shown as a range, not a measurement.
+  The pick is the most capable model that fits well and writes at a comfortable
+  speed; a small weight set by the maintainers breaks near-ties (it favours Ornith,
+  the model Black Team is built around). On Linux the llama.cpp Black Team
+  downloads uses the processor only, so a graphics card is counted only when you
+  run with GPU layers set (a GPU build of llama.cpp of your own).
+- **The catalogue** runs from a 0.5 GB test model to gpt-oss 120B (63 GB), and
+  includes Ornith 1.5 35B-A3B (from its makers) and Qwen3.8 27B (unsloth). Every
+  file's size and SHA-256 were read from the Hugging Face API on 2026-10-13.
+- **Any model on Hugging Face.** Search for a name, open a repository and Black
+  Team lists its GGUF files with size and quantisation, marks which fit this
+  computer, and suggests Q4_K_M when it fits. A vision file (mmproj) and a speed-up
+  (MTP or draft) file in the same repository can be downloaded with it. These are
+  made by other people: the licence is shown with the file. A model split into
+  several parts, or a repository that asks you to accept terms (Black Team does not
+  sign in to Hugging Face), cannot be downloaded; the window says so.
+- **Download, then ready.** The download resumes if stopped (Pause keeps what
+  arrived, Cancel deletes it), checks the size and the SHA-256 Hugging Face gives
+  for the file, and refuses to start without enough free disk space. If no llama.cpp
+  runtime is installed, Black Team installs one first. Then the model is saved with a
+  context that fits this computer; it becomes the model in use when none was set
+  up, and otherwise joins your list. The window then says "Ready. Start chatting."
 
 ## GGUF / llama.cpp
 
@@ -31,7 +75,7 @@ libraries, insufficient RAM/VRAM, or incompatible runtime endpoints. The alpha's
 runtime startup deadline is two minutes. Large or slow models may need a
 separately started server instead.
 
-## Cloud models (macOS app only)
+## Cloud models
 
 In the Mac app, **Available configurations → Cloud model** adds a hosted model. Choose a service
 (each preset only fills in the address) or **Another service**, paste your API key (a secure field; it
@@ -164,6 +208,46 @@ length capped by the memory left beside its weights (32,768, 16,384 or 8,192
 tokens); raise or lower it in Settings. The Workspace page lists what the running
 launch used, such as "CPU · 6 threads · q8 cache · vision · MTP draft".
 
+## Optimizing a model
+
+The settings in "How a model file is started" are sensible guesses. **Optimize** measures this
+computer and keeps what is fastest for one model. In **Settings → Models** each model file shows
+either "Optimized for this computer: 6 threads · 32,768 context · MTP draft · reads 54 tokens/s,
+writes 12" or an **Optimize** button. From the terminal: `black-team optimize [model]`.
+
+What it does. It starts the model up to four times (about 3 minutes in all) and stops it again after
+each test. The first start uses the settings Black Team uses today, at the largest standard context
+(65,536, 32,768, 16,384 or 8,192 tokens, never more than the model was trained for) that loads and
+leaves memory to spare; a size that does not load, or leaves less than 2 GB (or an eighth of your
+memory), is stepped down. The launches left try one change each, only where the llama.cpp build
+understands it and the file exists: a graphics chip, the draft or MTP model switched off, the
+performance cores only (Apple silicon and other CPUs that report them), and one thread fewer than the
+physical cores. A change is kept only if it is at least 3% better.
+
+What is measured. Each start gets the same test: a fixed text of about 1,000 tokens, then 64 tokens
+written, with the prompt cache off. The speeds are the ones the model's own server reports (how fast it
+read the prompt and how fast it wrote), plus the memory the model process holds. Reading counts less
+than writing when settings are compared.
+
+What it never does. It does not run while a response is being written, and nothing else starts the
+model until it is done. You can stop it at any point. When it ends or is stopped, the model is as
+you left it: stopped if it was stopped, started again if it was running. Stopping discards the run.
+
+What is kept. The result is saved per model in `tuning.json` in Black Team's data folder (readable
+only by you), with the llama.cpp program, the model file size and the hardware it was measured with.
+The chosen threads, graphics-chip and draft settings are used the next time the model starts; the
+chosen context becomes the model's context setting, which you can still change in Settings. Your own
+settings win: once you change the threads, graphics-chip or draft setting of an optimized model in
+Settings, Black Team uses yours and stops applying the result until you optimize again. If the
+llama.cpp program, the model file or the computer's hardware changes, the result is marked **Needs
+optimizing again** and Black Team goes back to its usual settings until you do. The numbers are
+estimates for this computer only: a different computer, a different load or a hotter day gives
+different ones, and they say nothing about quality.
+
+A model on a server that someone else runs is only measured, with one test message and the speed
+it reports; Black Team changes nothing there because its settings belong to that server. A cloud
+model has nothing to optimize.
+
 ## Switching and sharing
 
 Every model you set up is kept in a list, so you set each one up once. With two
@@ -177,10 +261,26 @@ The model in use cannot be removed. The list holds up to 24 models and is stored
 in `saved-models.json` in Black Team's data folder, readable only by you because
 an entry can hold a local server key.
 
-A model on a local server has to be running for Black Team to use it. If your
-computer can hold only one model in memory, start that server yourself before
-switching to it, or set the model up as a **Model file** so Black Team starts and
-stops it for you.
+A model Black Team found running on your computer works when you choose it, even
+if that server has since stopped (for example because you loaded a different model
+into memory). When nothing answers at the saved address and the model is a GGUF
+file on this computer, Black Team starts the file itself with llama.cpp, the same
+way it starts a **Model file**: the vision projector and draft model beside it, the
+saved context and threads, and it stops the model when you quit. The list keeps one
+entry for it. If the server is running again, Black Team connects to it as before.
+If there is no llama.cpp on this computer to start it with, Black Team says so;
+download it under **Settings → Models → Get a starter model**. A model on a server
+that Black Team did not find as a file (a model name from Ollama, for example) still
+has to be running; start that server yourself.
+
+Before Black Team starts a model itself, it checks that the model fits in memory
+beside any other llama.cpp-style model server you are running. If it does not, it
+asks, for example "Qwen3 27B is using 18.4 GB. Stop it to start Gemma 3 4B?", and
+starts nothing yet. Choose **Stop it and send** (or **Stop it and start**) and
+Black Team ends that one server and starts your model; **Cancel** changes nothing.
+It only ever stops a model server that you own, never anything else, and never
+without that answer. On the command line it asks the same question; with `-p`,
+`chat` or `code` add `--stop-other` to say yes beforehand.
 
 To add a model, stop active work, then in **Settings → Models** choose **Change
 model** in the connected-model card to unlock the setup form. Save the new

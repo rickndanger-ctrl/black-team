@@ -296,14 +296,17 @@ import BlackTeamTerminal
     func teamCommand(_ argument: String) async throws {
         guard let goal = Slash.words(argument).first, !goal.isEmpty else { problem("Use /team \"<goal>\"."); return }
         guard let id = projectId else { problem("A team works in a project's room. Choose one with /project first."); return }
-        let preview = try backend.roomTeamPreview(projectId: id, goal: goal)
+        // A paid lead drives: it hands work to the other members while it works (docs/ROOM.md). A local lead plans, then members work in turn.
+        let driven = backend.roomCanDrive(projectId: id, leadId: nil)
+        let preview = try backend.roomTeamPreview(projectId: id, goal: goal, leadId: nil, reviewerId: nil, driven: driven)
         say(preview.agreement + "\n")
         for m in preview.members {
             say("  \(m.name)" + (m.role.isEmpty ? "" : " [\(m.role)]") + " - \(m.kind)" + (m.kind == "cloud" ? " (\(m.provider))" : "")
-                + (m.lead ? " - lead" : "") + (m.reviewer ? " - reviewer" : "") + (m.usable ? "" : " - cannot be used: \(m.reason)"))
+                + (m.lead ? (driven ? " - driver" : " - lead") : "") + (m.reviewer ? " - reviewer" : "") + (m.usable ? "" : " - cannot be used: \(m.reason)"))
         }
         guard confirm("\nRun the team?") else { say("Nothing was started."); return }
-        _ = try backend.roomTeamRun(projectId: id, goal: preview.goal, leadId: preview.leadId, reviewerId: preview.reviewerId, digest: preview.digest)
+        _ = try backend.roomTeamRun(projectId: id, goal: preview.goal, leadId: preview.leadId, reviewerId: preview.reviewerId, digest: preview.digest,
+                                    from: .mac, driven: driven)
         var seen: TeamLogEntry?
         Interrupts.stopReply.clear(); Interrupts.replying.set()
         defer { Interrupts.replying.clear() }
@@ -326,6 +329,7 @@ import BlackTeamTerminal
         await backend.roomTeamSettle()
         if let final = try backend.room(projectId: id).team {
             if !final.report.isEmpty { say("\n" + style.bold("Report:") + "\n" + final.report) }
+            if let ledger = final.ledger { say("\n" + ledgerText(ledger)) }
             say("\nTeam run \(final.phase.rawValue)" + (final.message.isEmpty ? "" : ": \(final.message)") + " (\(final.runs) member runs).")
         }
     }
@@ -374,8 +378,17 @@ import BlackTeamTerminal
         return false
     }
 
+    /// The question asked before a model start that would not fit beside another model server. True when the message may go.
+    func startGate() async -> Bool {
+        guard let question = try? await backend.startApproval() else { return true }
+        guard confirm(style.yellow("Approval needed: ") + question.question) else { say("Nothing was stopped or sent."); return false }
+        do { try await backend.approveStop(pid: question.pid); return true }
+        catch { problem(describe(error)); return false }
+    }
+
     func send(_ text: String) async {
         guard await privacyGate() else { return }
+        guard await startGate() else { return }
         let sent: SubmitResult
         let images = pendingImages.map(\.upload)
         do {

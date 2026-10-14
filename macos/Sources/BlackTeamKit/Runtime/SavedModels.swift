@@ -136,6 +136,16 @@ public final class SavedModels: @unchecked Sendable {
         return key
     }
 
+    /// Changes a model already in the list, keeping its place. A model that is not in the list is left alone.
+    public func replace(_ input: ModelConfig) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard let model = cleanModel(input, cloud: cloud) else { throw BlackTeamError("This model cannot be saved to your list.") }
+        let key = keyOf(model)
+        let stored = load()
+        guard stored.models.contains(where: { keyOf($0) == key }) else { return }
+        try write(stored.models.map { keyOf($0) == key ? model : $0 }, stored.ignored)
+    }
+
     public func forget(_ key: String) throws {
         lock.lock(); defer { lock.unlock() }
         let stored = load()

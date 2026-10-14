@@ -34,7 +34,7 @@ public func inspectHermes(source: String?, python: String = "") -> HermesInstall
 }
 
 public func discoverLinux(home: String = NSHomeDirectory(), env: [String: String] = ProcessInfo.processInfo.environment,
-                          saved: HermesSettings = HermesSettings()) -> LinuxDiscovery {
+                          saved: HermesSettings = HermesSettings(), extraSources: [String] = []) -> LinuxDiscovery {
     var seen = Set<String>()
     let dirs = ((env["PATH"] ?? "").split(separator: ":", omittingEmptySubsequences: false).map(String.init) + [home + "/.local/bin", home + "/bin"])
         .filter { $0.hasPrefix("/") && seen.insert($0).inserted }
@@ -44,7 +44,7 @@ public func discoverLinux(home: String = NSHomeDirectory(), env: [String: String
     func parent(_ path: String) -> String { (path as NSString).deletingLastPathComponent }
     var sources: [String] = []
     for item in [saved.source, home + "/.hermes/hermes-agent", home + "/hermes-agent", home + "/Projects/hermes-agent",
-                 home + "/.local/share/hermes/hermes-agent", resolved.isEmpty ? "" : parent(parent(parent(resolved)))] where !item.isEmpty && !sources.contains(item) {
+                 home + "/.local/share/hermes/hermes-agent"] + extraSources + [resolved.isEmpty ? "" : parent(parent(parent(resolved)))] where !item.isEmpty && !sources.contains(item) {
         sources.append(item)
     }
     let hermes = sources.compactMap { inspectHermes(source: $0, python: $0 == saved.source ? saved.python : "") }

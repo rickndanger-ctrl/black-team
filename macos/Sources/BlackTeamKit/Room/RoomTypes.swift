@@ -87,6 +87,8 @@ public struct RoomMemberView: Codable, Equatable, Sendable {
     public var usable: Bool
     /// Why it cannot be used now (model missing, tool not installed, project is local only); empty when usable.
     public var reason: String
+    /// A paid member that can drive a run (a cloud model that does Code work, Claude Code or Codex). Nil in files an older build wrote.
+    public var canDrive: Bool? = nil
 }
 
 public struct RoomState: Codable, Equatable, Sendable {
@@ -247,7 +249,7 @@ public struct TeamLogEntry: Codable, Equatable, Sendable {
     public var at: String
     public var memberId: String?
     public var memberName: String
-    /// plan, work, review, report or system.
+    /// plan, work, review, report, system or delegate.
     public var kind: String
     public var taskId: String?
     public var text: String
@@ -279,14 +281,20 @@ public struct TeamRun: Codable, Equatable, Sendable {
     public var message: String
     /// The newest `TeamLimits.log` entries, oldest first.
     public var log: [TeamLogEntry]
+    /// "driven" when a paid driver handed work to the other members (Room/RoomDriver.swift); nil for the plan, work, review, report pipeline.
+    public var mode: String? = nil
+    /// Driven runs: what the driver handed to whom, newest last (at most `DriveLimits.kept`).
+    public var delegations: [Delegation]? = nil
+    public var ledger: RunLedger? = nil
 
-    enum CodingKeys: String, CodingKey { case id, goal, leadId, reviewerId, phase, current, runs, started, updated, report, message, log }
+    enum CodingKeys: String, CodingKey { case id, goal, leadId, reviewerId, phase, current, runs, started, updated, report, message, log, mode, delegations, ledger }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id); try c.encode(goal, forKey: .goal); try c.encode(leadId, forKey: .leadId)
         try c.encode(reviewerId, forKey: .reviewerId); try c.encode(phase, forKey: .phase); try c.encode(current, forKey: .current)
         try c.encode(runs, forKey: .runs); try c.encode(started, forKey: .started); try c.encode(updated, forKey: .updated)
         try c.encode(report, forKey: .report); try c.encode(message, forKey: .message); try c.encode(log, forKey: .log)
+        try c.encodeIfPresent(mode, forKey: .mode); try c.encodeIfPresent(delegations, forKey: .delegations); try c.encodeIfPresent(ledger, forKey: .ledger)
     }
 }
 
@@ -319,10 +327,22 @@ public struct TeamPreview: Codable, Equatable, Sendable {
     /// The exact text to show before the run.
     public var agreement: String
     public var digest: String
+    /// "driven" or "pipeline". Nil in a preview an older build made (a pipeline).
+    public var mode: String? = nil
+    /// Driven: the delegations, minutes and paid tokens the run is capped at.
+    public var caps: DriveCaps? = nil
+}
+
+/// The limits of a driven run, shown in the agreement.
+public struct DriveCaps: Codable, Equatable, Sendable {
+    public var delegations: Int
+    public var minutes: Int
+    public var paidTokens: Int
+    public static let standard = DriveCaps(delegations: DriveLimits.delegations, minutes: TeamLimits.minutes, paidTokens: DriveLimits.paidTokens)
 }
 
 enum TeamStore {
-    static let kinds: Set<String> = ["plan", "work", "review", "report", "system"]
+    static let kinds: Set<String> = ["plan", "work", "review", "report", "system", "delegate"]
 
     /// Text for the log or the board: control characters become spaces, so what is written can always be read back.
     static func text(_ raw: String, _ limit: Int, multiline: Bool = true) -> String {
@@ -351,6 +371,9 @@ enum TeamStore {
                        current: RoomStore.clean(v["current"], max: 36), runs: runs, started: RoomStore.clean(v["started"], max: 40) ?? "",
                        updated: RoomStore.clean(v["updated"], max: 40) ?? "",
                        report: RoomStore.clean(v["report"], max: TeamLimits.report, multiline: true, allowEmpty: true) ?? "",
-                       message: RoomStore.clean(v["message"], max: TeamLimits.message, multiline: true, allowEmpty: true) ?? "", log: log)
+                       message: RoomStore.clean(v["message"], max: TeamLimits.message, multiline: true, allowEmpty: true) ?? "", log: log,
+                       mode: v["mode"]?.string == "driven" ? "driven" : nil,
+                       delegations: (v["delegations"]?.array).map { Array($0.compactMap(DriveStore.delegation).suffix(DriveLimits.kept)) },
+                       ledger: v["ledger"].flatMap(DriveStore.ledger))
     }
 }

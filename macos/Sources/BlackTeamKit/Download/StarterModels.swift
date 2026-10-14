@@ -41,6 +41,16 @@ public struct StarterModel: Codable, Sendable, Equatable, Identifiable {
     public var thinks: Bool = true
     /// Present when the model can read images and has a projector to download.
     public var vision: StarterVision? = nil
+    /// The longest context the model was trained for (from the repository's GGUF header). Nil when not recorded.
+    public var trainingContext: Int? = nil
+    /// A speed-up file from the same repository (an MTP or draft head), saved beside the model when asked for.
+    public var draft: StarterVision? = nil
+    /// For a mixture-of-experts model: the share of its weights used for each word (active parameters over all parameters, from the
+    /// model's name and card). Nil for a dense model, which uses all of them. Speed estimates read the weights that are used.
+    public var activeFraction: Double? = nil
+    /// A maintainers' weight for "best for this computer", 1.0 unless stated: raises a model Black Team is built around and lowers one
+    /// that has been overtaken. It only breaks near-ties between sizes; it never makes a model fit.
+    public var quality: Double = 1.0
 
     public var url: URL { URL(string: "https://huggingface.co/\(repo)/resolve/main/\(filename)")! }
 
@@ -79,7 +89,8 @@ public enum StarterModels {
             bytes: 532_517_120, sha256: "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
             license: "Apache-2.0", contextSize: 8192, toolCalling: false, thinks: false,
             vision: StarterVision(repo: "unsloth/Qwen3.5-0.8B-GGUF", filename: "mmproj-F16.gguf", localName: "Qwen3.5-0.8B-mmproj-F16.gguf",
-                                  bytes: 204_987_232, sha256: "56e4c6cfe73b0c82e3e82bc518d7591997e61d81f723fc41a586f4fa69ea2453")),
+                                  bytes: 204_987_232, sha256: "56e4c6cfe73b0c82e3e82bc518d7591997e61d81f723fc41a586f4fa69ea2453"),
+            trainingContext: 262144),
         StarterModel(
             id: "qwen3.5-4b", name: "Qwen3.5 4B (small)",
             summary: "A good everyday chat model that runs comfortably on any recent \(Place.kind).",
@@ -87,7 +98,8 @@ public enum StarterModels {
             bytes: 2_740_937_888, sha256: "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
             license: "Apache-2.0", contextSize: 16384, toolCalling: true,
             vision: StarterVision(repo: "unsloth/Qwen3.5-4B-GGUF", filename: "mmproj-F16.gguf", localName: "Qwen3.5-4B-mmproj-F16.gguf",
-                                  bytes: 672_423_616, sha256: "cd88edcf8d031894960bb0c9c5b9b7e1fea6ebee02b9f7ce925a00d12891f864")),
+                                  bytes: 672_423_616, sha256: "cd88edcf8d031894960bb0c9c5b9b7e1fea6ebee02b9f7ce925a00d12891f864"),
+            trainingContext: 262144),
         StarterModel(
             id: "ornith-1.5-9b", name: "Ornith 1.5 9B (medium)",
             summary: "Smarter answers and reliable use of tools; the best starting point for the Code agent.",
@@ -95,13 +107,14 @@ public enum StarterModels {
             bytes: 5_780_090_816, sha256: "70c112196e0b7023803c9762752e46d29e612a92c83f995bc3ba1ceb07e8fab6",
             license: "MIT", contextSize: 32768, toolCalling: true,
             vision: StarterVision(repo: "ornith-ai/Ornith-1.5-9B-GGUF", filename: "mmproj-Ornith-1.5-9B-BF16.gguf", localName: "Ornith-1.5-9B-mmproj-BF16.gguf",
-                                  bytes: 921_704_672, sha256: "626f9f90627402a6bf4a999111d0fbd69b5fcca7aa8ba089d69e5f10e8858e1d")),
+                                  bytes: 921_704_672, sha256: "626f9f90627402a6bf4a999111d0fbd69b5fcca7aa8ba089d69e5f10e8858e1d"),
+            trainingContext: 262144, quality: 1.35),
         StarterModel(
             id: "qwen3-14b", name: "Qwen3 14B (large)",
             summary: "The most capable of the starter models; needs a \(Place.kind) with plenty of memory.",
             repo: "Qwen/Qwen3-14B-GGUF", filename: "Qwen3-14B-Q4_K_M.gguf",
             bytes: 9_001_752_960, sha256: "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",
-            license: "Apache-2.0", contextSize: 32768, toolCalling: true),
+            license: "Apache-2.0", contextSize: 32768, toolCalling: true, trainingContext: 40960, quality: 0.9),
     ]
 
     public static func model(id: String) -> StarterModel? { all.first { $0.id == id } }

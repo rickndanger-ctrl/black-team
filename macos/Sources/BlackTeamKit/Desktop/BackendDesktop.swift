@@ -32,7 +32,7 @@ extension Backend {
     func desktopStatusJSON() async throws -> JSONValue {
         // Read first: a download that finishes while the status is being gathered must not be reported as done beside a status
         // from before it finished.
-        let visionInstallBefore = visionInstall.json, starterInstallBefore = starterInstall.json
+        let visionInstallBefore = visionInstall.json, starterInstallBefore = starterInstall.json, modelInstallBefore = modelInstall.json
         let status = try await self.status()
         var json = JSONValue.encoded(status).object ?? [:]
         let config = try configStore.read()
@@ -46,9 +46,16 @@ extension Backend {
         json["access"] = "desktop"
         // Cloud models: a saved cloud model always holds its key (an entry without one is not kept), but the key itself is never sent.
         json["models"] = .array((json["models"]?.array ?? []).map { $0["kind"]?.string == "cloud" ? $0.setting("keyConfigured", .bool(true)) : $0 })
+        // Optimizing: how the one in progress stands, and what each model's last result says (stale, if this computer or the program changed).
+        json["models"] = .array((json["models"]?.array ?? []).map { item in
+            item.setting("tuning", item["key"]?.string.flatMap { savedModels.find($0) }.map { tuningInfo(for: $0) } ?? .null)
+        })
+        json["optimize"] = optimizeStatus()
         // Subscription agents found on this computer. Whether one is signed in is learned only when it runs (a reply says `needsSignIn`).
         json["visionInstall"] = visionInstallBefore
         json["starterInstall"] = starterInstallBefore
+        json["setupRun"] = setupRun.json
+        json["modelInstall"] = modelInstallBefore
         json["agents"] = .array(AgentService.allCases.map { DesktopControl.agentJSON($0, installed: agentInstalled($0)) })
         if json["job"] == nil { json["job"] = .null }   // the web app reads `job`, which is null when nothing runs
         // As lib/server.cjs: Hermes is offered when this service has the runner's scripts and Hermes is enabled in its settings.

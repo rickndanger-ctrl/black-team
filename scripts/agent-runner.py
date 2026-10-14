@@ -67,6 +67,18 @@ atexit.register(_run_cleanup)
 _install_single_query_signal_handlers(cli)
 emitter=StreamJsonEmitter(model=getattr(cli,'model',''),session_id=cli.session_id or '')
 
+def tool_sizes(tools):
+    """Characters of each tool description sent to the model (Black Team shows these as the cost of a tool group)."""
+    import json
+    sizes={}
+    for tool in tools or []:
+        try:
+            definition=tool.get('function',tool)
+            sizes[str(definition['name'])]=len(json.dumps(definition))
+        except Exception:
+            continue
+    return sizes
+
 def approval(command,description,**kwargs):
     registered=get_plugin_manager().get_approval_transport('companion')
     if registered is None:return 'deny'
@@ -84,6 +96,7 @@ try:
     emitter.attach(cli.agent)
     cli.agent.status_callback=lambda phase,message: emitter._emit({'type':'camp_status','phase':str(phase),'message':str(message)})
     emitter._emit({'type':'camp_status','phase':'ready','message':f'Hermes tools ready · {runtime_context:,} token context · local compaction enabled'})
+    emitter._emit({'type':'black_team_tools','tools':tool_sizes(getattr(cli.agent,'tools',None))})
     # Hermes owns persistence and tool cleanup. Its existing history is restored by the session owner.
     result=cli.agent.run_conversation(user_message=Path(args.query_file).read_text(),conversation_history=cli.conversation_history)
     code=1 if result.get('failed') or result.get('partial') or result.get('completed') is False else 0

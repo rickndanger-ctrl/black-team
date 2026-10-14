@@ -31,7 +31,7 @@ private func isHelperFile(_ name: String) -> Bool {
 }
 private func isGGUF(_ name: String) -> Bool { name.range(of: #"\.gguf$"#, options: [.regularExpression, .caseInsensitive]) != nil }
 
-private func label(_ value: String) -> String {
+func label(_ value: String) -> String {
     String(((value as NSString).lastPathComponent).replacingOccurrences(of: #"\.gguf$"#, with: "", options: [.regularExpression, .caseInsensitive]).prefix(120))
 }
 
@@ -104,7 +104,13 @@ public func processExecutablePath(_ pid: Int) -> String? {
 /// processes with their command lines; `executablePath` gives the program of a process id.
 public func runningServers(processes: () -> AnySequence<ProcessEntry> = SystemInfo.runningProcesses,
                            executablePath: (Int) -> String? = processExecutablePath) -> [RunningServer] {
-    var found: [RunningServer] = []
+    runningServerProcesses(processes: processes, executablePath: executablePath).map(\.server)
+}
+
+/// The same servers with the id of the process that runs each, for the one caller that may have to stop one.
+public func runningServerProcesses(processes: () -> AnySequence<ProcessEntry> = SystemInfo.runningProcesses,
+                                   executablePath: (Int) -> String? = processExecutablePath) -> [(pid: Int, server: RunningServer)] {
+    var found: [(pid: Int, server: RunningServer)] = []
     for entry in processes().prefix(20000) {
         let argv = entry.argv.filter { !$0.isEmpty }
         guard let first = argv.first, serverNames.contains((first as NSString).lastPathComponent) else { continue }
@@ -120,7 +126,7 @@ public func runningServers(processes: () -> AnySequence<ProcessEntry> = SystemIn
         guard let parsed = Double((value("--port") ?? "8080").trimmingCharacters(in: .whitespaces)), parsed.rounded() == parsed, parsed >= 1, parsed <= 65535 else { continue }
         let executable = executablePath(entry.pid) ?? ""
         let model = value("-m", "--model") ?? ""
-        found.append(RunningServer(port: Int(parsed), file: model, executable: (executable as NSString).lastPathComponent == "llama-server" ? executable : ""))
+        found.append((entry.pid, RunningServer(port: Int(parsed), file: model, executable: (executable as NSString).lastPathComponent == "llama-server" ? executable : "")))
     }
     return found
 }

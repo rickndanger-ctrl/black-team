@@ -33,6 +33,8 @@ public final class Backend: @unchecked Sendable {
     public let configStore: ConfigStore
     public let history: History
     public let savedModels: SavedModels
+    /// What optimizing a model measured, per model (Runtime/Tune.swift).
+    public let tuning: TuningStore
     public let memory: Memory
     public let integrations: Integrations
     public let images: ImageStore
@@ -81,12 +83,34 @@ public final class Backend: @unchecked Sendable {
     var phoneOptions = PhoneOptions()
     /// The team run in progress (App/BackendTeam.swift); nil when none is running.
     var teamControl: TeamControl?
+    /// Driven runs in progress and the member runs beneath them (App/BackendDriver.swift).
+    let drivers = DriverRegistry()
+    /// The `black-team` program a driven run's MCP server is started from; nil finds it (tests set it).
+    var bridgeProgramOverride: String?
+    /// Replaces the standard limits of a driven run (tests use small ones).
+    var driveCapsOverride: DriveCaps?
     /// Set only by the Linux desktop service (Desktop/): where the app's scripts are, and that Hermes is supported. Nil on the Mac.
     var desktopOptions: DesktopOptions?
     /// The window's vision file download and how far it is (Desktop/DesktopVision.swift). Idle everywhere else.
     let visionInstall = VisionInstallState()
     /// The window's starter model download, likewise.
     let starterInstall = VisionInstallState()
+    /// The optimization in progress or last finished (App/BackendTune.swift), and what it measures and starts with. Replaced only by tests.
+    let tuneState = TuneState()
+    var tuneEnvironment = TuneEnvironment()
+    var tuneTrial: (@Sendable (ConfigStore, Int) -> BackendRuntime)?
+    /// The "Set up your agents" run in progress and how far each step is (Desktop/DesktopSetup.swift). Idle until a run starts.
+    let setupRun = SetupRunState()
+    /// What the setup plan reads about this computer's command path. Tests point it at a folder of their own.
+    var setupEnvironment = ProcessInfo.processInfo.environment
+    /// Tests replace the Hermes installer so nothing is downloaded or run.
+    var hermesInstallerOverride: (@Sendable (FileDownloading) -> HermesInstalling)?
+    /// The window's "Get a model" download (App/BackendModels.swift, Desktop/DesktopModels.swift), likewise.
+    let modelInstall = ModelInstallState()
+    /// How Hugging Face is asked (search, a repository's files). Tests replace it; the app talks to huggingface.co only when asked.
+    var hubFetch: HTTPFetch = LocalHTTP.fetch
+    /// Tests only: pretend this computer is something else.
+    var hardwareOverride: HardwareProfile?
 
     private var keeperFile: String { dataFolder + "/keeper.json" }
     private var projectsFile: String { dataFolder + "/projects.json" }
@@ -110,6 +134,8 @@ public final class Backend: @unchecked Sendable {
         try privateDirectory(dataFolder)
         configStore = try ConfigStore(stateDir: dataFolder, cloud: cloud)
         savedModels = try SavedModels(stateDir: dataFolder, cloud: cloud)
+        let tuningStore = TuningStore(stateDir: dataFolder)
+        tuning = tuningStore
         // Someone who set up a model before the list existed sees it there from the start.
         if let current = try? configStore.read().model, savedModels.read().isEmpty,
            (current.source == "cloud" ? !current.id.isEmpty && !current.apiKey.isEmpty
@@ -126,9 +152,15 @@ public final class Backend: @unchecked Sendable {
         let sharedLock = EngineLock(dataFolder: dataFolder, program: program ?? EngineLock.defaultProgram())
         sharedLock.acquire()
         engineLock = sharedLock
-        let backendRuntime = customRuntime ?? ModelRuntime(configStore: configStore, launchGuard: {
+        let madeInstaller = runtimeInstaller ?? RuntimeInstaller(dataFolder: URL(fileURLWithPath: dataFolder))
+        let localGuard: @Sendable () throws -> Void = {
             if let refusal = sharedLock.refusalForLocalModel() { throw BlackTeamError(refusal) }
-        })
+        }
+        let backendRuntime = customRuntime ?? ModelRuntime(configStore: configStore, launchGuard: localGuard, fallbackRuntime: {
+            // A found model that is not running is started with the downloaded llama.cpp, or one found on this computer.
+            madeInstaller.installedRuntime()?.executable ?? cache.get().runtime
+        }, memoryGuard: MemoryGuard(), tuning: tunedLaunch(store: tuningStore))
+        tuneTrial = { scratch, startupMs in ModelRuntime(configStore: scratch, fetch: fetch, startupTimeoutMs: startupMs, launchGuard: localGuard) }
         runtime = backendRuntime
         engine = try customEngine ?? Engine(stateDir: dataFolder, vault: memory, fetch: stream, graph: { cache.get().graph }, cloud: cloud)
         self.fetch = fetch
@@ -136,7 +168,7 @@ public final class Backend: @unchecked Sendable {
         planner = contextPlanner ?? { messages, context, mode, endpoint, headers, signal in
             try await prepareContext(messages: messages, context: context, mode: mode, endpoint: endpoint, headers: headers, fetch: fetch, signal: signal)
         }
-        installer = runtimeInstaller ?? RuntimeInstaller(dataFolder: URL(fileURLWithPath: dataFolder))
+        installer = madeInstaller
         makeDownloader = downloader
         self.terminal = terminal
         self.now = now
@@ -231,7 +263,8 @@ public final class Backend: @unchecked Sendable {
         // A cloud model has no process of its own: it is "ready" when it is set up, and busy while a reply is being written.
         let runtimeSummary = cloudModel
             ? RuntimeSummary(state: setupComplete(config) ? "ready" : "off", ready: setupComplete(config), busy: snapshot?.state == "running" && snapshot?.kind != "memory", name: model.name, error: nil, features: [], kind: "cloud", provider: host)
-            : RuntimeSummary(state: state.state.rawValue, ready: state.ready, busy: state.busy, name: model.name, error: state.error, features: state.features)
+            : RuntimeSummary(state: state.state.rawValue, ready: state.ready, busy: state.busy, name: model.name, error: state.error, features: state.features,
+                             approval: state.approval)
         let listed = savedModels.list(active: model)
         let localAlternative = listed.first { !$0.isCloud }
         return BackendStatus(
@@ -255,7 +288,9 @@ public final class Backend: @unchecked Sendable {
     public func thread(_ id: String) -> JSONValue? {
         lock.lock(); let live = liveThread; lock.unlock()
         var found: JSONValue?
-        if let live, live.value["id"]?.string == id { found = live.value } else { found = history.get(id) }
+        if let live, live.value["id"]?.string == id { found = live.value }
+        else if let child = drivers.child(id) { found = child.ref.value }
+        else { found = history.get(id) }
         guard let thread = found else { return nil }
         var view: JSONValue = ["id": thread["id"] ?? .null, "title": thread["title"] ?? .null, "updated": thread["updated"] ?? .null,
                                "kind": .string(thread["kind"]?.string.flatMap { $0.isEmpty ? nil : $0 } ?? "chat"), "messages": thread["messages"] ?? [],
@@ -303,6 +338,15 @@ public final class Backend: @unchecked Sendable {
                        threadId givenThread: String? = nil, project givenProject: String? = nil,
                        workspace workspaceOverride: String? = nil, images uploads: [ImageUpload] = [], from origin: SubmitOrigin = .mac,
                        useMemory: Bool = true) throws -> SubmitResult {
+        try submitCore(message: rawMessage, kind: kind, mode: mode, requestId: requestId, threadId: givenThread, project: givenProject,
+                       workspace: workspaceOverride, images: uploads, from: origin, useMemory: useMemory, nested: nil, room: nil, readOnly: false)
+    }
+
+    /// `submit`, plus the three things a driven run adds: `nested` makes this a member run beneath a driver (it does not take the one
+    /// foreground slot), `room` gives a cloud-model driver its `team` and `delegate` tools, and `readOnly` takes the tools that change files away.
+    func submitCore(message rawMessage: String, kind: String, mode: String, requestId: String, threadId givenThread: String?, project givenProject: String?,
+                    workspace workspaceOverride: String?, images uploads: [ImageUpload], from origin: SubmitOrigin, useMemory: Bool,
+                    nested: DriverScope?, room: RoomToolHost?, readOnly: Bool) throws -> SubmitResult {
         if locked({ closing }) { throw BlackTeamError("Black Team is closing.") }
         // Images are Chat only, and an empty message with images asks for a description, as the daily app does.
         let kinds = try ImageRules.validate(uploads)
@@ -326,7 +370,9 @@ public final class Backend: @unchecked Sendable {
         }
 
         lock.lock(); defer { lock.unlock() }
-        if active != nil { throw BlackTeamError("A response is already running. Wait or stop it before sending another.") }
+        if nested == nil, active != nil { throw BlackTeamError("A response is already running. Wait or stop it before sending another.") }
+        if let nested, !nested.accepting { throw BlackTeamError("This run has been stopped.") }
+        if tuneState.running { throw BlackTeamError("Black Team is optimizing a model for \(Place.this). Wait for it to finish, or stop it, then send your message.") }
         let config = try configStore.read()
         if !setupComplete(config) {
             throw BlackTeamError("Complete model setup in the desktop app first.")
@@ -374,6 +420,7 @@ public final class Backend: @unchecked Sendable {
         // A run that must not touch the memory vault (a team with a cloud member passes local members' results on): this conversation
         // gets no Core, no recalled notes, no memory tools and no journal entry, the same as a conversation that went to a cloud service.
         if !useMemory { thread = thread.setting("noMemory", .bool(true)) }
+        if readOnly { thread = thread.setting("readOnly", .bool(true)) }
         if existing == nil, let project { thread = thread.setting("project", .string(project.id)) }
         // A folder given for this one turn (the command-line tool's --workspace) wins over the project and the setting.
         let workspace = try workspaceOverride.map { try ensureWorkspace($0) } ?? project?.workspace ?? config.workspace
@@ -401,16 +448,29 @@ public final class Backend: @unchecked Sendable {
         _ = current.observe { [hub] _ in hub.notify() }
         let signal = CancelSignal()
         let ref = ThreadRef(thread)
+        if let nested {
+            // A member run beneath a driver: its own job, signal and conversation, and the foreground slot is left alone.
+            let child = ChildRun(threadId: thread["id"]?.string ?? "", job: current, signal: signal, ref: ref, local: config.model.source != "cloud")
+            nested.add(child)
+            driverMirror(child)
+            child.task = Task { [self] in
+                await runJob(job: current, signal: signal, ref: ref, request: request, config: config, kind: kind, mode: mode, project: project,
+                             workspace: workspace, room: nil, under: nested)
+            }
+            hub.notify()
+            return SubmitResult(id: requestId, threadId: thread["id"]?.string ?? "", state: "running")
+        }
         job = current; abort = signal; liveThread = ref
         active = Task { [self] in
-            await runJob(job: current, signal: signal, ref: ref, request: request, config: config, kind: kind, mode: mode, project: project, workspace: workspace)
+            await runJob(job: current, signal: signal, ref: ref, request: request, config: config, kind: kind, mode: mode, project: project,
+                         workspace: workspace, room: room, under: nil)
         }
         hub.notify()
         return SubmitResult(id: requestId, threadId: thread["id"]?.string ?? "", state: "running")
     }
 
     private func runJob(job: JobState, signal: CancelSignal, ref: ThreadRef, request: JSONValue, config: Config, kind: String, mode: String,
-                        project: Project?, workspace: String) async {
+                        project: Project?, workspace: String, room: RoomToolHost?, under scope: DriverScope?) async {
         var outcomeState = "done"
         var outcomeText = kind == "agent" ? "Agent task complete" : "Response complete"
         var failure: String?
@@ -443,8 +503,8 @@ public final class Backend: @unchecked Sendable {
             } else if kind == "agent" {
                 job.progress = "Starting Black Team Code\u{2026}"
                 guard let engine else { throw BlackTeamError("Code is unavailable in this build.") }
-                try await engine.run(thread: ref, config: config, runtime: StartedRuntimeHeaders(headers), endpoint: endpoint, job: job, signal: signal,
-                                     save: { [weak self] thread in try self?.persist(thread) }, mode: mode, workspace: workspace)
+                try await engine.runDriven(thread: ref, config: config, runtime: StartedRuntimeHeaders(headers), endpoint: endpoint, job: job, signal: signal,
+                                           save: { [weak self] thread in try self?.persist(thread) }, mode: mode, workspace: workspace, room: room)
                 try check()
             } else {
                 try await chatTurn(job: job, signal: signal, ref: ref, config: config, mode: mode, project: project, endpoint: endpoint, headers: headers)
@@ -476,8 +536,14 @@ public final class Backend: @unchecked Sendable {
         ref.value = thread
         job.state = finalState
         job.progress = finalText
-        locked { abort = nil; active = nil; liveThread = nil; lastActivity = now() }
-        sweepMemory()
+        if let scope {
+            // A member run ends only itself; the driver's job is still the foreground job.
+            scope.remove(ref.value["id"]?.string ?? "")
+            locked { lastActivity = now() }
+        } else {
+            locked { abort = nil; active = nil; liveThread = nil; lastActivity = now() }
+            sweepMemory()
+        }
         changed()
     }
 
@@ -583,6 +649,7 @@ public final class Backend: @unchecked Sendable {
         }
         // Measured speed for the gauge. llama.cpp reports it; for other servers the clock gives the writing speed.
         let timed = result.timings, written = result.usage?["completion_tokens"]?.double ?? 0
+        if let usage = result.usage { ref.addLocalUsage(prompt: usage["prompt_tokens"]?.int ?? 0, completion: usage["completion_tokens"]?.int ?? 0) }
         let predicted = timed?["predicted_per_second"]?.double ?? 0
         var write = predicted > 0 ? predicted : 0
         if write == 0, written > 0, let firstToken { write = written / max(0.05, Date().timeIntervalSince(firstToken)) }
@@ -608,6 +675,7 @@ public final class Backend: @unchecked Sendable {
         lock.lock()
         guard let signal = abort else { lock.unlock(); return CancelResult(stopping: false) }
         job?.progress = "Stopping response\u{2026}"
+        let stoppedThread = job?.threadId
         signal.cancel()
         let task = active
         cancelTask = Task { [runtime] in
@@ -615,6 +683,8 @@ public final class Backend: @unchecked Sendable {
         }
         lock.unlock()
         task?.cancel()
+        // A driver's Stop reaches every member run beneath it.
+        driverStopChildren(ofThread: stoppedThread)
         return CancelResult(stopping: true)
     }
 
@@ -842,6 +912,7 @@ public final class Backend: @unchecked Sendable {
         stopPhoneAccess()
         installer.cancel()
         cancel()
+        cancelOptimize()
         try? await runtime.dispose()
         await waitForIdle()
         await roomTeamSettle()

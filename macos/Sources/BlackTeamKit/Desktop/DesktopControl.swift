@@ -14,12 +14,20 @@ public final class DesktopControl: @unchecked Sendable {
         "cloud-discover", "cloud-save", "project-cloud", "agents-status", "agent-signin", "agent-update",
         // Starter model and vision file downloads (Desktop/DesktopVision.swift).
         "vision-install", "vision-cancel", "starter-list", "starter-install", "starter-cancel",
+        // Optimizing a model for this computer (App/BackendTune.swift): start, cancel; progress rides on every `status` as `optimize`.
+        "optimize-start", "optimize-cancel",
+        // "Set up your agents": the plan, one approval, Not now, stop (Desktop/DesktopSetup.swift).
+        "setup-plan", "setup-apply", "setup-dismiss", "setup-cancel",
+        // Get a model: the ranking for this computer, a Hugging Face search, one repository, and the download (Desktop/DesktopModels.swift).
+        "models-recommend", "models-search", "models-repo", "model-get", "model-get-stop",
+        // What Hermes conversations can do (Desktop/HermesAbilitiesControl.swift).
+        "hermes-abilities", "hermes-abilities-save", "hermes-key-save",
     ]
     /// Actions that change something: one at a time.
     static let changing: Set<String> = [
         "integrations-save", "harness-connect", "harness-launch", "setup-save", "models-add", "models-ignore", "model-switch", "model-forget",
         "runtime-start", "runtime-stop", "phone-save", "phone-setup", "phone-off", "phone-connect", "phone-disconnect",
-        "cloud-save", "project-cloud", "agent-signin", "agent-update",
+        "cloud-save", "project-cloud", "agent-signin", "agent-update", "setup-apply", "setup-dismiss", "hermes-abilities-save", "hermes-key-save",
     ]
 
     let backend: Backend
@@ -32,9 +40,13 @@ public final class DesktopControl: @unchecked Sendable {
         self.backend = backend; self.home = home; self.environment = environment
     }
 
+    private func abilities() -> HermesAbilitiesService {
+        HermesAbilitiesService(dataFolder: backend.dataFolder, integrations: backend.integrations, scripts: backend.desktopScripts, home: home)
+    }
+
     private func discovered() -> LinuxDiscovery {
         let saved = (try? backend.integrations.read().hermes) ?? HermesSettings()
-        return discoverLinux(home: home, env: environment, saved: saved)
+        return discoverLinux(home: home, env: environment, saved: saved, extraSources: [HermesInstaller.sourceFolder(dataFolder: backend.dataFolder)])
     }
 
     /// Answers one request. `data` is the request's input object (an empty one when none was sent). The control channel is the
@@ -65,6 +77,36 @@ public final class DesktopControl: @unchecked Sendable {
         case "starter-cancel":
             try unsupported([], "Unsupported setup setting.")
             return starterStop()
+        case "optimize-start":
+            try unsupported(["key"], "Unsupported setup setting.")
+            guard let key = input["key"]?.string, !key.isEmpty else { throw BlackTeamError("Choose a model from your list.") }
+            let started = try await backend.optimize(key: key)
+            return ["started": .bool(started == .started), "result": .string(started.text)]
+        case "optimize-cancel":
+            try unsupported([], "Unsupported setup setting.")
+            backend.cancelOptimize()
+            return ["stopped": true]
+        case "setup-plan":
+            try unsupported(["reason"], "Unsupported setup setting.")
+            return try setupPlanJSON(input)
+        case "setup-cancel":
+            try unsupported([], "Unsupported setup setting.")
+            return setupStop()
+        case "models-recommend":
+            try unsupported([], "Unsupported setup setting.")
+            return .encoded(backend.modelRecommendations())
+        case "models-search":
+            try unsupported(["query"], "Unsupported setup setting.")
+            return ["results": .encoded(try await backend.searchModels(input["query"]?.string ?? ""))]
+        case "models-repo":
+            try unsupported(["repo"], "Unsupported setup setting.")
+            return .encoded(try await backend.hubRepo(input["repo"]?.string ?? ""))
+        case "model-get":
+            try unsupported(["source", "id", "repo", "file", "vision", "draft", "makeCurrent"], "Unsupported setup setting.")
+            return modelStart(try modelChoice(input), makeCurrent: input["makeCurrent"]?.bool ?? false)
+        case "model-get-stop":
+            try unsupported(["discard"], "Unsupported setup setting.")
+            return await modelStop(discard: input["discard"]?.bool ?? false)
         case "server-discover":
             try unsupported(["endpoint", "apiKey"], "Unsupported server discovery setting.")
             // A key that is not text is refused as a key, never silently dropped.
@@ -96,6 +138,9 @@ public final class DesktopControl: @unchecked Sendable {
         case "hermes-inspect":
             guard let found = inspectHermes(source: input["source"]?.string, python: input["python"]?.string ?? "") else { return .null }
             return ["source": .string(found.source), "python": .string(found.python)]
+        case "hermes-abilities":
+            try unsupported(["refresh"], "Unsupported Hermes setting.")
+            return await abilities().overview(context: (try? backend.configStore.read().model.context) ?? 0, refresh: input["refresh"]?.bool == true)
         case "phone-detect":
             return .encoded(await backend.phone().manager.detect())
         case "phone-command":
@@ -136,6 +181,24 @@ public final class DesktopControl: @unchecked Sendable {
                 return try connectHarness(id: id, store: backend.integrations, found: found)
             }
             return ["connected": .bool(connected.connected), "name": .string(connected.name)]
+        case "setup-apply":
+            try unsupported(["ids"], "Unsupported setup setting.")
+            return try setupStart(input)
+        case "setup-dismiss":
+            try unsupported([], "Unsupported setup setting.")
+            try backend.dismissSetupOffer()
+            return ["dismissed": true]
+        case "hermes-abilities-save":
+            return try await abilities().save(input)
+        case "hermes-key-save":
+            try unsupported(["name", "value", "remove"], "Unsupported Hermes setting.")
+            guard let name = input["name"]?.string else { throw BlackTeamError("Choose which key to save.") }
+            if input["remove"]?.bool == true { try await abilities().setKey(name: name, value: nil) }
+            else {
+                guard let secret = input["value"]?.string else { throw BlackTeamError("Enter the value.") }
+                try await abilities().setKey(name: name, value: secret)
+            }
+            return ["saved": true]
         case "setup-save":
             let saved = try await backend.saveSetup(value)
             var object: [String: JSONValue] = ["saved": .bool(saved.saved)]

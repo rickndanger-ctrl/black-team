@@ -42,6 +42,13 @@ computer" on Linux:
 - **Requests** carry standard fields only (no llama.cpp extras). Token counts from the service's own
   `usage` are shown per cloud conversation. Prices are not.
 - **Harnesses** (Claude Code, DeepSeek Harness and the rest) are not launched against a cloud model.
+- **A driven Room run** ([ROOM.md](ROOM.md)) has a paid member, the driver, hand pieces of work to the other members and receive their
+  results. So what local members read and write for those pieces is sent to the driver's service. The agreement shown before the run
+  says this and names the service and any other paid member; the run does not start unless its digest still matches the room, the
+  project allows cloud models, and the request is not from a phone. The vault is not used by any member of such a run. For Claude Code
+  and Codex the two tools are an MCP server started for that one launch (their own configuration is not edited); it talks to Black Team
+  over a socket in a private folder with a secret made for the run, which is deleted when the run ends. The roster of saved agents
+  (`roster.json`) holds no keys.
 
 What this does not cover: the service's own retention and training policy (read it); what a model says
 back, which is saved locally; and a model that quotes vault text it was shown in a *local* turn before a
@@ -65,8 +72,45 @@ Black Team Agent creates separate Hermes profiles, pins the main and compression
 model to the selected endpoint, and does not copy normal Hermes profile secrets.
 Unrelated provider keys are excluded from the launch environment. Hermes and
 installed browser/desktop tools still have their own behavior and dependencies.
+Choosing **Get a model** contacts Hugging Face only when you ask. A search sends
+your search words to huggingface.co; opening a repository asks it for the file list
+(sizes and checksums); a download fetches the file from huggingface.co and its
+download servers (hf.co), and the llama.cpp program from github.com if it is not
+installed yet. No account, token or cookie is sent, nothing else is sent, and
+redirects to any other host are refused. Ranking the models for this computer reads
+its hardware locally and contacts nothing. Models there are made by other people.
 There is no universal network sandbox. Browsing, tool commands, downloads and
 explicit transfers can access external services.
+
+**Set up your agents.** The setup card connects agents already on your computer
+and can install Hermes Agent. It does nothing until you press Approve (or answer
+yes to `black-team setup`); looking at what is on your computer only checks for
+files. Connecting an agent only saves a launcher in Black Team's settings. The
+Hermes install, and only that, contacts the internet, and only after approval:
+github.com (one fixed, checksum-checked source archive of Hermes Agent, which
+GitHub serves from codeload.github.com), the Python package index (pypi.org and
+its file host) for Hermes's Python packages, and, if you have no Python 3.14 and
+use uv, github.com again for a Python build. Nothing about you or your
+conversations is sent; these are ordinary downloads. Everything lands in Black
+Team's own data folder (`hermes/`). Your own `~/.hermes` and any Hermes you
+installed yourself are not touched. Agents that are not installed are listed with
+their makers' install commands as text; Black Team never runs those.
+
+Hermes tool groups, plugins and search providers that you switch on can send data off
+this computer, and each is labelled "Uses the internet" or "Needs an account or key" on its
+screen. Specifically: the web group and a chosen search provider send the words searched to
+that provider (Black Team turns off Hermes's own fallback to free vendor search services, so
+no provider is used that you did not choose); browser tools open the websites you or the
+model name; a plugin such as Langfuse observability sends a record of your conversations,
+including tool use, to the service it reports to; and an MCP server is limited to an address
+on this computer but may itself contact anything. Memory-provider plugins are listed and left
+off. Keys for these are kept in an owner-only file in the data folder, are never shown again,
+and are passed to Hermes by environment only; they are not written into a profile, shown in
+the window or sent to a phone. Black Team asks your Hermes which tools it has by running its
+Python once, read-only, in a scratch folder, after you connect it. Skills and plugins you
+switch on are linked from your Hermes install, not copied. Messaging platforms and scheduled
+jobs need an always-running Hermes service, which does not exist yet
+([HERMES-SERVICE.md](HERMES-SERVICE.md)); they are listed as unavailable.
 
 Agent tools run as the OS user. The selected workspace is not a filesystem
 sandbox. Toolset switches and approval cards control application behavior, not

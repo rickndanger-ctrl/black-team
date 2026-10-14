@@ -85,7 +85,12 @@ import BlackTeamKit
 /// Runs one Chat or Code turn and prints it. Returns the exit status.
 /// `allowCloud` answers the one question the Backend asks before a private conversation goes to a cloud service.
 @MainActor func runTurn(_ backend: Backend, message: String, kind: String, mode: String, thread: String?, workspace: String?, approve: String, images: [ImageUpload] = [],
-                        allowCloud: Bool = false) async -> Int32 {
+                        allowCloud: Bool = false, stopOther: Bool = false) async -> Int32 {
+    // A model that would not fit beside another model server waits for a yes; --stop-other is that yes given beforehand.
+    if let question = try? await backend.startApproval() {
+        guard stopOther else { fail(question.question + "\nNothing was stopped or sent. Add --stop-other to stop it and go on.") }
+        do { try await backend.approveStop(pid: question.pid) } catch { fail(describe(error)) }
+    }
     if allowCloud, let thread {
         let check = backend.privacyCheck(threadId: thread, project: nil, kind: kind)
         if check.outcome == .needsChoice {
@@ -218,6 +223,68 @@ import BlackTeamKit
     fflush(stdout)
 }
 
+/// The ledger of a driven run: the plain sentence, then each member's tokens and time ("not measured" where none were reported).
+func grouped(_ n: Int) -> String { let f = NumberFormatter(); f.numberStyle = .decimal; f.groupingSeparator = ","; f.locale = Locale(identifier: "en_US"); return f.string(from: NSNumber(value: n)) ?? "\(n)" }
+
+func ledgerText(_ ledger: RunLedger) -> String {
+    var rows = [ledger.summary]
+    for line in ledger.lines {
+        let tokens = line.measured ? "\(grouped(line.prompt ?? 0)) read, \(grouped(line.completion ?? 0)) written" : "not measured"
+        rows.append("  \(line.name) (\(line.paid ? "paid" : "local")): \(tokens), \(line.seconds) s, \(line.runs) run\(line.runs == 1 ? "" : "s")")
+    }
+    return rows.joined(separator: "\n")
+}
+
+/// `room roster list | add | remove | use | save`: Black Team agents made once and added to any project's room.
+@MainActor func runRoomRoster(_ backend: Backend) -> Int32 {
+    let action = arguments.isEmpty ? "list" : arguments.removeFirst()
+    func printRoster(_ list: [RosterEntryView]) {
+        if asJSON { printJSON(list); return }
+        if list.isEmpty { print("The roster is empty. Add one: room roster add --name N (--model <key> | --agent claude|codex)"); return }
+        for (i, item) in list.enumerated() {
+            let e = item.entry
+            print("\(i + 1). \(e.name)" + (e.role.isEmpty ? "" : " [\(e.role)]") + " - " + (item.kind == "cloud" ? "paid (\(item.provider))" : "local")
+                  + (e.agent != nil ? ", \(e.agent!) \(e.permission ?? "edit")" : ", \(e.work ?? "code") work") + (item.usable ? "" : " - cannot be used: \(item.reason)"))
+        }
+    }
+    func pick(_ list: [RosterEntryView], _ given: String) -> RosterEntryView {
+        let hits = list.enumerated().filter { "\($0.offset + 1)" == given || $0.element.entry.id == given || $0.element.entry.name.lowercased() == given.lowercased() }
+        if hits.count == 1 { return hits[0].element }
+        fail("No saved agent \"\(given)\"" + (hits.count > 1 ? " (more than one matches)." : "."))
+    }
+    do {
+        switch action {
+        case "list": printRoster(backend.roster())
+        case "add":
+            let name = option("--name"), role = option("--role") ?? "", model = option("--model"), agent = option("--agent")
+            let work = option("--work"), permission = option("--permission")
+            guard let name else { fail("--name is required.", code: 2) }
+            var engine: String?
+            if let agent {
+                guard let service = AgentService.allCases.first(where: { $0.program == agent }) else { fail("--agent takes claude or codex.", code: 2) }
+                engine = service.engine
+            }
+            printRoster(try backend.rosterCreate(name: name, role: role, modelKey: model, agent: engine, permission: permission, work: work))
+        case "remove":
+            guard arguments.count == 1 else { fail("room roster remove takes a number or name.\n\n\(usage)", code: 2) }
+            printRoster(try backend.rosterRemove(id: pick(backend.roster(), arguments[0]).entry.id))
+        case "use":
+            guard arguments.count == 2 else { fail("room roster use takes a project and a saved agent.\n\n\(usage)", code: 2) }
+            let id = roomProject(backend, arguments[0])
+            printRoom(try backend.roomAddFromRoster(projectId: id, rosterId: pick(backend.roster(), arguments[1]).entry.id))
+        case "save":
+            guard arguments.count == 2 else { fail("room roster save takes a project and a member.\n\n\(usage)", code: 2) }
+            let id = roomProject(backend, arguments[0])
+            printRoster(try backend.roomSaveToRoster(projectId: id, memberId: roomMember(try backend.room(projectId: id), arguments[1]).id))
+        default: fail("room roster takes list, add, remove, use or save.\n\n\(usage)", code: 2)
+        }
+        return 0
+    } catch {
+        FileHandle.standardError.write(Data((describe(error) + "\n").utf8))
+        return 1
+    }
+}
+
 @MainActor func runRoomTeam(_ backend: Backend) async -> Int32 {
     func projectArg() -> String {
         guard !arguments.isEmpty else { fail("Name the project.\n\n\(usage)", code: 2) }
@@ -236,11 +303,16 @@ import BlackTeamKit
         let lead = option("--lead"), reviewer = option("--reviewer")
         let confirmed = arguments.contains("--yes")
         arguments.removeAll { $0 == "--yes" }
+        let pipeline = arguments.contains("--pipeline")
+        arguments.removeAll { $0 == "--pipeline" }
         let id = projectArg()
         guard arguments.count == 1 else { fail("room team takes a project and a goal in quotes.\n\n\(usage)", code: 2) }
         let current = try backend.room(projectId: id)
-        let preview = try backend.roomTeamPreview(projectId: id, goal: arguments[0], leadId: lead.map { roomMember(current, $0).id },
-                                                  reviewerId: reviewer.map { roomMember(current, $0).id })
+        // A paid lead drives (hands work to the other members while it works) unless --pipeline asks for plan, work, review, report.
+        let leadId = lead.map { roomMember(current, $0).id }
+        let driven = !pipeline && backend.roomCanDrive(projectId: id, leadId: leadId)
+        let preview = try backend.roomTeamPreview(projectId: id, goal: arguments[0], leadId: leadId,
+                                                  reviewerId: reviewer.map { roomMember(current, $0).id }, driven: driven)
         if asJSON { printJSON(preview) } else {
             print(preview.agreement + "\n")
             for m in preview.members {
@@ -252,7 +324,8 @@ import BlackTeamKit
             if !asJSON { print("\nNothing was started. Add --yes to run the team.") }
             return 0
         }
-        _ = try backend.roomTeamRun(projectId: id, goal: preview.goal, leadId: preview.leadId, reviewerId: preview.reviewerId, digest: preview.digest)
+        _ = try backend.roomTeamRun(projectId: id, goal: preview.goal, leadId: preview.leadId, reviewerId: preview.reviewerId, digest: preview.digest,
+                                    from: .mac, driven: driven)
         var seen: TeamLogEntry?
         var printed = 0
         while true {
@@ -271,6 +344,7 @@ import BlackTeamKit
         guard let final = try backend.room(projectId: id).team else { return 1 }
         if asJSON { printJSON(final) } else {
             if !final.report.isEmpty { print("\nReport:\n\(final.report)") }
+            if let ledger = final.ledger { print("\n" + ledgerText(ledger)) }
             print("\nTeam run \(final.phase.rawValue)" + (final.message.isEmpty ? "" : ": \(final.message)") + " (\(final.runs) member runs).")
         }
         return final.phase == .done ? 0 : 1
@@ -372,8 +446,10 @@ import BlackTeamKit
             if !asJSON { print("Created a task for \(preview.receiverName). Start it with: room start \(id) \(after.tasks.count)") }
         case "team":
             return await runRoomTeam(backend)
+        case "roster":
+            return runRoomRoster(backend)
         default:
-            fail("room takes show, member add, task add, start, accept, sendback, handoff or team.\n\n\(usage)", code: 2)
+            fail("room takes show, member add, task add, start, accept, sendback, handoff, team or roster.\n\n\(usage)", code: 2)
         }
         return 0
     } catch {
@@ -432,6 +508,118 @@ import BlackTeamKit
             }
             fail(usage, code: 2)
 
+        case "setup":
+            // One approval for every agent on this computer. Nothing is installed, downloaded or connected without a yes (or --yes).
+            let approveAll = arguments.contains("--yes")
+            arguments.removeAll { $0 == "--yes" }
+            if !arguments.isEmpty { fail(usage, code: 2) }
+            #if os(Linux)
+            backend.integrations.hermesSupported = true   // the command line sets Hermes up on Linux as the window does
+            #endif
+            let plan = backend.setupPlan()
+            if asJSON && !approveAll { printJSON(plan); return 0 }
+            if !asJSON {
+                print("Set up your agents")
+                for step in plan.steps where step.kind != "note" {
+                    let mark = step.state == .done ? "[done]" : step.state == .willDo ? "[will do]" : "[needs something]"
+                    print("  \(mark) \(step.title): \(step.detail)")
+                    for change in step.changes where step.state == .willDo { print("             - \(change)") }
+                    if let needs = step.needs, step.state == .needsSomething { print("             \(needs)") }
+                }
+                for step in plan.steps where step.kind == "note" {
+                    print("  \(step.title) (Black Team does not install these; the command is shown for you to run):")
+                    for hint in step.commands { print("    \(hint.name): \(hint.command)") }
+                }
+            }
+            let waiting = plan.pending
+            if waiting.isEmpty { if !asJSON { print("Nothing to set up.") } else { printJSON(plan) }; return 0 }
+            var approved = approveAll
+            if !approveAll {
+                if isatty(0) == 0 { print("Run `black-team setup --yes` to approve all of the steps marked [will do]."); return 1 }
+                print("Approve these \(waiting.count) step\(waiting.count == 1 ? "" : "s")? [y/N] ", terminator: "")
+                fflush(stdout)
+                approved = ["y", "yes"].contains((readLine() ?? "").trimmingCharacters(in: .whitespaces).lowercased())
+            }
+            if !approved { try? backend.dismissSetupOffer(); print("Not now. Nothing was changed."); return 0 }
+            let last = ProgressMemory()
+            let results = try await backend.applySetup(approved: waiting.map(\.id)) { event in
+                if asJSON { return }
+                if let line = last.line(SetupProgress(stage: event.stage, fraction: event.fraction, bytesPerSecond: event.bytesPerSecond)), event.status == "running" { print(line); fflush(stdout) }
+            }
+            if asJSON { printJSON(results) } else {
+                for result in results { print("\(result.status == "done" ? "done" : result.status): \(waiting.first { $0.id == result.id }?.title ?? result.id) - \(result.message)") }
+            }
+            return results.contains { $0.status == "failed" } ? 1 : 0
+
+        case "recommend":
+            let recommendations = backend.modelRecommendations()
+            if asJSON { printJSON(recommendations); return 0 }
+            print("This \(Place.kind): \(recommendations.summary)")
+            if let note = recommendations.note { print("note: \(note)") }
+            func line(_ entry: ModelAssessment) -> String {
+                let picks = entry.picks.map { ["best": "BEST FOR THIS COMPUTER", "code": "best for Code (tools)", "fastest": "fastest"][$0] ?? $0 }
+                let fit = entry.fit == .comfortable ? "fits well" : entry.fit == .tight ? "tight" : "too big"
+                return "\(entry.id)\t\(entry.model.name)\t\(gigabytes(entry.model.bytes))\t\(fit)\t\(entry.speed.text)\t\(entry.goodFor.joined(separator: ", "))"
+                    + (picks.isEmpty ? "" : "\t<- " + picks.joined(separator: ", ")) + (entry.installed ? "\tinstalled" : "")
+            }
+            for entry in recommendations.models { print(line(entry)); print("\t\(entry.reason)") }
+            print("Download one with: black-team download <id>")
+            return 0
+
+        case "search":
+            guard !arguments.isEmpty else { fail("Search for what? black-team search <words>, or black-team search <owner/repo> to list a repository's files.", code: 2) }
+            let query = arguments.joined(separator: " "); arguments.removeAll()
+            if HuggingFaceHub.isValidRepo(query) {
+                let repo = try await backend.hubRepo(query)
+                if asJSON { printJSON(repo); return 0 }
+                print("\(repo.repo): \(repo.license) licence, made by \(query.split(separator: "/")[0]) (a third party), \(repo.page)")
+                if let problem = repo.problem { print(problem) }
+                for entry in repo.files {
+                    let fit = entry.fit == .comfortable ? "fits well" : entry.fit == .tight ? "tight" : "too big"
+                    print("\(entry.suggested ? "*" : " ") \(entry.file.path)\t\(entry.file.quant)\t\(gigabytes(entry.file.bytes))\t\(entry.unavailable ?? fit)")
+                }
+                if let vision = repo.visionFile { print("  vision file: \(vision.name) (\(gigabytes(vision.bytes))): add --with-vision when downloading") }
+                if let draft = repo.draftFile { print("  speed-up file: \(draft.name) (\(gigabytes(draft.bytes))): add --with-draft when downloading") }
+                print("* is the one suggested for this \(Place.kind). Download with: black-team download \(repo.repo) <file>")
+                return 0
+            }
+            let results = try await backend.searchModels(query)
+            if asJSON { printJSON(results); return 0 }
+            if results.isEmpty { print("No GGUF models found for \"\(query)\".") }
+            for item in results { print("\(item.repo)\t\(item.downloads) downloads\t\(item.likes) likes\(item.gated ? "\tneeds you to accept terms on huggingface.co" : "")") }
+            return 0
+
+        case "download":
+            let withVision = arguments.contains("--with-vision"), withDraft = arguments.contains("--with-draft"), makeCurrent = arguments.contains("--use")
+            let noOptimize = arguments.contains("--no-optimize")
+            arguments.removeAll { ["--with-vision", "--with-draft", "--use", "--no-optimize"].contains($0) }
+            guard !arguments.isEmpty else { fail("Name a model: black-team recommend, or black-team download <owner/repo> <file>.", code: 2) }
+            let first = arguments.removeFirst()
+            let choice: ModelChoice
+            if HuggingFaceHub.isValidRepo(first) {
+                guard !arguments.isEmpty else { fail("Name the file: black-team search \(first)", code: 2) }
+                choice = .hub(repo: first, path: arguments.removeFirst(), vision: withVision, draft: withDraft)
+            } else { choice = .catalogue(id: first, vision: withVision, draft: withDraft) }
+            let last = ProgressMemory()
+            let result = try await backend.getModel(choice, makeCurrent: makeCurrent) { progress in
+                if asJSON { return }
+                if let line = last.line(progress) { print(line); fflush(stdout) }
+            }
+            // A model that has just arrived is measured on this computer, so it starts with the settings that are fastest here.
+            var optimized: String?
+            if !noOptimize, case .started = await backend.optimizeAfterAdding(modelKey: result.key) {
+                if !asJSON { print("Optimizing for this \(Place.kind) (about 3 minutes; the model starts a few times)\u{2026}"); fflush(stdout) }
+                await backend.waitForOptimize()
+                let status = backend.optimizeStatus()
+                optimized = status["summary"]?.string ?? status["error"]?.string
+            }
+            if asJSON { printJSON(result); return 0 }
+            print(result.message)
+            if let optimized { print("Optimized: \(optimized)") }
+            print("\(result.modelName): a model by someone else from Hugging Face (\(result.repo)), \(result.license) licence.")
+            if let warning = result.warning { print("warning: \(warning)") }
+            return 0
+
         case "runtime":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()
             if action == "status" {
@@ -473,6 +661,37 @@ import BlackTeamKit
             guard !arguments.isEmpty else { fail("Name a model key: black-team models", code: 2) }
             let result = try await backend.switchTo(key: arguments.removeFirst())
             if asJSON { printJSON(["switched": JSONValue.bool(result.switched), "name": JSONValue.string(result.name)]) } else { print("Now using \(result.name).") }
+            return 0
+
+        case "optimize":
+            // The model named (its key, or the start of its name), or the one in use. The model is stopped while it is measured.
+            let config = try backend.configStore.read()
+            let list = backend.savedModels.list(active: config.model)
+            let wanted = arguments.isEmpty ? "" : arguments.removeFirst()
+            guard let target = wanted.isEmpty ? list.first(where: { $0.active }) : (list.first { $0.key == wanted } ?? list.first { $0.name.lowercased().hasPrefix(wanted.lowercased()) }) else {
+                fail(wanted.isEmpty ? "No model is in use. Name one: black-team models" : "No saved model matches \(wanted). See: black-team models", code: 2)
+            }
+            let started = try await backend.optimize(key: target.key)
+            guard started == .started else {
+                if asJSON { printJSON(["result": JSONValue.string(started.text)]) } else { print("Not started (\(started.text)). A response or another setup action is running.") }
+                return 1
+            }
+            if !asJSON { print("Optimizing \(target.name) for \(Place.this). This takes up to about 3 minutes and the model restarts a few times. Press Ctrl-C to stop.") }
+            var shown = 0
+            while true {
+                let status = backend.optimizeStatus()
+                let lines = status["log"]?.array?.compactMap { $0.string } ?? []
+                if !asJSON { for line in lines.dropFirst(min(shown, lines.count)) { print(line); fflush(stdout) } }
+                shown = lines.count
+                if status["running"]?.bool != true { break }
+                try? await Task.sleep(nanoseconds: 300_000_000)
+            }
+            await backend.waitForOptimize()
+            let final = backend.optimizeStatus()
+            if asJSON { printJSON(final); return final["error"]?.string?.isEmpty == false ? 1 : 0 }
+            if let error = final["error"]?.string, !error.isEmpty { FileHandle.standardError.write(Data((error + "\n").utf8)); return 1 }
+            if final["stopped"]?.bool == true { print("Stopped. The model is as it was."); return 130 }
+            print("Optimized for \(Place.this): \(final["summary"]?.string ?? "")")
             return 0
 
         case "cloud":
@@ -539,11 +758,11 @@ import BlackTeamKit
             let thread = option("--thread"), mode = option("--mode") ?? "balanced"
             let workspace = command == "code" ? option("--workspace") : nil
             let approve = option("--approve") ?? "deny"
-            let allowCloud = arguments.contains("--allow-cloud")
-            arguments.removeAll { $0 == "--allow-cloud" }
+            let allowCloud = arguments.contains("--allow-cloud"), stopOther = arguments.contains("--stop-other")
+            arguments.removeAll { $0 == "--allow-cloud" || $0 == "--stop-other" }
             guard ["once", "deny"].contains(approve) else { fail("--approve takes once or deny.", code: 2) }
             guard let message = arguments.first, arguments.count == 1 else { fail("Give one message in quotes.\n\n\(usage)", code: 2) }
-            return await runTurn(backend, message: message, kind: command == "chat" ? "chat" : "agent", mode: mode, thread: thread, workspace: workspace, approve: approve, images: uploads, allowCloud: allowCloud)
+            return await runTurn(backend, message: message, kind: command == "chat" ? "chat" : "agent", mode: mode, thread: thread, workspace: workspace, approve: approve, images: uploads, allowCloud: allowCloud, stopOther: stopOther)
 
         case "agent":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()
@@ -642,6 +861,9 @@ import BlackTeamKit
             default: fail(usage, code: 2)
             }
             return 0
+
+        case "hermes":
+            return try await runHermesCommand(backend)
 
         case "serve":
             try await backend.startPhoneAccess()

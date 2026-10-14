@@ -55,7 +55,7 @@ Type `/help` to see them. Tab completes a command (and the word after `/agent`, 
 | `/project` | Lists projects; choose one by number or name, `none` to leave, `new <name>` to make one. |
 | `/image <path>` | Attach a picture to your next chat message; `/image` shows what is attached; `/image clear`. |
 | `/undo` | Undo the last file change of the last Code reply, or roll back the last agent task, after you confirm. |
-| `/team "<goal>"` | Run the current project's team: shows the agreement, asks `[y/N]`, prints the team log as it grows, then the report. |
+| `/team "<goal>"` | Run the current project's team: shows the agreement, asks `[y/N]`, prints the team log as it grows, then the report. When the lead is a paid member it drives: it hands work to the other members while it works, and the tokens each side used are listed at the end ([ROOM.md](ROOM.md)). |
 | `/status` | Model, mode, conversation, folder, and whether the app holds the local model. |
 | `/memory <query>` | Search what Black Team remembers. |
 | `/quit` | Leave. |

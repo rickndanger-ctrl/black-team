@@ -49,6 +49,15 @@ extension Backend {
     public func submitAgentTask(service: AgentService, message rawMessage: String, requestId: String, threadId givenThread: String? = nil,
                                 project givenProject: String? = nil, workspace workspaceOverride: String? = nil,
                                 permission: AgentPermission? = nil, from origin: SubmitOrigin = .mac) throws -> SubmitResult {
+        try submitAgentCore(service: service, message: rawMessage, requestId: requestId, threadId: givenThread, project: givenProject,
+                            workspace: workspaceOverride, permission: permission, from: origin, nested: nil, driving: nil)
+    }
+
+    /// `submitAgentTask`, plus: `nested` makes the run a member run beneath a driver (it does not take the foreground slot), and `driving`
+    /// is the run this agent drives, whose `team` and `delegate` tools it is given as an MCP server for this launch only.
+    func submitAgentCore(service: AgentService, message rawMessage: String, requestId: String, threadId givenThread: String?, project givenProject: String?,
+                         workspace workspaceOverride: String?, permission: AgentPermission?, from origin: SubmitOrigin,
+                         nested: DriverScope?, driving: DriverScope?) throws -> SubmitResult {
         if locked({ closing }) { throw BlackTeamError("Black Team is closing.") }
         let message = EText.trim(rawMessage)
         if message.isEmpty || EText.length(message) > 16000 { throw BlackTeamError("Enter a message of up to 16,000 characters.") }
@@ -66,7 +75,8 @@ extension Backend {
         }
 
         lock.lock(); defer { lock.unlock() }
-        if active != nil { throw BlackTeamError("A response is already running. Wait or stop it before sending another.") }
+        if nested == nil, active != nil { throw BlackTeamError("A response is already running. Wait or stop it before sending another.") }
+        if let nested, !nested.accepting { throw BlackTeamError("This run has been stopped.") }
         let config = try configStore.read()
         let existing = threadId.flatMap { history.get($0) }
         if threadId != nil && existing == nil { throw BlackTeamError("Conversation not found.") }
@@ -124,10 +134,21 @@ extension Backend {
         _ = current.observe { [hub] _ in hub.notify() }
         let signal = CancelSignal()
         let ref = ThreadRef(thread)
+        if let nested {
+            let child = ChildRun(threadId: thread["id"]?.string ?? "", job: current, signal: signal, ref: ref, local: false)
+            nested.add(child)
+            driverMirror(child)
+            child.task = Task { [self] in
+                await runAgentJob(job: current, signal: signal, ref: ref, request: request, service: service, task: task, session: session,
+                                  workspace: workspace, permission: level, room: nil, under: nested)
+            }
+            hub.notify()
+            return SubmitResult(id: requestId, threadId: thread["id"]?.string ?? "", state: "running")
+        }
         job = current; abort = signal; liveThread = ref
         active = Task { [self] in
             await runAgentJob(job: current, signal: signal, ref: ref, request: request, service: service, task: task, session: session,
-                              workspace: workspace, permission: level)
+                              workspace: workspace, permission: level, room: driving?.link, under: nil)
         }
         hub.notify()
         return SubmitResult(id: requestId, threadId: thread["id"]?.string ?? "", state: "running")
@@ -135,7 +156,7 @@ extension Backend {
 
     /// Runs one agent turn: the snapshot first, then the tool, writing its reply as it goes, then the terminal state.
     private func runAgentJob(job: JobState, signal: CancelSignal, ref: ThreadRef, request: JSONValue, service: AgentService, task: String,
-                             session: String?, workspace: String, permission: AgentPermission) async {
+                             session: String?, workspace: String, permission: AgentPermission, room: AgentRoomLink?, under scope: DriverScope?) async {
         let runId = request["id"]?.string ?? ""
         let threadId = ref.value["id"]?.string ?? ""
         // Before anything changes, a copy of the folder. A folder that cannot be copied still runs; its message says so.
@@ -174,9 +195,12 @@ extension Backend {
             if signal.isCancelled { exit = AgentExit(status: nil, cancelled: true); break }
             turn.startRound()
             let arguments = AgentTools.arguments(service: service, task: currentTask, session: currentSession, workspace: workspace,
-                                                 permission: permission, allowedTools: allowed)
+                                                 permission: permission, allowedTools: allowed, room: room.map { ($0.program, $0.runFile) })
+            var environment = AgentTools.environment()
+            // A delegation can take many minutes; the tool must not give up on the call before the room does.
+            if room != nil { environment["MCP_TOOL_TIMEOUT"] = "3600000"; environment["MCP_TIMEOUT"] = "30000" }
             let command = AgentCommand(executable: agentLauncher.executable(for: service) ?? service.program, arguments: arguments,
-                                       workspace: workspace, environment: AgentTools.environment())
+                                       workspace: workspace, environment: environment)
             exit = await agentLauncher.run(command, timeout: AgentTools.timeout, signal: stopTool) { stream, text in
                 writer.line(stream, text)
             }
@@ -249,6 +273,7 @@ extension Backend {
         if !closing.isEmpty { content += (content.isEmpty ? "" : "\n\n") + closing.joined(separator: "\n") }
         if failure == nil, content.isEmpty { content = "Done." }
 
+        if let used = turn.usage { ref.addUsage(used) }
         var thread = ref.value
         var messages = thread["messages"]?.array ?? []
         if !messages.isEmpty {
@@ -268,7 +293,12 @@ extension Backend {
         ref.value = thread
         job.state = finalState
         job.progress = finalText
-        locked { abort = nil; active = nil; liveThread = nil; lastActivity = now() }
+        if let scope {
+            scope.remove(ref.value["id"]?.string ?? "")
+            locked { lastActivity = now() }
+        } else {
+            locked { abort = nil; active = nil; liveThread = nil; lastActivity = now() }
+        }
         changed()
     }
 

@@ -25,6 +25,14 @@ let rawArguments = Array(CommandLine.arguments.dropFirst())
 // The Linux desktop app's engine. Handled first: its --version names the app, it is not a request for ours.
 if rawArguments.first == "desktop-service" { exit(await runDesktopService(Array(rawArguments.dropFirst()))) }
 
+// The room's tools for Claude Code and Codex, started by them for one driven run: `black-team mcp-room --run <file>`. It opens no data
+// folder and no model; it relays each tool call to the running Black Team over the run's private channel (Room/RoomBridge.swift).
+if rawArguments.first == "mcp-room" {
+    guard rawArguments.count == 3, rawArguments[1] == "--run" else { fail("Usage: black-team mcp-room --run <file>", code: 2) }
+    await RoomMCPServer.runStdio(runFile: rawArguments[2])
+    exit(0)
+}
+
 if rawArguments.contains("--version") || rawArguments.first == "version" {
     print("black-team \(programVersion)")
     exit(0)

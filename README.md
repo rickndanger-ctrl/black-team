@@ -19,7 +19,7 @@ You can use it at your desk or connect privately from your phone. The model and
 agent run on your computer; your phone is a window into that same workspace.
 The phone interface supports browser access from **iPhone and Android**.
 
-**Status: Linux alpha, 0.1.0-alpha.28.** Source and automated tests are available;
+**Status: Linux alpha, 0.1.0-alpha.29.** Source and automated tests are available;
 the portable agent/server integrations still need live testing on fresh machines
 and physical phones. See [verification and known limits](docs/VERIFICATION.md).
 
@@ -54,6 +54,10 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   folder of linked notes that only your local models use. Code saves and recalls
   facts; Chat is handed the few lines that match your message. A keeper holds it
   within limits, using your own model to condense notes that grow too long.
+- **A paid agent drives, your local models do the work.** In a project's [Room](docs/ROOM.md), a cloud model, Claude Code or
+  Codex can take a goal and hand real jobs (reading files, summarising, first drafts, tests) to your local models while it works,
+  then check the results. You see who was given what, and how many tokens the local and the paid side used. You confirm
+  first exactly what is sent where.
 - **Projects in the sidebar.** Name a project and it gets a folder to work in
   and its own notes and journal. Open it later and pick up where you left off.
 - **See what your computer is doing.** The desktop shows live whole-system CPU
@@ -174,11 +178,13 @@ On first launch, **Workspace** shows the model setup. To change it later, open
 | A compatible GGUF | **Model file** | Choose the model; use the detected llama.cpp runtime or choose its executable |
 | Another compatible local server | **Another server** | Enter its loopback `/v1` address, then choose **Find models** |
 | Another model file format | Its compatible local server | Load it in that engine first, then connect the server |
+| Nothing yet | **Get a model** | Black Team ranks models for this computer, downloads your choice (or any GGUF from Hugging Face), checks it and sets it up; see [docs/MODELS.md](docs/MODELS.md) |
 
 Choose **Save and open chat**, then send a message. The first message connects or
 starts the configured model automatically. The Ollama and LM Studio buttons fill
 in their usual addresses and run discovery; they do not install those apps or
-download model weights. Use **Find models** again after starting your server.
+download model weights. **Get a model** does download weights, but only the model
+you choose. Use **Find models** again after starting your server.
 
 Most people can leave **Advanced connection and performance** closed. It holds
 optional API keys, a custom server address, a manual model ID, the workspace,

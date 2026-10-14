@@ -3,7 +3,7 @@ import Integrations from './Integrations.jsx';
 import SetupForm from './ModelSetup.jsx';
 import PhoneSettings from './PhoneSettings.jsx';
 import {native} from './desktop.mjs';
-import StarterModels from './Starter.jsx';
+import GetModel from './GetModel.jsx';
 import {createCompanionInitializer} from './companionConnection.mjs';
 import Brand from './Brand.jsx';
 import AgentAvatar from './AgentAvatar.jsx';
@@ -12,8 +12,10 @@ import ThemePicker from './Theme.jsx';
 import MemoryPage from './Memory.jsx';
 import {ModelList} from './Models.jsx';
 import Harnesses from './Harnesses.jsx';
+import SetupCard from './SetupCard.jsx';
 import FindModels, {FoundPrompt} from './FindModels.jsx';
 import {Chat} from './Chat.jsx';
+import StopCard from './StopCard.jsx';
 import {CloudPanel} from './Cloud.jsx';
 import Room from './Room.jsx';
 import MicButton from './Dictate.jsx';
@@ -39,15 +41,18 @@ function Workspace({status, busy, onAction, onChat, onSettings, onPhone, onSave}
   // A new install is walked through two steps: the models found here, then the agents found here.
   const [welcome, setWelcome] = useState(() => status.setupComplete ? null : 'models');
   const [manual, setManual] = useState(false);
+  // A model that becomes ready here (a finished download) moves a new install on to its agents.
+  useEffect(() => {if (welcome === 'models' && status.setupComplete) setWelcome('agents');}, [welcome, status.setupComplete]);
   return <>
     <section className="telemetry hardware-grid" aria-label="This computer">
       <div><Icon name="chip"/><div><span>CPU IN USE</span><strong>{status.performance?.cpu ?? '—'}% <small>· load {status.performance?.load?.toFixed(1) || '0.0'} of {hardware.cpu?.threads || hardware.cores || '—'}{Number.isFinite(status.performance?.temperature) && <> · {status.performance.temperature}°C</>}</small></strong><em>{hardware.cpu?.name || 'CPU'} · {hardware.cpu?.cores || '—'} physical {hardware.cpu?.cores === 1 ? 'core' : 'cores'} · {hardware.cpu?.threads || '—'} threads{hardware.cpu?.mhz ? ` · ${speed(hardware.cpu.mhz)} now` : ''}</em></div></div>
       <div><Icon name="activity"/><div><span>MEMORY AVAILABLE</span><strong>{byteSize(status.performance?.memory?.free ?? hardware.memory?.free)} <small>/ {byteSize(hardware.memory?.total)}</small></strong><em>{status.performance?.model ? <>Model holding {byteSize(status.performance.model.resident)}{status.performance.model.swapped > 256 * 1024 ** 2 ? `, ${byteSize(status.performance.model.swapped)} pushed to swap` : ''}</> : status.performance?.memory?.swapUsed > 256 * 1024 ** 2 ? `${byteSize(status.performance.memory.swapUsed)} of swap in use` : 'Free for a model to load'}</em></div></div>
       <div><Icon name="folder"/><div><span>DISK AVAILABLE</span><strong>{byteSize(hardware.disk?.available ?? hardware.disk?.free)} <small>/ {byteSize(hardware.disk?.total)}</small></strong><em>Where Black Team keeps its data</em></div></div>
     </section>
-    {welcome === 'agents' && status.setupComplete && <section className="welcome-step"><div><span className="eyebrow">STEP 2 OF 2 · YOUR AGENTS</span><h2>{status.config?.model?.name} is ready.</h2><p>Connect any agents you want from the list just below, then start. You can do this later too.</p></div><div className="button-row"><button className="primary" disabled={busy} onClick={() => {setWelcome(null); onChat('chat');}}>Start chatting</button><button className="secondary" disabled={busy} onClick={() => setWelcome(null)}>Stay here</button></div></section>}
-    {welcome === 'agents' && status.setupComplete && <Harnesses status={status} busy={busy} onAction={onAction} onChat={onChat} onSettings={onSettings}/>}
-    {!status.setupComplete ? (welcome === 'models' && !manual ? <><p className="welcome-lead"><span className="eyebrow">STEP 1 OF 2 · YOUR MODELS</span></p><FindModels auto busy={busy} onAction={onAction} onAdded={() => setWelcome('agents')} onManual={() => setManual(true)} heading="Here is what is on this computer"/><StarterModels status={status}/></> : <><StarterModels status={status}/><SetupForm status={status} busy={busy} onSave={onSave} onAction={onAction} onCloudSaved={() => onChat('chat')}/></>) : status.config?.model?.kind === 'cloud' ? <CloudPanel status={status} busy={busy} onChat={onChat} onSettings={onSettings}/> : <section className="local-model-panel">
+    {welcome === 'agents' && status.setupComplete && <section className="welcome-step"><div><span className="eyebrow">{status.config?.model?.name} IS READY</span><h2>Start chatting, or set up your agents first.</h2><p>One approval below connects the agents found on this computer. You can do this later too, from Settings.</p></div><div className="button-row"><button className="primary" disabled={busy} onClick={() => {setWelcome(null); onChat('chat');}}>Start chatting</button><button className="secondary" disabled={busy} onClick={() => setWelcome(null)}>Stay here</button></div></section>}
+    {welcome === 'agents' && status.setupComplete && <SetupCard status={status} busy={busy} mode="welcome" onChat={kind => {setWelcome(null); onChat(kind);}} onDone={() => setWelcome(null)}/>}
+    {welcome === null && status.setupComplete && <SetupCard status={status} busy={busy} mode="workspace" onChat={onChat}/>}
+    {!status.setupComplete ? (welcome === 'models' && !manual ? <><p className="welcome-lead"><span className="eyebrow">STEP 1 OF 2 · YOUR MODELS</span></p><FindModels auto busy={busy} onAction={onAction} onAdded={() => setWelcome('agents')} onManual={() => setManual(true)} heading="Here is what is on this computer"/><GetModel status={status} onChat={onChat}/></> : <><GetModel status={status} onChat={onChat}/><SetupForm status={status} busy={busy} onSave={onSave} onAction={onAction} onCloudSaved={() => onChat('chat')}/></>) : status.config?.model?.kind === 'cloud' ? <CloudPanel status={status} busy={busy} onChat={onChat} onSettings={onSettings}/> : <section className="local-model-panel">
       <div className="model-identity"><AgentAvatar large active={status.runtime?.busy}/><div><span className="eyebrow">YOUR LOCAL MODEL</span><h2>{status.config?.model?.name || 'Local model'}</h2><p>{status.runtime?.ready ? 'Ready on this computer. Open a conversation to begin.' : status.runtime?.state === 'starting' ? (status.config?.model?.source === 'server' ? 'Connecting to your local server. The server manages model loading.' : 'Loading the model into memory. This can take a moment.') : 'Start your model when you need it. Your conversations stay here.'}</p></div></div>
       <div className="model-facts"><div><span>Model</span><strong>{status.config?.model?.source === 'server' ? status.config.model.id : basename(status.config?.model?.file)}</strong></div><div><span>Processing</span><strong>{status.config?.model?.source === 'server' ? 'Local server' : [status.config?.model?.gpuLayers ? `${status.config.model.gpuLayers} GPU layers` : 'CPU', ...(status.runtime?.features?.length ? status.runtime.features : [`${status.config?.model?.threads || '—'} threads`])].join(' · ')}</strong></div><div><span>Context window</span><strong>{Number(status.config?.model?.context || 4096).toLocaleString()} tokens</strong></div></div>
       <div className="button-row">{running ? <button className="secondary" disabled={busy || status.runtime?.busy} onClick={() => onAction('runtime-stop', {}, 'Model stopped.')}><Icon name="power" size={16}/>{status.config?.model?.source === 'server' ? 'Disconnect model' : 'Stop model'}</button> : <button className="primary" disabled={busy} onClick={() => onAction('runtime-start', {}, status.config?.model?.source === 'server' ? 'Connecting to your local server.' : 'Starting your local model.')}><Icon name="power" size={16}/>{status.config?.model?.source === 'server' ? 'Connect model' : 'Start model'}</button>}<button className={running ? 'primary' : 'secondary'} disabled={busy} onClick={()=>onChat("chat")}><Icon name="chat" size={16}/>Open chat</button><button className="text-button" onClick={()=>onSettings("model")}>Change model <Icon name="arrow" size={15}/></button></div>
@@ -75,6 +80,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [sending, setSending] = useState(false);
   const [pendingRequest, setPendingRequest] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
@@ -179,7 +185,23 @@ export default function App() {
   };
   const currentKind = thread?.kind || pendingRequest?.kind || newChatKind;
   const showSettings = section => {setSettingsSection(section||'model');navigate('settings');};
-  const switchModel = async key => {const result = await action('model-switch', {key}); if (result?.name) setNotice(`Now using ${result.name}. Your next message starts it.`); return result;};
+  const switchModel = async key => {
+    const result = await action('model-switch', {key});
+    if (result?.name) {
+      setNotice(`Now using ${result.name}. Your next message starts it.`);
+      // If it would not fit beside another model that is running, ask now; the card shows up from the status.
+      try {await api('/api/runtime/approval'); await refresh();} catch {}
+    }
+    return result;
+  };
+  // The person said yes to stopping the other model: the engine stops that one server and starts the chosen model.
+  const approveStop = async approval => {
+    setStopping(true); setError('');
+    try {await post('/api/runtime/approve', {pid: approval.pid}); setNotice(`Stopped ${approval.otherName}. ${approval.modelName} is starting.`); await refresh(); return true;}
+    catch (cause) {setError(cause.message); await refresh(); return false;}
+    finally {setStopping(false);}
+  };
+  const cancelStop = async () => {try {await post('/api/runtime/decline', {});} catch {} await refresh();};
   const threadLine = item => `${item.kind === 'agent' ? 'Code' : 'Chat'} · ${date(item.updated)}${item.privacy === 'cloud' ? ` · Leaves this computer · ${item.provider}` : ''}`;
   const forgetModel = key => action('model-forget', {key}, 'Removed from your list. Nothing was deleted from your computer.');
   const saveModel = async value => {if(await action('setup-save',value,'Model saved. Send a message to begin.'))startChat('chat');};
@@ -201,15 +223,16 @@ export default function App() {
       {error && <div className="notice error" role="alert"><p>{error}</p><button aria-label="Dismiss error" onClick={() => setError('')}>×</button></div>}
       {pendingRequest&&page!=='conversations'&&<div className="notice" role="status"><p>Your last message needs to reconnect before you start another conversation.</p><button className="secondary" onClick={()=>navigate('conversations')}>Recover last message</button></div>}
       {notice && <div className="notice" role="status"><p>{notice}</p><button aria-label="Dismiss message" onClick={() => setNotice('')}>×</button></div>}
+      {desktop && page !== 'conversations' && status.runtime?.approval && <StopCard approval={status.runtime.approval} busy={stopping} onApprove={() => approveStop(status.runtime.approval)} onCancel={cancelStop}/>}
       {desktop && page === 'workspace' && <Workspace status={status} busy={busy} onAction={action} onChat={startChat} onSettings={showSettings} onPhone={()=>navigate("phone")} onSave={saveModel}/>}
-      {page === 'conversations' && <Chat key={`${threadId||"new"}:${chatKey}`} drafts={drafts} onSwitchModel={desktop?switchModel:undefined} onOpenThread={openThread} initialKind={newChatKind} onSetup={showSettings} status={status} thread={thread} threadId={threadId} connection={connection} onSend={send} onCancel={cancel} onApproval={approval} sending={sending} pendingRequest={pendingRequest} project={activeProject} onLeaveProject={leaveProject} onNotice={setNotice} onError={setError}/>}
+      {page === 'conversations' && <Chat key={`${threadId||"new"}:${chatKey}`} drafts={drafts} onSwitchModel={desktop?switchModel:undefined} onOpenThread={openThread} initialKind={newChatKind} onSetup={showSettings} status={status} thread={thread} threadId={threadId} connection={connection} onSend={send} onCancel={cancel} onApproval={approval} sending={sending} pendingRequest={pendingRequest} project={activeProject} onLeaveProject={leaveProject} onNotice={setNotice} onError={setError} stopping={stopping} onApproveStop={approveStop} onCancelStop={cancelStop}/>}
       {desktop && page === 'room' && status.access === 'desktop' && <Room status={status} project={project} onOpenChat={() => navigate('conversations')}/>}
       {page === 'memory' && <MemoryPage call={call} onError={setError} status={status} onUseProject={openProject}/>}
       {desktop && page === 'phone' && <PhoneSettings status={status} busy={busy} onAction={action}/>}
       {desktop && page === 'settings' && <>
         <nav className="settings-sections" aria-label="Settings sections">{[['model','Models'],['agents','Agents & apps'],['data','App & data']].map(([id,label])=><button key={id} className={settingsSection===id?'selected':''} aria-current={settingsSection===id?'page':undefined} onClick={()=>setSettingsSection(id)}>{label}</button>)}</nav>
-        {settingsSection==='model'&&<><ModelList models={status.models} busy={busy} working={Boolean(status.runtime?.busy)} onSwitch={switchModel} onForget={forgetModel}/><FindModels busy={busy} onAction={action}/><StarterModels status={status}/><SetupForm status={status} settings busy={busy} onAction={action} onSave={saveModel} onCloudSaved={() => startChat('chat')}/></>}
-        {settingsSection==='agents'&&<Integrations status={status} busy={busy} onAction={action} onChat={()=>startChat('agent')}/>}
+        {settingsSection==='model'&&<><ModelList models={status.models} busy={busy} working={Boolean(status.runtime?.busy)} onSwitch={switchModel} onForget={forgetModel} optimize={status.optimize} onOptimize={key => action('optimize-start', {key})} onCancelOptimize={() => action('optimize-cancel')}/><FindModels busy={busy} onAction={action}/><GetModel status={status} onChat={startChat}/><SetupForm status={status} settings busy={busy} onAction={action} onSave={saveModel} onCloudSaved={() => startChat('chat')}/></>}
+        {settingsSection==='agents'&&<><SetupCard status={status} busy={busy} mode="settings" onChat={startChat}/><Integrations status={status} busy={busy} onAction={action} onChat={()=>startChat('agent')}/></>}
         {settingsSection==='data'&&<><section className="settings-data"><div><h2>Your data stays here</h2><p>Settings and conversations are saved on this computer.</p></div><button className="secondary" onClick={()=>action('open-data')} disabled={busy}>Open data folder</button></section><details><summary>Optional research: JEV</summary><p className="section-intro">Chat and agent work use local context management and need no JEV key. Optional research setup is described in docs/JEV.md.</p></details><p className="inline-note">Updates are your choice. Black Team does not automatically download models or new app versions.</p></>}
       </>}
       {page !== 'conversations' && <footer>PRIVATE AI. TOTAL CONTROL.<span>{status.hardware?.platform === 'linux' ? 'Linux' : status.hardware?.platform} · {status.hardware?.arch}</span></footer>}
