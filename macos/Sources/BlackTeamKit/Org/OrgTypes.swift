@@ -136,6 +136,8 @@ public struct Organization: Codable, Equatable, Sendable {
     public var routines: [OrgRoutine] = []
     public var nextNumber: Int
     public var created: String
+    /// An Obsidian board this organization takes its tickets from, when linked (Org/OrgBoard.swift). Only paths and two switches; no secrets.
+    public var board: OrgBoard? = nil
 
     public func role(_ id: String) -> OrgRole? { roles.first { $0.id == id } }
     public func roles(of kind: String) -> [OrgRole] { roles.filter { $0.kind == kind } }
@@ -168,6 +170,8 @@ public struct OrgEvent: Codable, Equatable, Sendable {
     public var stage: String?
     public var role: String?
     public var text: String
+    /// An artifact this event saved on the board, as a path under the board's Artifacts folder (`T-7/spec.md`).
+    public var link: String? = nil
 }
 
 /// What a ticket is waiting for the owner to do.
@@ -227,8 +231,13 @@ public struct OrgTicket: Codable, Equatable, Sendable {
     public var children: [String]
     /// The role that is working on it now.
     public var currentRole: String?
+    /// A ticket that came from an Obsidian board: the note's id (`T-7`), its file in the board's Tickets folder, and the last event written to its Log.
+    public var boardId: String? = nil
+    public var boardFile: String? = nil
+    var boardLogged: String? = nil
 
-    public var label: String { "T-\(number)" }
+    /// The board's own id (`T-7`) for a ticket that came from a board, so the same name is used everywhere.
+    public var label: String { boardId ?? "T-\(number)" }
     public var finished: Bool { state == "done" || state == "cancelled" }
 }
 
@@ -314,6 +323,8 @@ public struct OrgState: Codable, Equatable, Sendable {
     /// The model slot or the room is busy right now.
     public var busy: Bool
     public var stages: [String]
+    /// The linked board, when there is one (a short form; the notes themselves are `orgBoardStatus`).
+    public var board: OrgBoardInfo? = nil
 }
 
 /// What starting the organization would send, and where. `orgStart` refuses unless `digest` still matches the roles as they are then.

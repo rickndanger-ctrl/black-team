@@ -207,6 +207,58 @@ private func printOrg(_ s: OrgState) {
             }
             printOrg(try await state(t, pid))
         }
+    case "link":
+        let board = option("--board"), repo = option("--repo")
+        let backlog = arguments.contains("--backlog")
+        arguments.removeAll { $0 == "--backlog" }
+        let pid = try await projectId(t)
+        guard let board else { fail("org link takes --board <folder>: the Board folder of your Obsidian vault (it holds Tickets/).", code: 2) }
+        var input: [String: JSONValue] = ["project": .string(pid), "folder": .string(board), "takeBacklog": .bool(backlog)]
+        if let repo { input["repo"] = .string(repo) }
+        let linked = try decode(OrgState.self, try await t.call("POST", "/api/org/board/link", input: input))
+        if asJSON { printJSON(linked) } else if let b = linked.board {
+            orgSay("Linked \(linked.projectName) to the board \(b.folder)\nWork happens in \(b.repo), each ticket on its own branch (org/T-<n>-...). Nothing is merged or pushed.")
+            orgSay("Black Team writes into that folder (ticket notes and an Artifacts folder). Nothing leaves this computer.")
+            orgSay("To put your local models to work: black-team org work \(linked.projectName) on")
+        }
+    case "unlink":
+        let pid = try await projectId(t)
+        _ = try await t.call("POST", "/api/org/board/unlink", input: ["project": .string(pid)])
+        orgSay("The board was unlinked. Tickets Black Team gave back stay on the board.")
+    case "work":
+        let confirmed = arguments.contains("--yes")
+        arguments.removeAll { $0 == "--yes" }
+        let pid = try await projectId(t)
+        guard arguments.count == 1, ["on", "off"].contains(arguments[0]) else { fail("org work takes a project and on or off.", code: 2) }
+        let on = arguments[0] == "on"
+        let s = try decode(OrgState.self, try await t.call("POST", "/api/org/board/work", input: ["project": .string(pid), "on": .bool(on), "confirmPaid": .bool(confirmed)]))
+        if asJSON { printJSON(s) } else { orgSay(s.board?.statusText ?? "") }
+        if on, case .local(let backend) = t {
+            // Without the background service this command is the engine, so it stays to do the work. Ctrl-C stops it and gives the tickets back.
+            orgSay("\nWorking while this command runs (Ctrl-C stops it). For work that carries on with nothing open: black-team service install")
+            var last = ""
+            while true {
+                await backend.orgTickAll()
+                let now = try await state(t, pid)
+                let line = now.board?.statusText ?? ""
+                if line != last { orgSay(line); last = line }
+                if now.organization?.paused == true || now.board?.working != true { break }
+                try await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+        }
+    case "board":
+        let pid = try await projectId(t)
+        let status = try decode(OrgBoardStatus.self, try await t.call("GET", "/api/org/board", query: ["project": pid]))
+        if asJSON { printJSON(status); return 0 }
+        let info = status.info
+        orgSay("Board: \(info.folder)\nRepository: \(info.repo)\nWorking: \(info.working ? "yes" : "no") (\(info.statusText))\nBlack Team writes as: \(info.owner)")
+        if !info.reachable { orgSay("Problem: \(info.problem)") }
+        for row in status.rows {
+            let who = row.holder == "free" ? "free" : "\(row.owner) until \(row.leaseUntil)" + (row.holder == "mine" ? " (Black Team)" : "")
+            orgSay("  \(row.id.padding(toLength: 6, withPad: " ", startingAt: 0)) \(row.status.padding(toLength: 11, withPad: " ", startingAt: 0)) \(row.stage.padding(toLength: 7, withPad: " ", startingAt: 0)) \(row.priority.padding(toLength: 3, withPad: " ", startingAt: 0)) \(row.title)  [\(who)]")
+        }
+        if status.rows.isEmpty { orgSay("  No tickets on the board.") }
+        if !status.ignored.isEmpty { orgSay("Ignored (no usable front matter):"); for item in status.ignored { orgSay("  \(item)") } }
     case "pause", "resume":
         let pid = try await projectId(t)
         printOrg(try decode(OrgState.self, try await t.call("POST", "/api/org/\(action)", input: ["project": .string(pid)])))
@@ -243,7 +295,7 @@ private func printOrg(_ s: OrgState) {
         _ = try await t.call("POST", "/api/org/remove", input: ["project": .string(pid)])
         orgSay("The organization was removed. Branches it made are still in your repository.")
     default:
-        fail("org takes create, show, role, set, start, pause, resume, step, standup, routine or remove.\n\n\(commandHelp["org"] ?? "")", code: 2)
+        fail("org takes create, show, role, set, start, link, unlink, work, board, pause, resume, step, standup, routine or remove.\n\n\(commandHelp["org"] ?? "")", code: 2)
     }
     return 0
 }

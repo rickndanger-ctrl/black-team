@@ -63,6 +63,12 @@ computer" on Linux:
   service you have not agreed to waits at a privacy gate that only the computer can answer. The vault is not used by any role when any
   role is paid, and every stage is a new conversation. Its files (`orgs/`) hold no keys; a role names a saved model by its key.
   Engineering work is on a branch of its own in a separate working folder; your branch and folder are not changed.
+- **An Obsidian board** (a folder of ticket notes the organization works from, [ORGANIZATION.md](ORGANIZATION.md#working-from-an-obsidian-board))
+  is a folder you choose. Black Team reads the notes in its `Tickets/` folder and writes into them (front matter fields, Log lines) and
+  into an `Artifacts/` folder beside them (stage results). It stores only the two paths in `org.json`. Every role is local unless you
+  chose a paid one and agreed to the agreement, which is the same agreement as for any organization; nothing about the board sends
+  anything anywhere. The folder cannot be inside Black Team's data folder, and links that lead out of it are not followed. Other
+  programs and agents that can read that folder (your sync, backups, other agents) see what Black Team writes there.
 
 What this does not cover: the service's own retention and training policy (read it); what a model says
 back, which is saved locally; and a model that quotes vault text it was shown in a *local* turn before a

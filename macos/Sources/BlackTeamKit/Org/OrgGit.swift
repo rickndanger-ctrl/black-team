@@ -18,6 +18,13 @@ enum OrgGit {
         return "black-team/t\(number)" + (slug.isEmpty ? "" : "-" + slug)
     }
 
+    /// The branch for a ticket that came from an Obsidian board: `org/T-7-add-dark-mode`, named after the note's own id.
+    static func boardBranchName(id: String, title: String) -> String {
+        let plain = branchName(number: 0, title: title)
+        let slug = plain.hasPrefix("black-team/t0-") ? String(plain.dropFirst("black-team/t0-".count)) : ""
+        return "org/\(id)" + (slug.isEmpty ? "" : "-" + slug)
+    }
+
     static func run(_ arguments: [String], in directory: String, timeout: TimeInterval = 120) -> Result {
         let process = Process(), pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")

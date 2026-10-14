@@ -68,7 +68,10 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   engineers, reviewer, QA, docs writer and release manager work through tickets (intake, spec, design, plan, build, review, QA, ship)
   like a small company. You approve the spec and shipping; each ticket is built on its own git branch and nothing is merged for you; a
   daily ceiling on paid work pauses it; a daily stand-up report says what moved. Local models do the bulk, so expect hours for a full
-  ticket, and read the work before you merge it.
+  ticket, and read the work before you merge it. It can also work from an **Obsidian board**: link a folder of ticket notes and one
+  switch ("Start working") puts your local models to work on the free tickets there, next to other agents that use the same board,
+  with the progress written back into each note. It writes into the folder you choose, nothing leaves the computer, and it never
+  merges or pushes ([Working from an Obsidian board](docs/ORGANIZATION.md#working-from-an-obsidian-board)).
 - **Projects in the sidebar.** Name a project and it gets a folder to work in
   and its own notes and journal. Open it later and pick up where you left off.
 - **See what your computer is doing.** The desktop shows live whole-system CPU

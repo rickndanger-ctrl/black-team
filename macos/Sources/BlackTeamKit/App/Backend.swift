@@ -87,6 +87,8 @@ public final class Backend: @unchecked Sendable {
     let drivers = DriverRegistry()
     /// The organization of each project, picking up tickets (Org/, App/BackendOrg.swift).
     let orgRuntime = OrgRuntime()
+    /// What working from an Obsidian board keeps in memory between ticks (Org/OrgBoard.swift).
+    let orgBoardRuntime = OrgBoardRuntime()
     /// The `black-team` program a driven run's MCP server is started from; nil finds it (tests set it).
     var bridgeProgramOverride: String?
     /// Replaces the standard limits of a driven run (tests use small ones).
@@ -917,6 +919,8 @@ public final class Backend: @unchecked Sendable {
         let timer = locked { () -> Task<Void, Never>? in closing = true; setupDownloads.forEach { $0.cancel() }; return keeperTask }
         timer?.cancel()
         orgStopLoop()
+        // Tickets held on an Obsidian board are given back, so another team can take them over.
+        for id in orgProjectIds() where orgLoad(id)?.board?.working == true { orgBoardReleaseAll(id, why: "Black Team is closing.") }
         stopPhoneAccess()
         installer.cancel()
         cancel()
