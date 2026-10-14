@@ -151,7 +151,7 @@ function Members({room, status, busy, change, mic}) {
           <p className="room-sub">Add a member</p>
           <div className="button-row">
             <select className="agent-picker" aria-label="New member" value={chosen?.value || ''} disabled={busy} onChange={event => setPick(event.target.value)}>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-            <input ref={roleBox} className="room-input" value={role} maxLength={80} placeholder="Role, for example builder or reviewer" aria-label="Role" disabled={busy} onChange={event => setRole(event.target.value)}/>{mic(roleBox, role, busy)}
+            <span className="room-field"><input ref={roleBox} className="room-input" value={role} maxLength={80} placeholder="Role, for example builder or reviewer" aria-label="Role" disabled={busy} onChange={event => setRole(event.target.value)}/>{mic(roleBox, role, busy)}</span>
             {chosen?.agent
               ? <select className="agent-picker" aria-label="Member permission" value={permission} disabled={busy} onChange={event => setPermission(event.target.value)}>{PERMISSIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
               : <select className="agent-picker" aria-label="Member work" value={work} disabled={busy} onChange={event => setWork(event.target.value)}>{WORK.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>}
@@ -247,7 +247,7 @@ function Tasks({room, busy, running, change, mic}) {
       ? <div className="room-add">
           <p className="room-sub">Optional: give one member a single job without a team run. Say what should be done, choose who does it, press Add, then press Start on the task.</p>
           <div className="button-row">
-            <input ref={titleBox} className="room-input" value={title} maxLength={200} placeholder="What should be done, in a few words" aria-label="Task title" disabled={busy} onChange={event => setTitle(event.target.value)}/>{mic(titleBox, title, busy)}
+            <span className="room-field"><input ref={titleBox} className="room-input" value={title} maxLength={200} placeholder="What should be done, in a few words" aria-label="Task title" disabled={busy} onChange={event => setTitle(event.target.value)}/>{mic(titleBox, title, busy)}</span>
             <select className="agent-picker" aria-label="Assignee" value={assignee} disabled={busy} onChange={event => setAssignee(event.target.value)}><option value="">Nobody yet</option>{room.members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
             <button type="button" className="primary" disabled={busy || running || !title.trim()} onClick={add}>Add</button>
             <button type="button" className="link-button" onClick={() => {setAdding(false); setTitle(''); setAssignee('');}}>Cancel</button>
@@ -290,7 +290,7 @@ function TaskCard({task, room, busy, running, change, mic}) {
         : null}
       {task.status === 'review' && sendingBack && <div className="room-add">
         <div className="button-row">
-          <input ref={noteBox} className="room-input" value={note} maxLength={1000} placeholder="Note for the member" aria-label="Note for the member" disabled={locked} onChange={event => setNote(event.target.value)}/>{mic(noteBox, note, locked)}
+          <span className="room-field"><input ref={noteBox} className="room-input" value={note} maxLength={1000} placeholder="Note for the member" aria-label="Note for the member" disabled={locked} onChange={event => setNote(event.target.value)}/>{mic(noteBox, note, locked)}</span>
           <button type="button" className="primary" disabled={locked} onClick={sendBack}>Send back</button>
           <button type="button" className="link-button" disabled={locked} onClick={() => {setSendingBack(false); setNote('');}}>Cancel</button>
         </div>
