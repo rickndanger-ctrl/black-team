@@ -138,8 +138,11 @@ final class DriverBasicsTests: XCTestCase {
         let gate = FairGate(last: "B")
         let order = Seen()
         let first = await gate.acquire("A"); XCTAssertTrue(first)
-        let waiters = [("A2", "A"), ("B1", "B"), ("A3", "A")].map { name, key in
-            Task { let ok = await gate.acquire(key); order.add(["n": .string(name), "ok": .bool(ok)]); if ok { gate.release(key) }; return ok }
+        // Each waiter joins the queue before the next is started: tasks started together may arrive in any order.
+        var waiters: [Task<Bool, Never>] = []
+        for (name, key) in [("A2", "A"), ("B1", "B"), ("A3", "A")] {
+            waiters.append(Task { let ok = await gate.acquire(key); order.add(["n": .string(name), "ok": .bool(ok)]); if ok { gate.release(key) }; return ok })
+            try? await Task.sleep(nanoseconds: 30_000_000)
         }
         try? await Task.sleep(nanoseconds: 100_000_000)
         gate.release("A")                                  // the first holder was model A, so A's waiters go first, in order
