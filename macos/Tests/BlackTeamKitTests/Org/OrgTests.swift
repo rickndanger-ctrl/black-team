@@ -183,8 +183,11 @@ final class OrgTests: XCTestCase {
         XCTAssertTrue(software.git)
         await fail({ _ = try r.backend.orgCreate(projectId: r.pid, template: "studio") }, contains: "already has an organization")
         _ = try r.backend.orgRemove(projectId: r.pid)
-        let studio = try r.backend.orgCreate(projectId: r.pid, template: "studio", local: r.localKey)
+        // With no model named, every role starts on the local model in use.
+        let studio = try r.backend.orgCreate(projectId: r.pid, template: "studio")
         XCTAssertEqual(studio.organization?.roles.map(\.kind), ["lead", "designer", "reviewer"])
+        let inUse = keyOf(try r.backend.configStore.read().model)
+        XCTAssertTrue(studio.organization!.roles.allSatisfy { $0.modelKey == inUse }, "\(studio.organization!.roles.map(\.modelKey))")
         _ = try r.backend.orgRemove(projectId: r.pid)
         let small = try r.backend.orgCreate(projectId: r.pid, template: "small", local: r.localKey)
         XCTAssertEqual(small.organization?.roles.map(\.kind), ["lead", "engineer", "reviewer"])
@@ -646,9 +649,13 @@ final class OrgTests: XCTestCase {
 
     func testAnUnsetRoleOrOneThatCannotBuildStopsTheStart() async throws {
         let r = try await rig()
-        _ = try r.backend.orgCreate(projectId: r.pid, template: "small")
+        // Roles start on the model in use; take the lead's away to see the start refused.
+        let made = try r.backend.orgCreate(projectId: r.pid, template: "small")
+        var lead = try XCTUnwrap(made.organization?.roles.first { $0.kind == "lead" })
+        lead.modelKey = nil
+        _ = try r.backend.orgSaveRole(projectId: r.pid, role: lead)
         var a = try r.backend.orgAgreement(projectId: r.pid)
-        XCTAssertTrue(a.problems.contains("Lead has no model or agent yet."))
+        XCTAssertTrue(a.problems.contains("Lead has no model or agent yet."), "\(a.problems)")
         _ = try r.backend.orgRemove(projectId: r.pid)
         let state = try r.backend.orgCreate(projectId: r.pid, template: "small", local: r.localKey)
         var engineer = try XCTUnwrap(state.organization?.roles.first { $0.kind == "engineer" })

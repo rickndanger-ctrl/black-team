@@ -148,6 +148,9 @@ extension Backend {
         if OrgStore.load(dataFolder, projectId) != nil { throw BlackTeamError("This project already has an organization. Change its roles instead, or remove it first.") }
         let title = EText.trim(name ?? "") .isEmpty ? "\(project.name) \(t.name.lowercased())" : EText.trim(name ?? "")
         guard let orgName = OrgStore.clean(title, max: OrgLimits.name) else { throw BlackTeamError("Give the organization a name of up to \(OrgLimits.name) characters.") }
+        // With no model named, every role starts on the local model in use, so a new organization can work at once.
+        let inUse = (try? configStore.read().model).flatMap { $0.source == "cloud" ? nil : keyOf($0) }
+        let local = local ?? inUse.flatMap { savedModels.find($0) == nil ? nil : $0 }
         for key in [local, leadModel].compactMap({ $0 }) where savedModels.find(key) == nil { throw BlackTeamError("That model is not in your list.") }
         if let leadAgent, AgentService.forEngine(leadAgent) == nil { throw BlackTeamError("The agent is claude-code or codex.") }
         var roles: [OrgRole] = []

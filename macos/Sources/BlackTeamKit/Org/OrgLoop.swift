@@ -55,7 +55,9 @@ extension Backend {
         }
     }
 
-    func orgHousekeeping(_ projectId: String) {
+    /// Settles what a stopped Black Team left behind (a stage marked running with nothing behind it), and runs what is due.
+    /// The background loop calls it; so does `black-team org start` when it is the organization's engine.
+    public func orgHousekeeping(_ projectId: String) {
         guard let org = orgLoad(projectId) else { return }
         // A stage that was running when Black Team quit did not finish: the ticket waits again.
         if !orgRuntime.stepping {

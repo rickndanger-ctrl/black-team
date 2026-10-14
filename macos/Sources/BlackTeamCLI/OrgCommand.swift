@@ -176,7 +176,23 @@ private func printOrg(_ s: OrgState) {
             return a.problems.isEmpty ? 0 : 1
         }
         printOrg(try decode(OrgState.self, try await t.call("POST", "/api/org/start", input: ["project": .string(pid), "digest": .string(a.digest)])))
-        if case .local = t { orgSay("\nThis command picks tickets up only while it runs. For continuous work keep Black Team running in the background: black-team service install") }
+        if case .local(let backend) = t {
+            // Without the background service this command is the organization's engine, so it stays to do the work, and ends when every
+            // open ticket waits for you, is blocked, or is finished. Ctrl-C stops it; the next `org start` carries on.
+            orgSay("\nWorking while this command runs (Ctrl-C stops it). For work that carries on with nothing open: black-team service install")
+            backend.orgHousekeeping(pid)
+            var last = ""
+            while true {
+                let now = try await state(t, pid)
+                let open = now.tickets.filter { !["done", "cancelled"].contains($0.state) }
+                let line = open.map { "T-\($0.number) \($0.stage.title): \($0.state)" }.joined(separator: " · ")
+                if line != last { orgSay(line.isEmpty ? "No open tickets." : line); last = line }
+                if now.organization?.paused == true || !open.contains(where: { ["ready", "running"].contains($0.state) }) { break }
+                if !open.contains(where: { $0.state == "running" }) { _ = try? await backend.orgStep(projectId: pid) }
+                try await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+            printOrg(try await state(t, pid))
+        }
     case "pause", "resume":
         let pid = try await projectId(t)
         printOrg(try decode(OrgState.self, try await t.call("POST", "/api/org/\(action)", input: ["project": .string(pid)])))
