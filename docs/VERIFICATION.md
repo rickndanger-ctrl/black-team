@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.27**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.28**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -992,3 +992,36 @@ Not checked for this release: the send-back note box on screen (same
 grouping); the Room at phone width; real speech arriving in the boxes that
 gained a microphone in alpha.26; the window test on a Linux computer other
 than the Dell; and the lists carried from alpha.20 and alpha.22.
+
+## Live follow-up — October 13, 2026 (alpha.28)
+
+One change to how found models are handled, in the shared engine.
+
+**Found models join the list by themselves.** A model found at first setup
+went into the list, but one that turned up later (a server started afterwards,
+a new model file) was only offered, with an Add step of its own. Once Black
+Team is set up, every found model that can run is now added when it is found;
+the model in use does not change. A model that was removed or passed over
+stays out, and adding it by hand still works. A file larger than the
+computer's memory, a file with no llama.cpp to run it, Black Team's own
+running server and anything past the 24-model limit are not added. A file
+that a saved server entry already serves is no longer offered a second time.
+The Linux home page names what was added; `black-team find` prints an `added`
+line for each. First-run setup still shows its list to tick.
+
+Checked: Linux 607 engine tests (6 skipped), macOS 547 (5 skipped), Node 43,
+Python 24, no failures. On the Dell, with a scratch copy of a setup that had
+one saved model, `black-team find` added a running llama.cpp server and a
+second model file, left the model in use alone, and added nothing on a second
+run; the Linux window showed the note on its home page. In a clean home,
+alpha.28 installed over alpha.27 kept the model and the conversation, passed
+the window test and the command test, and its list then held the three models
+found on that computer beside the starter model. The notarized Mac app passed
+the command test on two Macs (one with a chat and a coding task on real data).
+
+Not checked for this release: a found model being added on a Mac (neither
+test Mac had one that was not already in its list), and the Mac window, which
+gets the behaviour from the engine but shows no note; Ollama or LM Studio
+servers offering many models; removing a model in the window and looking
+again (covered by an engine test only); the window test on a Linux computer
+other than the Dell; and the lists carried from alpha.20 and alpha.22.

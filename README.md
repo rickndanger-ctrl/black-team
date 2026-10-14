@@ -19,7 +19,7 @@ You can use it at your desk or connect privately from your phone. The model and
 agent run on your computer; your phone is a window into that same workspace.
 The phone interface supports browser access from **iPhone and Android**.
 
-**Status: Linux alpha, 0.1.0-alpha.27.** Source and automated tests are available;
+**Status: Linux alpha, 0.1.0-alpha.28.** Source and automated tests are available;
 the portable agent/server integrations still need live testing on fresh machines
 and physical phones. See [verification and known limits](docs/VERIFICATION.md).
 
