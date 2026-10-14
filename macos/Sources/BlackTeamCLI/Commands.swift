@@ -842,6 +842,9 @@ func ledgerText(_ ledger: RunLedger) -> String {
             }
             return 0
 
+        case "org", "ticket":
+            return await runOrgCommand(command, .local(backend))
+
         case "memory":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()
             switch action {

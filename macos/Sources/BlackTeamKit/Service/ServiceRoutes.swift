@@ -36,6 +36,8 @@ final class ServiceRoutes: @unchecked Sendable {
             case ("POST", "/api/inbox/answer"):
                 let input = try json(head, body)
                 guard let id = input["id"]?.string, let choice = input["choice"]?.string, ["approve", "deny"].contains(choice) else { throw BlackTeamError("Choose Approve or Deny.") }
+                // A gate that may use paid agents is answered on the computer, never from a phone.
+                if who != .desktop, hooks.inbox.get(id)?.desktopOnly == true { throw HTTPFailure("Answer this one on the computer: it may use paid agents, which a phone cannot start.", 403) }
                 try hooks.answer(id, approve: choice == "approve")
                 return .json(200, hooks.inboxJSON())
             default: break

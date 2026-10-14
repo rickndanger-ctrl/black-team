@@ -22,6 +22,17 @@ public struct InboxItem: Codable, Equatable, Sendable {
     /// "ended" (the run stopped before an answer).
     public var state: String
     public var answered: Double?
+    /// Nil for a question from a run (the usual kind). "gate": a stage of an organization's ticket waits for the owner (Org/). "note": something
+    /// to read (a paused organization, the daily stand-up); answering it only clears it.
+    public var kind: String? = nil
+    /// Gates: the project and ticket, the stage, what sort of gate ("approval", "question", "privacy", "escalation"), and the artifact to read.
+    public var orgProject: String? = nil
+    public var ticketId: String? = nil
+    public var stage: String? = nil
+    public var gateKind: String? = nil
+    public var artifact: String? = nil
+    /// Set when only the computer's own window may answer (a phone cannot).
+    public var desktopOnly: Bool? = nil
 
     public var isWaiting: Bool { state == "waiting" }
 }
@@ -80,7 +91,8 @@ public final class InboxStore: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         var saved = read()
         var changed = false
-        for index in saved.items.indices where saved.items[index].isWaiting && (scheduleId == nil || saved.items[index].scheduleId == scheduleId) {
+        // An organization's gate or note (kind set) waits for the owner whatever happens to a run, so a restart does not settle it.
+        for index in saved.items.indices where saved.items[index].isWaiting && saved.items[index].kind == nil && (scheduleId == nil || saved.items[index].scheduleId == scheduleId) {
             saved.items[index].state = state
             saved.items[index].answered = date.timeIntervalSince1970
             changed = true

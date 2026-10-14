@@ -56,7 +56,7 @@ public final class IdleUnloader: @unchecked Sendable {
             return lastWindow.map { moment.timeIntervalSince($0) < Self.windowGrace } ?? false
         }
         // Nothing is loaded, or something is using it: the idle clock starts again from now.
-        let working = backend.modelSlotBusy || state.busy || (scheduler?.hasWork ?? false) || window
+        let working = backend.modelSlotBusy || state.busy || (scheduler?.hasWork ?? false) || backend.orgHasWork || window
         if !up || working { lock.withLock { lastBusy = moment }; return false }
         let minutes = settings().idleMinutes
         guard minutes > 0 else { return false }

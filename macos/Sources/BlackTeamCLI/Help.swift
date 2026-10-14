@@ -27,6 +27,8 @@ Commands (black-team <command> --help for details):
   agent claude|codex "<task>"         hand a task to your Claude Code or Codex subscription
   vision status | install             can the model read pictures
   room ...                            a project's team: members, tasks, hand-offs, team runs
+  org ...                             an organization of agents on a project: roles, gates, budgets
+  ticket ...                          the organization's tickets: add, list, show, approve, send back
   memory core | list | search         what Black Team remembers
   skills list | show | remove         the routines Code has saved (the same files Hermes can use)
   phone status | enable | disable | link | reset
@@ -215,6 +217,34 @@ let commandHelp: [String: String] = [
            black-team skills remove <name>
     Skills are routines Code saved after they worked, as folders with a SKILL.md in Hermes's format, in Black Team's data folder
     (skills/). A project's own skills/ folder is read too. Removing moves a skill to skills/.trash. Nothing in a skill runs by itself.
+    """,
+    "org": """
+    Usage: black-team org create <project> [--template software|studio|small] [--name N] [--local <model key>] [--lead-model <key> | --lead-agent claude|codex]
+           black-team org show <project>
+           black-team org role <project> list | add <kind> [--name N] | remove <role>
+           black-team org role <project> set <role> [--model <key> | --agent claude|codex] [--work chat|code] [--access read|ask|edit|auto] [--name N] [--charter T]
+                                              [--skill NOTE] [--price-in X --price-out Y] [--tokens-per-day N] [--money-per-day X]
+           black-team org set <project> [--gates spec,ship] [--tokens-per-day N] [--money-per-day X] [--standup "daily at 9:00"|off] [--name N]
+           black-team org start <project> [--yes]        shows what would leave this computer, then starts picking up tickets with --yes
+           black-team org pause <project> | resume <project> | step <project> | standup <project> | remove <project>
+           black-team org routine <project> [add "<title>" --when "weekdays at 9:00" [--detail D] | remove <n>]
+    An organization is a team of agents (lead, product manager, designer, architect, engineers, reviewer, QA, docs, release manager) that
+    works through tickets like a small company: intake, spec, design, plan, build, review, QA, ship. You approve the spec and shipping by
+    default (they wait in `black-team inbox`). Engineering happens on a branch of its own per ticket; nothing is merged for you. Paid roles
+    use the prices you enter, and a daily ceiling pauses the organization. Local models are slow: expect hours for a full ticket.
+    <role> is its number from `org show`, or its name. `org start` keeps picking up tickets while Black Team runs; for work that
+    carries on with the window closed, use `black-team service install`.
+    """,
+    "ticket": """
+    Usage: black-team ticket add <project> "<title>" [--detail D] [--ui yes|no]
+           black-team ticket list <project>
+           black-team ticket show <project> <ticket> [--artifact <name>]
+           black-team ticket approve <project> <ticket> [--note N]
+           black-team ticket send-back <project> <ticket> --note N [--to intake|spec|design|plan|build|review|qa|ship]
+           black-team ticket answer <project> <ticket> "<answer>"
+           black-team ticket retry <project> <ticket> | cancel <project> <ticket>
+    <ticket> is its number from `ticket list` (3 or T-3). A ticket waits at a gate for you to approve or send it back; a ticket that asked a
+    question waits for `answer`. `show` lists the artifacts each stage made (spec, design files, plan, diff, review, test report, release notes).
     """,
     "memory": """
     Usage: black-team memory core

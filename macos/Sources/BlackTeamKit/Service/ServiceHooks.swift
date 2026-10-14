@@ -173,6 +173,8 @@ public final class ServiceHooks: @unchecked Sendable {
     /// Answers a waiting question. The engine's approval is the one that decides; the inbox copy is settled with it.
     public func answer(_ id: String, approve: Bool) throws {
         guard let item = inbox.get(id), item.isWaiting else { throw BlackTeamError("That question is not waiting any more.") }
+        // An organization's gate or note (Org/OrgGates.swift) is answered there, not by the engine's approval.
+        if item.kind != nil { try backend.orgAnswerInbox(item, approve: approve); return }
         do { try backend.approve(id: item.id, digest: item.digest, choice: approve ? "once" : "deny") }
         catch {
             // The run it belonged to is gone or already moved on.

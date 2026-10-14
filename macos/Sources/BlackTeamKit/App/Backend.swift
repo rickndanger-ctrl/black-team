@@ -85,6 +85,8 @@ public final class Backend: @unchecked Sendable {
     var teamControl: TeamControl?
     /// Driven runs in progress and the member runs beneath them (App/BackendDriver.swift).
     let drivers = DriverRegistry()
+    /// The organization of each project, picking up tickets (Org/, App/BackendOrg.swift).
+    let orgRuntime = OrgRuntime()
     /// The `black-team` program a driven run's MCP server is started from; nil finds it (tests set it).
     var bridgeProgramOverride: String?
     /// Replaces the standard limits of a driven run (tests use small ones).
@@ -914,6 +916,7 @@ public final class Backend: @unchecked Sendable {
     public func shutdown() async {
         let timer = locked { () -> Task<Void, Never>? in closing = true; setupDownloads.forEach { $0.cancel() }; return keeperTask }
         timer?.cancel()
+        orgStopLoop()
         stopPhoneAccess()
         installer.cancel()
         cancel()

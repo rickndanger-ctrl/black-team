@@ -73,6 +73,12 @@ if oneShot == nil, let first = arguments.first, first == "schedule" || first == 
     exit(first == "schedule" ? await runScheduleCommand(transport) : await runInboxCommand(transport))
 }
 
+// An organization and its tickets go to the running background service too, because the service is the one that picks tickets up.
+if oneShot == nil, let first = arguments.first, first == "org" || first == "ticket", let transport = await attachedTransport(), case .remote(let client) = transport {
+    arguments.removeFirst()
+    exit(await runOrgCommand(first, .remote(client)))
+}
+
 let backend: Backend
 do { backend = try Backend(version: programVersion, cloud: cloudRulesForThisRun()) } catch { fail(describe(error)) }
 

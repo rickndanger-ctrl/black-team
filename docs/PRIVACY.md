@@ -56,6 +56,14 @@ computer" on Linux:
   over a socket in a private folder with a secret made for the run, which is deleted when the run ends. The roster of saved agents
   (`roster.json`) holds no keys.
 
+- **An organization** ([ORGANIZATION.md](ORGANIZATION.md)) runs a project's tickets through roles that may be paid. What leaves this
+  computer is shown before it starts (the ticket's words, the earlier stages' work including what local roles wrote, the project files
+  paid roles read, the output of commands they run) and needs your confirmation; it does not start unless the agreement's digest still
+  matches the roles, the project allows cloud models, and the request is not from a phone. A ticket whose next stage would go to a
+  service you have not agreed to waits at a privacy gate that only the computer can answer. The vault is not used by any role when any
+  role is paid, and every stage is a new conversation. Its files (`orgs/`) hold no keys; a role names a saved model by its key.
+  Engineering work is on a branch of its own in a separate working folder; your branch and folder are not changed.
+
 What this does not cover: the service's own retention and training policy (read it); what a model says
 back, which is saved locally; and a model that quotes vault text it was shown in a *local* turn before a
 conversation was converted (only the vault text Black Team itself attached is removed). A host name that

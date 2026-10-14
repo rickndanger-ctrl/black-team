@@ -99,6 +99,13 @@ waits, the run is marked interrupted and its question closed; nothing happens on
 A phone cannot push a notification today (there is no push path); the badge, the Inbox and the approval card are where a question shows.
 Scheduled Code always uses Black Team Code, not Hermes, so its limits are the ones above.
 
+## Organizations
+
+An [organization](ORGANIZATION.md) that is running picks up its next ticket whenever the computer is idle, also with the window closed
+(the service runs the same loop the window does). Its gates, the questions its roles ask, and its stand-up report are in the **Inbox**.
+The Inbox keeps a gate until you answer it: a restart does not settle it. A gate that may use a paid agent can only be answered on the
+computer, not from a phone. While an organization has tickets waiting, the idle timer does not unload the model.
+
 ## Helpers
 
 `Service/HelperSupervisor.swift` starts each registered helper with the service, checks it, restarts it with a growing wait (2 s, doubling

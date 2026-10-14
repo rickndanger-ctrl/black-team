@@ -110,6 +110,11 @@ In the window: **Room → Who is on this team → Saved agents**. On the command
 - **Mac app.** The engine is the same; the Mac screens do not show the driven run's hand-offs and ledger yet. A driven run started
   there with `driven: true` is recorded in the same room file.
 
+## Grown into a company
+
+The [organization](ORGANIZATION.md) is built on the room: its roles become room members, each pipeline stage is a task on this board
+run through the same start path, and the same privacy gate, caps and ledger words apply.
+
 ## What this does not do
 
 - A local model cannot be a driver. A local lead uses plan, work, review, report.
