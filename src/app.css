@@ -617,6 +617,8 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .room-add { margin-top: 18px; padding-top: 4px; }
 .room-add-start { margin-top: 20px; }
 .room-add .button-row { flex-wrap: wrap; }
+/* A box and its microphone stay together, and move to their own line before the box gets too narrow to read. */
+.room-field { display: flex; align-items: center; gap: 8px; flex: 1 1 260px; min-width: 0; }
 .room-input { flex: 1 1 220px; min-width: 0; height: var(--control); padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--field); font-size: 12.5px; }
 .room-input:disabled { opacity: .6; }
 .room-goal { display: flex; align-items: flex-end; gap: 8px; }
