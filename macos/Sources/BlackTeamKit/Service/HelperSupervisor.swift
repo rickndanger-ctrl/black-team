@@ -158,6 +158,12 @@ public final class HelperSupervisor: @unchecked Sendable {
         return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     }
 
+    /// Ended, by Foundation's account or the system's (the exit can be reaped before Foundation sees it).
+    private static func gone(_ process: Process) -> Bool {
+        if !process.isRunning { return true }
+        return kill(process.processIdentifier, 0) != 0 && errno == ESRCH
+    }
+
     private func live(_ spec: HelperSpec) async {
         var backoff = spec.initialBackoff
         while !Task.isCancelled && !isStopping {
@@ -185,7 +191,7 @@ public final class HelperSupervisor: @unchecked Sendable {
             var failures = 0
             var lastCheck = Date()
             var unhealthy = false
-            while process.isRunning && !Task.isCancelled && !isStopping {
+            while !Self.gone(process) && !Task.isCancelled && !isStopping {
                 try? await Task.sleep(nanoseconds: UInt64(poll * 1_000_000_000))
                 if let health = spec.health, Date().timeIntervalSince(lastCheck) >= spec.healthEvery {
                     lastCheck = Date()
@@ -195,18 +201,19 @@ public final class HelperSupervisor: @unchecked Sendable {
                     }
                 }
             }
-            if process.isRunning {
+            if !Self.gone(process) {
                 // Asked to end (stop, or unhealthy): give it a moment, then kill it.
                 let deadline = Date().addingTimeInterval(grace)
-                while process.isRunning, Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                while !Self.gone(process), Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
+                if !Self.gone(process) { kill(process.processIdentifier, SIGKILL) }
             }
-            process.waitUntilExit()
+            // Not waitUntilExit: it blocks a shared thread, and on macOS it never returns when Foundation misses the exit.
+            while !Self.gone(process) { try? await Task.sleep(nanoseconds: 20_000_000) }
             lock.lock(); processes[spec.id] = nil; lock.unlock()
             if Task.isCancelled || isStopping { break }
             let ran = Date().timeIntervalSince(began)
             if ran >= spec.stableAfter { backoff = spec.initialBackoff }
-            let how = unhealthy ? "It stopped answering and was restarted." : process.terminationReason == .exit ? "It ended with status \(process.terminationStatus)." : "It was stopped by signal \(process.terminationStatus)."
+            let how = unhealthy ? "It stopped answering and was restarted." : process.isRunning ? "It ended." : process.terminationReason == .exit ? "It ended with status \(process.terminationStatus)." : "It was stopped by signal \(process.terminationStatus)."
             update(spec.id) { $0.state = "waiting"; $0.pid = nil; $0.lastExit = how; $0.restarts += 1; $0.backoff = backoff }
             await sleep(backoff)
             backoff = min(backoff * 2, spec.maxBackoff)

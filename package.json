@@ -2,7 +2,7 @@
   "name": "black-team",
   "productName": "Black Team",
   "description": "Local AI model harness for Linux with a private phone companion",
-  "version": "0.1.0-alpha.29",
+  "version": "0.1.0-alpha.30",
   "private": true,
   "license": "AGPL-3.0-only",
   "main": "main.cjs",
