@@ -798,6 +798,9 @@ import BlackTeamKit
             fflush(stdout)
             while true { try await Task.sleep(nanoseconds: 2_000_000_000); await backend.syncPhoneAccess() }
 
+        case "schedule": return await runScheduleCommand(.local(ServiceHooks.local(backend)))
+        case "inbox": return await runInboxCommand(.local(ServiceHooks.local(backend)))
+
         case "help", "--help", "-h":
             print(usage)
             return 0

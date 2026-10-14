@@ -17,8 +17,16 @@ extension Backend {
         #else
         found = discoverInstalled(home: home, env: setupEnvironment)
         #endif
+        // The background service step is the desktop service's: the window offers the switch, and the terminal's plan lists it too.
+        let manager = ServiceManager(home: home, dataFolder: dataFolder)
+        #if os(Linux)
+        let serviceSupported = Tools.findProgram("systemctl") != nil
+        #else
+        let serviceSupported = true
+        #endif
         return SetupContext(found: found, hermesInstalls: installs, settings: settings, hermesSupported: integrations.hermesSupported,
-                            tooling: findHermesTooling(home: home, env: setupEnvironment), modelName: model, dataFolder: dataFolder)
+                            tooling: findHermesTooling(home: home, env: setupEnvironment), modelName: model, dataFolder: dataFolder,
+                            serviceSupported: serviceSupported, serviceInstalled: manager.isInstalled())
     }
 
     /// The steps that would set up every agent on this computer, each marked done, will do, or needs something.
@@ -56,7 +64,8 @@ extension Backend {
             defer { locked { setupDownloads = [] } }
             let installer = hermesInstallerOverride?(downloader)
                 ?? HermesInstaller(dataFolder: dataFolder, downloader: downloader, home: home, environment: setupEnvironment)
-            let services = SetupServices(store: integrations, context: { [unowned self] in self.setupContext() }, installer: installer)
+            let services = SetupServices(store: integrations, context: { [unowned self] in self.setupContext() }, installer: installer,
+                                         service: serviceInstallerOverride ?? ServiceManager(home: home, dataFolder: dataFolder))
             let results = await BlackTeamKit.applySetup(approved: ids, services: services, progress: progress)
             changed()
             return results

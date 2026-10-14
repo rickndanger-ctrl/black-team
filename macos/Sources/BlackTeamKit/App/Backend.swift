@@ -83,6 +83,10 @@ public final class Backend: @unchecked Sendable {
     var phoneOptions = PhoneOptions()
     /// The team run in progress (App/BackendTeam.swift); nil when none is running.
     var teamControl: TeamControl?
+    /// The background-service parts (Service/ServiceHooks.swift): schedules, the inbox and the service's own status. Set by the desktop service.
+    var service: ServiceHooks?
+    /// Tests only: what writes the background service's unit when the setup plan is approved.
+    var serviceInstallerOverride: ServiceInstalling?
     /// Set only by the Linux desktop service (Desktop/): where the app's scripts are, and that Hermes is supported. Nil on the Mac.
     var desktopOptions: DesktopOptions?
     /// The window's vision file download and how far it is (Desktop/DesktopVision.swift). Idle everywhere else.
@@ -329,7 +333,7 @@ public final class Backend: @unchecked Sendable {
     public func submit(message rawMessage: String, kind: String = "chat", mode: String = "balanced", requestId: String,
                        threadId givenThread: String? = nil, project givenProject: String? = nil,
                        workspace workspaceOverride: String? = nil, images uploads: [ImageUpload] = [], from origin: SubmitOrigin = .mac,
-                       useMemory: Bool = true) throws -> SubmitResult {
+                       useMemory: Bool = true, unattended: UnattendedPolicy? = nil) throws -> SubmitResult {
         if locked({ closing }) { throw BlackTeamError("Black Team is closing.") }
         // Images are Chat only, and an empty message with images asks for a description, as the daily app does.
         let kinds = try ImageRules.validate(uploads)
@@ -384,7 +388,7 @@ public final class Backend: @unchecked Sendable {
             let hermesSettings = desktopOptions?.scripts == nil ? nil : try? integrations.read()
             let hermesOn = hermesSettings?.hermes.enabled == true
             agentEngine = existing.map { $0["engine"]?.string ?? ($0["hermesSession"] != nil ? "hermes" : "black-team") }
-                ?? (hermesOn && hermesSettings?.engine == "hermes" ? "hermes" : "black-team")
+                ?? (hermesOn && hermesSettings?.engine == "hermes" && unattended == nil ? "hermes" : "black-team")   // a scheduled run's limits are Black Team Code's
             if agentEngine == "hermes" && !hermesOn {
                 throw BlackTeamError("This conversation uses Hermes. Enable it in desktop Settings, or start a new Code conversation.")
             }
@@ -426,6 +430,7 @@ public final class Backend: @unchecked Sendable {
 
         let current = JobState(id: requestId, threadId: thread["id"]?.string, kind: kind, state: "running",
                                progress: cloudModel ? "Contacting \(cloudHost(config.model.endpoint, rules: cloudRules))\u{2026}" : "Preparing local model\u{2026}")
+        current.unattended = unattended
         _ = current.observe { [hub] _ in hub.notify() }
         let signal = CancelSignal()
         let ref = ThreadRef(thread)
