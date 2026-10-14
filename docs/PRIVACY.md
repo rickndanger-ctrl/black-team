@@ -104,6 +104,17 @@ directories and owner-only files. They are **not application-encrypted**. Your O
 account, disk encryption and backups still matter. Other processes running as the
 same user can read your files and process environment.
 
+If you turn on "Keep Black Team running in the background" (off by default, see
+[Background service](SERVICE.md)), your engine keeps running when the window is closed. It runs
+as you, listens only on `127.0.0.1` (the same listener the window uses), and writes one extra
+private file, `service.json`, holding that run's loopback port and a secret made fresh for each
+start; whoever can read it can do what the window does, so it is `0600` in the `0700` data
+folder and refused if wider. Scheduled work runs only what you scheduled, at the level you
+chose; a step that needs your yes waits for you and ends "not approved" if nobody answers.
+Schedules, the inbox and the service's settings are stored in the data folder like the rest.
+The service sends nothing anywhere that the window would not; a scheduled run with a cloud
+model follows the same cloud rules as any conversation.
+
 Server keys are excluded from renderer status responses, phone responses and
 harness command arguments. The runtime/harness receives the needed local key
 in its private configuration/environment. Keys are not a protection against other

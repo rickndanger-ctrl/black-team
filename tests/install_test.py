@@ -122,6 +122,67 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(os.readlink(link), str(target))
         self.assertIn('releases/0.1.0-alpha.2', os.path.realpath(link))
 
+    def fake_systemctl(self, active):
+        """A systemctl that records what it is asked and answers is-active as given."""
+        bin_dir = self.root / 'fake-bin'
+        bin_dir.mkdir(exist_ok=True)
+        log = self.root / 'systemctl.log'
+        log.write_text('')
+        script = bin_dir / 'systemctl'
+        answer = 'exit 0' if active else 'exit 3'
+        script.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "' + str(log) + '"\ncase "$*" in *is-active*) ' + answer + ' ;; esac\nexit 0\n')
+        script.chmod(0o755)
+        self.environment['PATH'] = f'{bin_dir}:{os.environ["PATH"]}'
+        return log
+
+    def write_unit(self, ours=True, from_this_install=True):
+        unit = self.home / '.config/systemd/user/black-team.service'
+        unit.parent.mkdir(parents=True, exist_ok=True)
+        root = self.prefix / 'share/black-team'
+        lines = ['# black-team-managed-v1'] if ours else []
+        program = f'{root}/current/resources/app/bin/black-team' if from_this_install else '/elsewhere/black-team'
+        lines += ['[Service]', f'ExecStart="{program}" "service" "run"']
+        unit.write_text('\n'.join(lines) + '\n')
+        return unit
+
+    def test_an_update_stops_a_running_background_service_and_starts_it_again(self):
+        self.install(self.distribution('0.1.0-alpha.1'))
+        self.write_unit()
+        log = self.fake_systemctl(active=True)
+        result = self.install(self.distribution('0.1.0-alpha.2'))
+        calls = log.read_text().splitlines()
+        self.assertEqual(calls, ['--user is-active --quiet black-team.service', '--user stop black-team.service', '--user start black-team.service'])
+        self.assertIn('restarted', result.stdout)
+        self.assertEqual(os.readlink(self.prefix / 'share/black-team/current'), 'releases/0.1.0-alpha.2')
+        # A rollback does the same.
+        log.write_text('')
+        subprocess.run([str(self.prefix / 'bin/black-team-desktop'), '--rollback'], env=self.environment, capture_output=True, text=True, check=True)
+        self.assertEqual(log.read_text().splitlines(), ['--user is-active --quiet black-team.service', '--user stop black-team.service', '--user start black-team.service'])
+
+    def test_a_background_service_that_was_not_running_is_never_started_by_the_installer(self):
+        self.install(self.distribution('0.1.0-alpha.1'))
+        self.write_unit()
+        log = self.fake_systemctl(active=False)
+        self.install(self.distribution('0.1.0-alpha.2'))
+        self.assertEqual(log.read_text().splitlines(), ['--user is-active --quiet black-team.service'])
+
+    def test_a_unit_that_is_not_ours_or_not_from_this_install_is_never_touched(self):
+        self.install(self.distribution('0.1.0-alpha.1'))
+        log = self.fake_systemctl(active=True)
+        self.write_unit(ours=False)
+        self.install(self.distribution('0.1.0-alpha.2'))
+        self.assertEqual(log.read_text(), '')
+        unit = self.write_unit(from_this_install=False)
+        self.install(self.distribution('0.1.0-alpha.3'))
+        self.assertEqual(log.read_text(), '')
+        self.assertTrue(unit.is_file())
+
+    def test_the_installer_does_not_write_or_enable_the_unit(self):
+        log = self.fake_systemctl(active=False)
+        self.install(self.distribution('0.1.0-alpha.1'))
+        self.assertFalse((self.home / '.config/systemd').exists())
+        self.assertEqual(log.read_text(), '')
+
     def test_corruption_does_not_change_active_release(self):
         self.install(self.distribution('0.1.0-alpha.1'))
         second = self.distribution('0.1.0-alpha.2')

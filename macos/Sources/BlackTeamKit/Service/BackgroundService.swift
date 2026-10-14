@@ -26,10 +26,14 @@ public final class BackgroundService: @unchecked Sendable {
     public init(options: DesktopServiceOptions, backend: Backend? = nil, now: @escaping @Sendable () -> Date = { Date() }, calendar: Calendar = .current,
                 manager: ServiceManager? = nil) throws {
         self.options = options
-        desktop = try DesktopService(options: options, backend: backend)
+        // The engine lock names its holder, so a second program is told "in use by the Black Team background service".
+        let engine = try backend ?? Backend(dataFolder: options.dataFolder, version: options.version, discover: { discoverLinux().result },
+                                            program: "the Black Team background service")
+        desktop = try DesktopService(options: options, backend: engine)
         hooks = ServiceHooks(backend: desktop.backend, mode: .background, manager: manager, now: now, calendar: calendar)
         desktop.backend.service = hooks
         hooks.control = desktop.control
+        hooks.controlKey = desktop.session.controlKey
     }
 
     public var backend: Backend { desktop.backend }
@@ -40,13 +44,14 @@ public final class BackgroundService: @unchecked Sendable {
     public func start(startLoops: Bool = true) async throws -> ServiceConnection {
         let lock = desktop.backend.engineLock
         if !lock.isHeld, let other = lock.otherHolder() {
+            if other.program.contains("background service") { throw BlackTeamError("The Black Team background service is already running for this data folder.") }
             throw BlackTeamError("Black Team is already open in \(other.program), and only one can run your model. Close it; the background service will start after that.")
         }
         _ = try await desktop.start()
         do { try hooks.startBackgroundParts(scripts: options.scripts, startLoops: startLoops) }
         catch { await desktop.shutdown(); throw error }
         let made = ServiceConnection(version: options.version, pid: getpid(), port: desktop.port, secret: desktop.session.sessionKey,
-                                     bootstrap: desktop.session.bootstrapKey, started: Date().timeIntervalSince1970, dataFolder: options.dataFolder)
+                                     bootstrap: desktop.session.bootstrapKey, control: desktop.session.controlKey, started: Date().timeIntervalSince1970, dataFolder: options.dataFolder)
         do { try made.write() } catch { await shutdown(); throw error }
         connection = made
         return made

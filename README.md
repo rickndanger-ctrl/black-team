@@ -45,6 +45,12 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   model's reading and writing speed, budgets its context from that, and trims
   without spending a model call. A gauge shows the speeds and how full the
   budget is.
+- **Work that carries on without the window.** Turn on "Keep Black Team running in the
+  background" and Black Team's engine runs from login. Schedule a message (every
+  day at 9:30, weekdays at 5, once), and each run is a normal conversation in its
+  project. A step that needs your yes waits in an Inbox, on your phone and in
+  `black-team inbox` instead of going ahead. Off by default; the model is
+  unloaded when idle. See [Background service](docs/SERVICE.md).
 - **A map of your code.** With [graphify](https://pypi.org/project/graphifyy/)
   installed, Code asks a graph of the project where things live before it reads,
   so a local model reads far less. See [Black Team Code](docs/CODE.md).
@@ -97,6 +103,10 @@ Your Linux computer
               │
      Your phone browser / Home Screen app
 ```
+
+Optionally one more piece runs without a window: the [background service](docs/SERVICE.md),
+the same engine started at login, which the window, the phone and the `black-team` command
+attach to. Without it, the window starts the engine and stops it when it closes.
 
 Black Team supplies the workspace, the agent loop and the memory. Your model
 supplies the inference. Other harnesses remain their

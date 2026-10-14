@@ -56,7 +56,8 @@ final class SchedulerTests: XCTestCase {
         let daily = try rig.add("Daily", when: .daily(hour: 9, minute: 0))
         rig.clock.advance(3 * 24 * 3600)
         await rig.scheduler.tick()
-        await rig.finish()
+        // One model slot: the two that are due take their turns.
+        for _ in 0..<3 { await rig.finish() }
         await rig.scheduler.tick()
         XCTAssertEqual(rig.engine.runs.count, 3, "one for each schedule that was due: the 30-minute one and the daily one")
         XCTAssertEqual(rig.run(daily.id)?.state, "done")

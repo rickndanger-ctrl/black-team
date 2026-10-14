@@ -13,7 +13,7 @@ import Musl
 // private data folder) once it listens, and removes it when it stops:
 //
 //   { "protocol": 1, "version": "0.1.0-alpha.29", "pid": 4242, "port": 18199, "secret": "<session key>", "bootstrap": "<bootstrap key>",
-//     "started": 1760000000, "dataFolder": "/home/me/.local/share/black-team-data" }
+//     "control": "<control key>", "started": 1760000000, "dataFolder": "/home/me/.local/share/black-team-data" }
 //
 // The secret is the desktop session key of that run of the service (Desktop/DesktopSession.swift): whoever can read the file can do what
 // the window does, which is why the file is private and why a new one is made for every start. A reader trusts the file only when it is
@@ -31,11 +31,13 @@ public struct ServiceConnection: Codable, Equatable, Sendable {
     public var port: Int
     public var secret: String
     public var bootstrap: String
+    /// Needed besides the secret for `POST /api/service/control`: the window\u{2019}s page has the secret (its cookie) but never this.
+    public var control: String
     public var started: Double
     public var dataFolder: String
 
-    public init(version: String, pid: Int32, port: Int, secret: String, bootstrap: String, started: Double, dataFolder: String, protocolVersion: Int = ServiceConnection.currentProtocol) {
-        self.protocol = protocolVersion; self.version = version; self.pid = pid; self.port = port; self.secret = secret; self.bootstrap = bootstrap
+    public init(version: String, pid: Int32, port: Int, secret: String, bootstrap: String, control: String = "", started: Double, dataFolder: String, protocolVersion: Int = ServiceConnection.currentProtocol) {
+        self.protocol = protocolVersion; self.version = version; self.pid = pid; self.port = port; self.secret = secret; self.bootstrap = bootstrap; self.control = control
         self.started = started; self.dataFolder = dataFolder
     }
 

@@ -246,7 +246,14 @@ public final class ServiceManager: @unchecked Sendable, ServiceInstalling {
         var folders: [String]
     }
 
-    public init(platform: ServicePlatform = .current, home: String = NSHomeDirectory(), dataFolder: String = AppPaths.dataFolder(),
+    /// The home folder the unit goes under: `$HOME` when it is an absolute folder (as systemd and the other tools read it; `NSHomeDirectory()` on
+    /// Linux ignores it), else the account\u{2019}s home.
+    public static func defaultHome(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        if let home = environment["HOME"], home.hasPrefix("/"), home.count > 1, !home.contains("\n") { return home.hasSuffix("/") ? String(home.dropLast()) : home }
+        return NSHomeDirectory()
+    }
+
+    public init(platform: ServicePlatform = .current, home: String = ServiceManager.defaultHome(), dataFolder: String = AppPaths.dataFolder(),
                 runner: @escaping ServiceCommandRunner = ServiceCommand.run, uid: UInt32 = UInt32(getuid())) {
         self.platform = platform; self.home = home; self.dataFolder = dataFolder; self.runner = runner; self.uid = uid
     }
@@ -321,6 +328,10 @@ public final class ServiceManager: @unchecked Sendable, ServiceInstalling {
 
     public func install() async throws -> String {
         let executable = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath().path
+        // The unit runs `<program> service run`; only the `black-team` program does that (the Mac app is a different program).
+        guard ["black-team", "black-team-cli"].contains((executable as NSString).lastPathComponent) else {
+            throw BlackTeamError("Turn this on from the black-team command: black-team service install")
+        }
         let environment = ProcessInfo.processInfo.environment
         let explicit = environment["BLACK_TEAM_DATA"] != nil ? dataFolder : nil
         return try await install(try ServiceUnit.forThisProgram(executable: executable, dataFolder: explicit, environment: environment, home: home))

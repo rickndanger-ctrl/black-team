@@ -21,6 +21,8 @@ public final class ServiceHooks: @unchecked Sendable {
     private let now: @Sendable () -> Date
     private let controlLock = NSLock()
     private var heldControl: DesktopControl?
+    /// What `POST /api/service/control` needs besides the session cookie. Nil (a window\u{2019}s own engine): the route does not exist.
+    var controlKey: String?
     /// The control channel's actions, for a window attached over HTTP. The desktop service keeps this one current.
     var control: DesktopControl? {
         get { controlLock.lock(); defer { controlLock.unlock() }; return heldControl }

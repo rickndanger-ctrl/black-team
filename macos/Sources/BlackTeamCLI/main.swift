@@ -53,6 +53,12 @@ if oneShot == nil, let first = arguments.first, !first.hasPrefix("-"), !OneShotO
     fail("Unknown command: \(first)\n\n\(usage)", code: 2)
 }
 
+// Chat from the command line and `status` also go to the running background service, which holds the model.
+if let transport = await attachedTransport() {
+    if let oneShot, let code = await runOneShotViaService(transport, oneShot) { exit(code) }
+    if oneShot == nil, arguments == ["status"], let code = await runStatusViaService(transport) { exit(code) }
+}
+
 // Schedules and the inbox go to the running background service when there is one, instead of opening a second engine.
 if oneShot == nil, let first = arguments.first, first == "schedule" || first == "inbox", let transport = await attachedTransport() {
     arguments.removeFirst()

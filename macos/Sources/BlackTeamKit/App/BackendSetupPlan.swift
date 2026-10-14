@@ -20,9 +20,10 @@ extension Backend {
         // The background service step is the desktop service's: the window offers the switch, and the terminal's plan lists it too.
         let manager = ServiceManager(home: home, dataFolder: dataFolder)
         #if os(Linux)
-        let serviceSupported = Tools.findProgram("systemctl") != nil
+        let serviceSupported = lookUpProgram("systemctl", path: setupEnvironment["PATH"] ?? "/usr/bin:/bin") != nil
         #else
-        let serviceSupported = true
+        // The Mac app is not the `black-team` program that `service run` needs; only the command can turn the service on there.
+        let serviceSupported = Bundle.main.executableURL?.lastPathComponent == "black-team"
         #endif
         return SetupContext(found: found, hermesInstalls: installs, settings: settings, hermesSupported: integrations.hermesSupported,
                             tooling: findHermesTooling(home: home, env: setupEnvironment), modelName: model, dataFolder: dataFolder,

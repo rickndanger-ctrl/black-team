@@ -1,5 +1,6 @@
 import Foundation
 import BlackTeamKit
+import BlackTeamTerminal
 #if canImport(Darwin)
 import Darwin
 #else
@@ -99,7 +100,7 @@ private func asJSONText(_ value: JSONValue) -> String? { asJSON ? value.text(pre
     let finding = await ServiceClient.find(dataFolder: data, version: nil)
     var out: [String: JSONValue] = ["unit": unit.json]
     var lines: [String] = []
-    lines.append("background service: " + (!unit.supported ? "not available on this computer" : unit.installed ? "on" + (unit.enabled ? " (starts at login)" : "") : "off"))
+    lines.append("starts at login: " + (!unit.supported ? "not available on this computer" : unit.installed ? "yes" + (unit.enabled ? "" : " (the unit is written but not enabled)") : "no"))
     var code: Int32 = 3
     switch finding {
     case .running(let connection), .mismatch(let connection, _):
@@ -348,4 +349,59 @@ enum ServiceTransport {
         say(describe(error))
         return 1
     }
+}
+
+// MARK: attaching the other commands
+
+/// `black-team -p "<message>"` for Chat, through the running background service instead of a second engine that could not start the model.
+/// Code (it works in the current folder) and pictures need an engine of their own, so they return nil and go the usual way.
+@MainActor func runOneShotViaService(_ transport: ServiceTransport, _ options: OneShotOptions) async -> Int32? {
+    guard case .remote(let client) = transport, !options.code, options.images.isEmpty, options.workspace == nil else { return nil }
+    var message = options.message ?? ""
+    if message.isEmpty, !isTerminal(0) {
+        message = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    guard !message.isEmpty else { return nil }
+    var body: [String: JSONValue] = ["message": .string(message), "kind": "chat", "mode": .string(options.pace), "requestId": .string(UUID().uuidString.lowercased())]
+    if let thread = options.thread { body["threadId"] = .string(thread) }
+    do {
+        let sent = try await client.post("/api/chat", .object(body))
+        guard let threadId = sent["threadId"]?.string else { throw BlackTeamError("The background service did not start the reply.") }
+        var printed = ""
+        var last: JSONValue = .null
+        while true {
+            let thread = try await client.get("/api/thread/\(threadId)")
+            last = thread["messages"]?.array?.last ?? .null
+            let content = last["content"]?.string ?? ""
+            if !options.json, content.hasPrefix(printed), content.count > printed.count { emit(String(content.dropFirst(printed.count))); printed = content }
+            if let state = last["state"]?.string, state != "writing" { break }
+            try await Task.sleep(nanoseconds: 120_000_000)
+        }
+        let state = last["state"]?.string ?? "error"
+        if options.json {
+            var out: [String: JSONValue] = ["threadId": .string(threadId), "state": .string(state), "reply": .string(last["content"]?.string ?? "")]
+            if let error = last["error"]?.string { out["error"] = .string(error) }
+            print(JSONValue.object(out).text(pretty: true))
+        } else if !printed.isEmpty { emit("\n") }
+        if state != "done", let error = last["error"]?.string { emitError(error + "\n") }
+        return state == "done" ? 0 : 1
+    } catch {
+        emitError(describe(error) + "\n")
+        return 1
+    }
+}
+
+/// `black-team status` from the running service: the same lines, read from the service\u{2019}s own status.
+@MainActor func runStatusViaService(_ transport: ServiceTransport) async -> Int32? {
+    guard case .remote(let client) = transport, let status = try? await client.get("/api/status") else { return nil }
+    if asJSON { print(status.text(pretty: true)); return 0 }
+    let model = status["config"]?["model"]
+    print("version: \(status["version"]?.string ?? "")")
+    print("setup complete: \(status["setupComplete"]?.bool == true ? "yes" : "no")")
+    print("model: \(model?["name"]?.string ?? "") (\(model?["source"]?.string ?? ""))")
+    print("runtime: \(status["runtime"]?["state"]?.string ?? "")" + (status["service"]?["unloaded"]?.bool == true ? " (unloaded to free memory; it starts again when needed)" : ""))
+    print("saved models: \(status["models"]?.array?.count ?? 0)")
+    print("conversations: \(status["threads"]?.array?.count ?? 0)")
+    print("served by: the background service (black-team service status)")
+    return 0
 }

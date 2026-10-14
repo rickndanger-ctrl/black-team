@@ -45,6 +45,8 @@ final class ServiceAttachTests: XCTestCase {
         var origin: String { connection.origin }
         func get(_ path: String, extra: [String] = []) -> (status: Int, body: String) { http("GET", path, cookie: cookie, extra: extra) }
         func post(_ path: String, _ body: String) -> (status: Int, body: String) { http("POST", path, body: body, cookie: cookie, origin: origin) }
+        /// The window\u{2019}s main process: the cookie, and the control key from the private file.
+        func control(_ body: String) -> (status: Int, body: String) { http("POST", "/api/service/control", body: body, cookie: cookie, origin: origin, extra: ["X-Black-Team-Control: \(connection.control)"]) }
         func json(_ reply: (status: Int, body: String)) throws -> JSONValue { try JSONValue.parse(reply.body) }
     }
 
@@ -64,9 +66,11 @@ final class ServiceAttachTests: XCTestCase {
         XCTAssertEqual(saved.dataFolder, rig.fx.data)
         XCTAssertEqual(saved.secret, rig.service.desktop.session.sessionKey)
         XCTAssertEqual(saved.bootstrap, rig.service.desktop.session.bootstrapKey)
+        XCTAssertEqual(saved.control, rig.service.desktop.session.controlKey)
+        XCTAssertEqual(Set([saved.secret, saved.bootstrap, saved.control]).count, 3, "three different keys")
         XCTAssertEqual(saved.bootstrapURL, rig.service.desktop.session.bootstrapURL(port: rig.port))
         let text = try String(contentsOfFile: file, encoding: .utf8)
-        for key in ["\"protocol\"", "\"version\"", "\"pid\"", "\"port\"", "\"secret\"", "\"bootstrap\"", "\"started\"", "\"dataFolder\""] { XCTAssertTrue(text.contains(key), key) }
+        for key in ["\"protocol\"", "\"version\"", "\"pid\"", "\"port\"", "\"secret\"", "\"bootstrap\"", "\"control\"", "\"started\"", "\"dataFolder\""] { XCTAssertTrue(text.contains(key), key) }
         await rig.service.shutdown()
         XCTAssertFalse(FileManager.default.fileExists(atPath: file))
     }
@@ -195,7 +199,7 @@ final class ServiceAttachTests: XCTestCase {
 
     func testTheControlRouteGivesTheWindowEverythingTheControlChannelGives() async throws {
         let rig = try await Rig(self)
-        let status = try rig.json(rig.post("/api/service/control", "{\"action\":\"status\",\"data\":{}}"))
+        let status = try rig.json(rig.control("{\"action\":\"status\",\"data\":{}}"))
         XCTAssertEqual(status["ok"]?.bool, true)
         XCTAssertEqual(status["result"]?["access"]?.string, "desktop")
         XCTAssertEqual(status["result"]?["config"]?["model"]?["id"]?.string, "ornith-1.5-ünï")
@@ -206,10 +210,16 @@ final class ServiceAttachTests: XCTestCase {
         let viaChannel = try JSONValue.parse(channel ?? "null")
         XCTAssertEqual(status["result"]?["config"], viaChannel["result"]?["config"])
         // An action the window may not ask for, and a bad shape, are refused with the usual words.
-        let unknown = rig.post("/api/service/control", "{\"action\":\"format-disk\"}")
+        let unknown = rig.control("{\"action\":\"format-disk\"}")
         XCTAssertEqual(unknown.status, 400)
         XCTAssertEqual(try rig.json(unknown)["error"]?.string, "Unsupported desktop action.")
-        XCTAssertEqual(rig.post("/api/service/control", "{\"action\":\"status\",\"data\":[1]}").status, 400)
+        XCTAssertEqual(rig.control("{\"action\":\"status\",\"data\":[1]}").status, 400)
+        // The page has the session cookie but not the control key, so it cannot reach these actions that are the main process\u{2019}s alone.
+        for extra in [[], ["X-Black-Team-Control: wrong"], ["X-Black-Team-Control: \(rig.connection.secret)"], ["X-Black-Team-Control: \(rig.connection.bootstrap)"]] {
+            let page = rig.http("POST", "/api/service/control", body: "{\"action\":\"status\"}", cookie: rig.cookie, origin: rig.origin, extra: extra)
+            XCTAssertEqual(page.status, 403, "\(extra)")
+            XCTAssertEqual(try rig.json(page)["error"]?.string, "Desktop action is unavailable.")
+        }
         // The web app is served to the window from the same address, with the same cookie.
         XCTAssertEqual(rig.get("/").body, "<html>black team</html>")
         let bootstrap = rig.http("GET", "/bootstrap?key=\(rig.connection.bootstrap)")
@@ -219,8 +229,8 @@ final class ServiceAttachTests: XCTestCase {
     func testTheHostAndOriginChecksApplyToTheNewRoutes() async throws {
         let rig = try await Rig(self)
         // A change needs the same origin; a page on another origin, or none, is refused.
-        XCTAssertEqual(rig.http("POST", "/api/service/control", body: "{\"action\":\"status\"}", cookie: rig.cookie).status, 403)
-        XCTAssertEqual(rig.http("POST", "/api/service/control", body: "{\"action\":\"status\"}", cookie: rig.cookie, origin: "http://evil.example").status, 403)
+        XCTAssertEqual(rig.http("POST", "/api/service/control", body: "{\"action\":\"status\"}", cookie: rig.cookie, extra: ["X-Black-Team-Control: \(rig.connection.control)"]).status, 403)
+        XCTAssertEqual(rig.http("POST", "/api/service/control", body: "{\"action\":\"status\"}", cookie: rig.cookie, origin: "http://evil.example", extra: ["X-Black-Team-Control: \(rig.connection.control)"]).status, 403)
         XCTAssertEqual(rig.http("POST", "/api/schedules/save", body: "{}", cookie: rig.cookie, origin: "http://127.0.0.1:1").status, 403)
         // A wrong Host (a rebinding page) is refused whatever the cookie.
         XCTAssertEqual(rig.http("GET", "/api/schedules", cookie: rig.cookie, host: "evil.example").status, 403)

@@ -97,6 +97,18 @@ at a time.", and if you try to start a local model there it says "Your local mod
 model or a subscription agent here." Cloud models and subscription agents work in both. When the first one closes (or is
 killed; a lock whose program is gone is ignored) the other can start the model.
 
+## The background service
+
+With "Keep Black Team running in the background" on (see [Background service](SERVICE.md)), one engine runs from login and holds the
+model. The command attaches to it: `black-team status`, `black-team -p "<message>"` (Chat), `schedule` and `inbox` talk to it instead of
+starting an engine. The rest start their own and say "in use by the Black Team background service" if your model is a local file.
+
+```text
+black-team service install | uninstall | start | stop | restart | status | logs
+black-team schedule list | add | remove | pause | resume | run
+black-team inbox [approve|deny <id>]
+```
+
 ## The other commands
 
 `black-team --help` lists everything and `black-team <command> --help` explains one: `status`, `starter`, `runtime`, `find`,

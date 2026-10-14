@@ -58,6 +58,14 @@ An already-installed version is not overwritten.
 ~/.local/bin/black-team-desktop --rollback
 ```
 
+If you turned on the [background service](SERVICE.md) (`black-team service install`), an update
+or rollback stops it while the release changes and starts it again afterwards, only when it was
+running. The installer touches only the unit that Black Team wrote (it carries the
+`black-team-managed-v1` marker and points into this install), never starts or enables anything
+that was not already running, and never writes the unit itself. The unit names
+`.../current/resources/app/bin/black-team`, so it follows `current` to the new release. A window
+and a service of different versions ask you to restart the service.
+
 Rollback swaps `current` and `previous`. It does not roll back application data;
 future releases that change data formats must document compatibility. This alpha
 does not include an automatic updater, update server, publisher signature,

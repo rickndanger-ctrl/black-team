@@ -729,3 +729,17 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .get-model .get-search input[type="search"] { flex: 1; min-width: 0; }
 .get-model .get-repo { margin-top: 14px; }
 .get-model .get-ready { border-left-color: var(--ok-line); }
+
+/* Schedules, the inbox, and keeping Black Team running in the background */
+.nav-badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--bg, #08090c); font: 600 10px/18px var(--font-mono); text-align: center; }
+.sched-list .sched-item.paused strong { color: var(--muted); }
+.sched-attention { color: var(--bad); }
+.sched-form { display: grid; gap: 14px; max-width: 760px; }
+.sched-row { display: flex; flex-wrap: wrap; gap: 14px; }
+.sched-row > .form-field { flex: 1 1 160px; min-width: 0; }
+.sched-form textarea.room-input { width: 100%; min-height: 76px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--field); resize: vertical; }
+.sched-form input.room-input, .settings-service input.room-input { width: 100%; height: var(--control); padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--field); }
+.sched-permission { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.inbox-command { margin: 8px 0 0; padding: 10px 12px; max-height: 160px; overflow: auto; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--field); font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.settings-service .setup-details { margin-top: 6px; }
+.settings-service .sched-row { margin: 14px 0; max-width: 760px; }

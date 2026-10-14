@@ -246,6 +246,31 @@ final class ServiceUnitTests: XCTestCase {
         XCTAssertEqual(installer.installs, 1)
     }
 
+    func testTheBackendsPlanListsTheStepOnlyWhereSystemctlIsAndApprovingItInstalls() async throws {
+        final class Installer: ServiceInstalling, @unchecked Sendable {
+            var installs = 0
+            func isInstalled() -> Bool { installs > 0 }
+            func install() async throws -> String { installs += 1; return "/unit" }
+        }
+        let fixture = try BackendFixture(self)
+        let backend = try fixture.make()
+        let bin = fixture.files.dir + "/fakebin"
+        try FileManager.default.createDirectory(atPath: bin, withIntermediateDirectories: true)
+        backend.setupEnvironment = ["PATH": bin]
+        XCTAssertNil(backend.setupPlan().steps.first { $0.id == "background-service" }, "no systemctl here")
+        try "#!/bin/sh\nexit 0\n".write(toFile: bin + "/systemctl", atomically: true, encoding: .utf8)
+        chmod(bin + "/systemctl", 0o755)
+        let step = try XCTUnwrap(backend.setupPlan().steps.first { $0.id == "background-service" })
+        XCTAssertTrue(step.optIn)
+        XCTAssertTrue(step.changes.contains { $0.contains("black-team.service") })
+        XCTAssertTrue(backend.setupPlan().pending.isEmpty, "never offered unasked")
+        let installer = Installer()
+        backend.serviceInstallerOverride = installer
+        let results = try await backend.applySetup(approved: ["background-service"])
+        XCTAssertEqual(results.map(\.status), ["done"])
+        XCTAssertEqual(installer.installs, 1)
+    }
+
     struct FailingInstaller: HermesInstalling {
         func install(progress: (@Sendable (HermesInstallEvent) -> Void)?) async throws -> HermesInstall { throw BlackTeamError("not used") }
         func cancel() {}

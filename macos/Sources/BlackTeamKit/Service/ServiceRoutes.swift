@@ -64,6 +64,8 @@ final class ServiceRoutes: @unchecked Sendable {
                 let lines = head.queryValue("lines").flatMap { Int($0) } ?? 100
                 return .json(200, ["text": .string(await hooks.manager.logs(lines: lines))])
             case ("POST", "/api/service/control"):
+                // The window\u{2019}s main process (and nothing in its page) holds the control key from the private connection file.
+                guard let key = hooks.controlKey, phoneEqual(head.headers["x-black-team-control"], key) else { throw HTTPFailure("Desktop action is unavailable.", 403) }
                 let input = try json(head, body)
                 guard let action = input["action"]?.string, input["data"].map({ $0.object != nil || $0 == .null }) ?? true else { throw BlackTeamError("Invalid desktop request.") }
                 guard let control = hooks.control else { throw BlackTeamError("The service is not ready.") }
