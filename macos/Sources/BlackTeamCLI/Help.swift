@@ -29,7 +29,8 @@ Commands (black-team <command> --help for details):
   room ...                            a project's team: members, tasks, hand-offs, team runs
   memory core | list | search         what Black Team remembers
   phone status | enable | disable | link | reset
-  serve                               keep Black Team and phone access running
+  hermes tools | skills | plugins | mcp | key   what your connected Hermes may do in a conversation
+  serve                              keep Black Team and phone access running
   install-command [--to <folder>]     put `black-team` on your PATH
 
 Options for everything: --json prints JSON; --help and --version.
@@ -170,6 +171,16 @@ let commandHelp: [String: String] = [
     "phone": """
     Usage: black-team phone status | enable | disable | link | reset
     Phone access over your Tailscale network. `serve` answers phones; `link` prints the pairing link; `reset` unpairs every phone.
+    """,
+    "hermes": """
+    Usage: black-team hermes tools [on|off <group>...]
+           black-team hermes skills [list | search <words> | on|off <category or category/skill>...]
+           black-team hermes plugins [on|off <plugin>... | set web <provider>]
+           black-team hermes mcp [list | add <name> <absolute program> [args...] [--env NAME] | add <name> --url <address> | on|off|remove <name>...]
+           black-team hermes key set|forget <NAME>      (set reads the value from standard input)
+    What your connected Hermes may do in Black Team conversations: tool groups (with about how many tokens each adds to every
+    message), its skills, plugins and MCP servers. Connect Hermes in the app first. Black Team's own settings change; Hermes's do not.
+    Options: --scripts <folder> if the app's scripts folder is not found.
     """,
     "serve": """
     Usage: black-team serve [--web <folder>]

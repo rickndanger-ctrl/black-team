@@ -14,8 +14,8 @@ function privateDirectory(dir){
   fs.chmodSync(dir,0o700);
 }
 // Actions the window may ask for, sorted by whether they change something. Every answer comes from the Swift engine.
-const READ_ACTIONS=new Set(['status','server-discover','models-find','model-inspect','installed-discover','hermes-inspect','phone-detect','phone-command','cloud-discover','agents-status','vision-cancel','starter-list','starter-cancel','optimize-cancel','setup-plan','setup-cancel','models-recommend','models-search','models-repo','model-get-stop']);
-const CHANGE_ACTIONS=new Set(['integrations-save','harness-connect','harness-launch','setup-save','models-add','models-ignore','model-switch','model-forget','runtime-start','runtime-stop','phone-save','phone-setup','phone-off','phone-connect','phone-disconnect','cloud-save','project-cloud','agent-signin','agent-update','vision-install','starter-install','optimize-start','setup-apply','setup-dismiss','model-get']);
+const READ_ACTIONS=new Set(['status','server-discover','models-find','model-inspect','installed-discover','hermes-inspect','phone-detect','phone-command','cloud-discover','agents-status','vision-cancel','starter-list','starter-cancel','optimize-cancel','setup-plan','setup-cancel','models-recommend','models-search','models-repo','model-get-stop','hermes-abilities']);
+const CHANGE_ACTIONS=new Set(['integrations-save','harness-connect','harness-launch','setup-save','models-add','models-ignore','model-switch','model-forget','runtime-start','runtime-stop','phone-save','phone-setup','phone-off','phone-connect','phone-disconnect','cloud-save','project-cloud','agent-signin','agent-update','vision-install','starter-install','optimize-start','setup-apply','setup-dismiss','model-get','hermes-abilities-save','hermes-key-save']);
 // Whether the engine's status reports a response or a model task running; read from every status answer the window gets.
 // A finished job stays in the status so the window can show how it ended; only an unfinished one counts.
 const isBusy=status=>Boolean(status&&((status.job&&status.job.state==='running')||(status.runtime&&status.runtime.busy)));

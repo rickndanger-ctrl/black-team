@@ -39,6 +39,8 @@ final class HermesTurn: @unchecked Sendable {
     private var lastSave: Int64 = 0
     private var continuation: CheckedContinuation<Void, Error>?
     private var unobserve: (@Sendable () -> Void)?
+    /// Told once per turn how many characters each tool description takes (the runner's `black_team_tools` event).
+    var onTools: (@Sendable (JSONValue) -> Void)?
 
     init(thread: ThreadRef, job: JobState, save: @escaping @Sendable (JSONValue) throws -> Void, artifacts: String, secret: String?) {
         self.thread = thread; self.job = job; self.save = save; self.artifacts = artifacts; self.secret = secret
@@ -139,6 +141,7 @@ final class HermesTurn: @unchecked Sendable {
         if type == "camp_status" {
             job.progress = clip(redact(jsText(e["message"])), 500)
         }
+        if type == "black_team_tools" { onTools?(.object(e)) }
         if type == "tool_use" || type == "tool_result" {
             let name = redact(jsTruthy(e["name"]) ? jsText(e["name"]) : "Tool")
             // JSON.stringify(e.output ?? e.input ?? ''): the first of the two that is not missing or null, else ''.

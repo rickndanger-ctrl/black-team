@@ -96,6 +96,22 @@ Team's own data folder (`hermes/`). Your own `~/.hermes` and any Hermes you
 installed yourself are not touched. Agents that are not installed are listed with
 their makers' install commands as text; Black Team never runs those.
 
+Hermes tool groups, plugins and search providers that you switch on can send data off
+this computer, and each is labelled "Uses the internet" or "Needs an account or key" on its
+screen. Specifically: the web group and a chosen search provider send the words searched to
+that provider (Black Team turns off Hermes's own fallback to free vendor search services, so
+no provider is used that you did not choose); browser tools open the websites you or the
+model name; a plugin such as Langfuse observability sends a record of your conversations,
+including tool use, to the service it reports to; and an MCP server is limited to an address
+on this computer but may itself contact anything. Memory-provider plugins are listed and left
+off. Keys for these are kept in an owner-only file in the data folder, are never shown again,
+and are passed to Hermes by environment only; they are not written into a profile, shown in
+the window or sent to a phone. Black Team asks your Hermes which tools it has by running its
+Python once, read-only, in a scratch folder, after you connect it. Skills and plugins you
+switch on are linked from your Hermes install, not copied. Messaging platforms and scheduled
+jobs need an always-running Hermes service, which does not exist yet
+([HERMES-SERVICE.md](HERMES-SERVICE.md)); they are listed as unavailable.
+
 Agent tools run as the OS user. The selected workspace is not a filesystem
 sandbox. Toolset switches and approval cards control application behavior, not
 all capabilities of a local process. The file publishing plugin limits attachments
