@@ -735,3 +735,16 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .room-ledger th { font: 10px var(--font-mono); letter-spacing: .08em; color: var(--muted); font-weight: 400; }
 .room-line details { margin-top: 6px; font-size: 12px; }
 .room-line summary { cursor: pointer; color: var(--muted); }
+
+/* A Code run: its phase, Pause / Resume / Continue, spending, and the limits. */
+.run-bar { display: grid; gap: 8px; margin: 0 0 12px; font-size: 12px; }
+.run-state { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.run-state strong { font-weight: 550; color: var(--ink); line-height: 1.5; }
+.run-actions { display: flex; gap: 8px; margin-left: auto; }
+.run-total { color: var(--muted); font-size: 11px; }
+.run-settings summary { cursor: pointer; font-size: 11px; color: var(--muted); }
+.run-settings-body { display: grid; gap: 12px; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.run-limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-items: start; }
+.run-limits .button-row { grid-column: 1 / -1; }
+.skills-page { display: grid; gap: 12px; }
+.skills-list { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
