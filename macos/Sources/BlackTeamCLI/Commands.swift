@@ -643,6 +643,9 @@ import BlackTeamKit
             }
             return 0
 
+        case "hermes":
+            return try await runHermesCommand(backend)
+
         case "serve":
             try await backend.startPhoneAccess()
             let state = try await backend.phoneState(fresh: true)

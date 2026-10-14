@@ -14,12 +14,14 @@ public final class DesktopControl: @unchecked Sendable {
         "cloud-discover", "cloud-save", "project-cloud", "agents-status", "agent-signin", "agent-update",
         // Starter model and vision file downloads (Desktop/DesktopVision.swift).
         "vision-install", "vision-cancel", "starter-list", "starter-install", "starter-cancel",
+        // What Hermes conversations can do (Desktop/HermesAbilitiesControl.swift).
+        "hermes-abilities", "hermes-abilities-save", "hermes-key-save",
     ]
     /// Actions that change something: one at a time.
     static let changing: Set<String> = [
         "integrations-save", "harness-connect", "harness-launch", "setup-save", "models-add", "models-ignore", "model-switch", "model-forget",
         "runtime-start", "runtime-stop", "phone-save", "phone-setup", "phone-off", "phone-connect", "phone-disconnect",
-        "cloud-save", "project-cloud", "agent-signin", "agent-update",
+        "cloud-save", "project-cloud", "agent-signin", "agent-update", "hermes-abilities-save", "hermes-key-save",
     ]
 
     let backend: Backend
@@ -30,6 +32,10 @@ public final class DesktopControl: @unchecked Sendable {
 
     public init(_ backend: Backend, home: String = NSHomeDirectory(), environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.backend = backend; self.home = home; self.environment = environment
+    }
+
+    private func abilities() -> HermesAbilitiesService {
+        HermesAbilitiesService(dataFolder: backend.dataFolder, integrations: backend.integrations, scripts: backend.desktopScripts, home: home)
     }
 
     private func discovered() -> LinuxDiscovery {
@@ -96,6 +102,9 @@ public final class DesktopControl: @unchecked Sendable {
         case "hermes-inspect":
             guard let found = inspectHermes(source: input["source"]?.string, python: input["python"]?.string ?? "") else { return .null }
             return ["source": .string(found.source), "python": .string(found.python)]
+        case "hermes-abilities":
+            try unsupported(["refresh"], "Unsupported Hermes setting.")
+            return await abilities().overview(context: (try? backend.configStore.read().model.context) ?? 0, refresh: input["refresh"]?.bool == true)
         case "phone-detect":
             return .encoded(await backend.phone().manager.detect())
         case "phone-command":
@@ -136,6 +145,17 @@ public final class DesktopControl: @unchecked Sendable {
                 return try connectHarness(id: id, store: backend.integrations, found: found)
             }
             return ["connected": .bool(connected.connected), "name": .string(connected.name)]
+        case "hermes-abilities-save":
+            return try await abilities().save(input)
+        case "hermes-key-save":
+            try unsupported(["name", "value", "remove"], "Unsupported Hermes setting.")
+            guard let name = input["name"]?.string else { throw BlackTeamError("Choose which key to save.") }
+            if input["remove"]?.bool == true { try await abilities().setKey(name: name, value: nil) }
+            else {
+                guard let secret = input["value"]?.string else { throw BlackTeamError("Enter the value.") }
+                try await abilities().setKey(name: name, value: secret)
+            }
+            return ["saved": true]
         case "setup-save":
             let saved = try await backend.saveSetup(value)
             var object: [String: JSONValue] = ["saved": .bool(saved.saved)]

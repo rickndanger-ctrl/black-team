@@ -53,7 +53,12 @@ struct HermesRunner: Sendable {
         env["OPENAI_MODEL"] = model
 
         let context = config.model.context
-        try writeJSON(profile + "/config.yaml", profileConfig(endpoint: endpoint, model: model, key: key, workspace: workspace, context: context))
+        // What the person switched on in Settings (HermesProfile.swift): tool groups, skills, plugins, web search, MCP servers.
+        let store = HermesAbilityStore(dataFolder: dataFolder)
+        let plan = HermesProfilePlan.make(settings: settings, store: store, keys: HermesKeyStore(dataFolder: dataFolder))
+        var profileSettings = profileConfig(endpoint: endpoint, model: model, key: key, workspace: workspace, context: context)
+        for (name, value) in plan.configExtras() { profileSettings = profileSettings.setting(name, value) }
+        try writeJSON(profile + "/config.yaml", profileSettings)
 
         let plugins = profile + "/plugins"
         try privateDirectory(plugins)
@@ -63,6 +68,7 @@ struct HermesRunner: Sendable {
             let target = URL(fileURLWithPath: scripts).deletingLastPathComponent().appendingPathComponent("plugins/companion-tools").standardized.path
             try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: target)
         }
+        try plan.link(into: profile)
         try CoreFS.writeAtomic(profile + "/SOUL.md", Data(HermesRunner.soul.utf8), temporary: profile + "/SOUL.md.\(CoreFS.hex(10)).tmp")
 
         guard let messages = thread.value["messages"]?.array, messages.count >= 2, let request = messages[messages.count - 2]["content"]?.string else {
@@ -73,10 +79,7 @@ struct HermesRunner: Sendable {
         try CoreFS.writeAtomic(query, Data(request.utf8), temporary: query + ".\(CoreFS.hex(10)).tmp")
         defer { try? FileManager.default.removeItem(atPath: query) }
 
-        var toolsets = ["companion"]
-        if settings.coding { toolsets += ["terminal", "file", "todo"] }
-        if settings.browser { toolsets.append("browser") }
-        if settings.desktop { toolsets.append("computer_use") }
+        let toolsets = plan.toolsets
         var arguments = [scripts + "/" + HermesRunner.runnerName, "--query-file", query, "--toolsets", toolsets.joined(separator: ","),
                          "--in", workspace, "--max-turns", String(HermesRunner.maxTurns), "--run-budget", String(HermesRunner.runBudgetSeconds)]
         if let session = thread.value["hermesSession"]?.string, !session.isEmpty { arguments += ["--resume", session] }
@@ -90,15 +93,19 @@ struct HermesRunner: Sendable {
         env["COMPANION_ARTIFACT_DIR"] = artifacts
         env["TERMINAL_CWD"] = workspace
         env["PYTHONUNBUFFERED"] = "1"
-        env["CUA_DRIVER_RS_ENABLE_WAYLAND"] = settings.desktop ? "1" : "0"
-        if settings.browser && !settings.browserExecutable.isEmpty { env["AGENT_BROWSER_EXECUTABLE_PATH"] = settings.browserExecutable }
-        if settings.desktop && !settings.desktopDriver.isEmpty { env["HERMES_CUA_DRIVER_CMD"] = settings.desktopDriver }
+        // Keys the person gave for what they switched on reach Hermes by environment only.
+        for (name, value) in plan.environment { env[name] = value }
+        env["CUA_DRIVER_RS_ENABLE_WAYLAND"] = toolsets.contains("computer_use") ? "1" : "0"
+        if toolsets.contains("browser") && !settings.browserExecutable.isEmpty { env["AGENT_BROWSER_EXECUTABLE_PATH"] = settings.browserExecutable }
+        if toolsets.contains("computer_use") && !settings.desktopDriver.isEmpty { env["HERMES_CUA_DRIVER_CMD"] = settings.desktopDriver }
 
         thread.updateLast { last in last["events"] = .array([]); last["artifacts"] = .array([]) }
         job.progress = "Starting your installed Hermes runtime\u{2026}"
         try save(thread.value)
 
         let turn = HermesTurn(thread: thread, job: job, save: save, artifacts: artifacts, secret: authorization == nil ? nil : key)
+        let servers = plan.mcpServers.keys.sorted()
+        turn.onTools = { report in HermesToolReport.record(report, servers: servers, store: store) }
         try await turn.run(python: settings.python, arguments: arguments, workspace: workspace, environment: env, cancel: cancel)
     }
 

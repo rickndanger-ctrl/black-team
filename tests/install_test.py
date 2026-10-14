@@ -47,7 +47,7 @@ class InstallerTests(unittest.TestCase):
                 entry = zipfile.ZipInfo(name)
                 entry.external_attr = (stat.S_IFREG | (0o755 if name == 'electron' else 0o644)) << 16
                 archive.writestr(entry, data)
-        for name in ('scripts/agent-runner.py', 'plugins/companion-tools/__init__.py', 'plugins/companion-tools/plugin.yaml'):
+        for name in ('scripts/agent-runner.py', 'scripts/hermes-abilities.py', 'plugins/companion-tools/__init__.py', 'plugins/companion-tools/plugin.yaml'):
             target=self.project/name
             target.parent.mkdir(parents=True,exist_ok=True)
             target.write_text('fixture')
@@ -208,7 +208,7 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('resources/app/engine-client.cjs', manifest)
         self.assertFalse(any('/lib/' in name for name in manifest))
         self.assertTrue(os.access(payload / 'resources/app/bin/black-team', os.X_OK))
-        for name in ('scripts/agent-runner.py', 'plugins/companion-tools/__init__.py', 'plugins/companion-tools/plugin.yaml'):
+        for name in ('scripts/agent-runner.py', 'scripts/hermes-abilities.py', 'plugins/companion-tools/__init__.py', 'plugins/companion-tools/plugin.yaml'):
             self.assertIn('resources/app/'+name,manifest)
         self.assertFalse(any('node_modules' in name or 'personal-config' in name for name in manifest))
         self.assertEqual(json.loads((payload / 'BUILD.json').read_text())['electron'], '40.10.2')

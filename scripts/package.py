@@ -113,7 +113,7 @@ def build(project, runtime_zip, out, engine):
         # source checkout, model weights, or a prior distribution directory.
         for name in ('main.cjs', 'preload.cjs', 'engine-client.cjs', 'dist'):
             copy_tree(project / name, app / name)
-        for name in ('scripts/agent-runner.py', 'plugins/companion-tools/__init__.py', 'plugins/companion-tools/plugin.yaml'):
+        for name in ('scripts/agent-runner.py', 'scripts/hermes-abilities.py', 'plugins/companion-tools/__init__.py', 'plugins/companion-tools/plugin.yaml'):
             copy_tree(project / name, app / name)
         (app / 'bin').mkdir(parents=True, exist_ok=True)
         shutil.copyfile(engine, app / 'bin/black-team')
