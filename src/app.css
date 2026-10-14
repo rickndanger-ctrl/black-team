@@ -718,3 +718,14 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .setup-details ul { margin: 4px 0 0 26px; padding: 0; color: var(--muted); }
 .setup-commands { list-style: none; padding: 0; margin: 6px 0 0; }
 .setup-commands code { user-select: all; }
+
+/* Get a model */
+.get-model .get-pick { border-color: var(--line-2); background: var(--surface-2); }
+.get-model .get-extras { display: grid; gap: 6px; margin-top: 10px; }
+.get-model .get-all { margin-top: 18px; }
+.get-model .get-all summary { cursor: pointer; color: var(--ink-2); font-size: 13px; }
+.get-model .get-search { margin-top: 28px; }
+.get-model .get-search h3 { margin: 0 0 10px; font-size: 14px; color: var(--ink); }
+.get-model .get-search input[type="search"] { flex: 1; min-width: 0; }
+.get-model .get-repo { margin-top: 14px; }
+.get-model .get-ready { border-left-color: var(--ok-line); }

@@ -99,6 +99,12 @@ public final class Backend: @unchecked Sendable {
     var setupEnvironment = ProcessInfo.processInfo.environment
     /// Tests replace the Hermes installer so nothing is downloaded or run.
     var hermesInstallerOverride: (@Sendable (FileDownloading) -> HermesInstalling)?
+    /// The window's "Get a model" download (App/BackendModels.swift, Desktop/DesktopModels.swift), likewise.
+    let modelInstall = ModelInstallState()
+    /// How Hugging Face is asked (search, a repository's files). Tests replace it; the app talks to huggingface.co only when asked.
+    var hubFetch: HTTPFetch = LocalHTTP.fetch
+    /// Tests only: pretend this computer is something else.
+    var hardwareOverride: HardwareProfile?
 
     private var keeperFile: String { dataFolder + "/keeper.json" }
     private var projectsFile: String { dataFolder + "/projects.json" }

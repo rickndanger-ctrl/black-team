@@ -174,11 +174,13 @@ On first launch, **Workspace** shows the model setup. To change it later, open
 | A compatible GGUF | **Model file** | Choose the model; use the detected llama.cpp runtime or choose its executable |
 | Another compatible local server | **Another server** | Enter its loopback `/v1` address, then choose **Find models** |
 | Another model file format | Its compatible local server | Load it in that engine first, then connect the server |
+| Nothing yet | **Get a model** | Black Team ranks models for this computer, downloads your choice (or any GGUF from Hugging Face), checks it and sets it up; see [docs/MODELS.md](docs/MODELS.md) |
 
 Choose **Save and open chat**, then send a message. The first message connects or
 starts the configured model automatically. The Ollama and LM Studio buttons fill
 in their usual addresses and run discovery; they do not install those apps or
-download model weights. Use **Find models** again after starting your server.
+download model weights. **Get a model** does download weights, but only the model
+you choose. Use **Find models** again after starting your server.
 
 Most people can leave **Advanced connection and performance** closed. It holds
 optional API keys, a custom server address, a manual model ID, the workspace,

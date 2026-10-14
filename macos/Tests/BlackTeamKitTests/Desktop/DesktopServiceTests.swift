@@ -177,7 +177,7 @@ final class DesktopControlTests: XCTestCase {
         XCTAssertEqual(reply["result"]?["command"]?.string, "tailscale serve --bg --https=8449 http://127.0.0.1:18199")
         // Every action of preload.cjs is known, and the ones for cloud models and subscription agents, which preload.cjs adds afterwards
         // (Desktop/DesktopCloud.swift answers them).
-        let added = "cloud-discover cloud-save project-cloud agents-status agent-signin agent-update vision-install vision-cancel starter-list starter-install starter-cancel optimize-start optimize-cancel setup-plan setup-apply setup-dismiss setup-cancel"
+        let added = "cloud-discover cloud-save project-cloud agents-status agent-signin agent-update vision-install vision-cancel starter-list starter-install starter-cancel optimize-start optimize-cancel setup-plan setup-apply setup-dismiss setup-cancel models-recommend models-search models-repo model-get model-get-stop"
         let preload = "setup-help installed-discover hermes-inspect phone-setup phone-off integrations-save harness-connect harness-launch server-discover model-inspect status setup-save models-find models-add models-ignore model-switch model-forget runtime-start runtime-stop phone-save phone-detect phone-command phone-connect phone-disconnect open-data"
         XCTAssertEqual(DesktopControl.actions, Set((preload + " " + added).split(separator: " ").map(String.init)))
     }
