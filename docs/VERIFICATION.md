@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.28**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.29**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -1025,3 +1025,40 @@ gets the behaviour from the engine but shows no note; Ollama or LM Studio
 servers offering many models; removing a model in the window and looking
 again (covered by an engine test only); the window test on a Linux computer
 other than the Dell; and the lists carried from alpha.20 and alpha.22.
+
+## Live follow-up — October 13, 2026 (alpha.29)
+
+Six pieces: a found model is started from its file when its server is not
+running (and a server that goes away after Black Team connected to it is
+replaced the same way), with a question before another loaded model is
+stopped to make room; the model catalogue ranked for this computer, Hugging
+Face search and download; Optimize, run by itself after a download, with hand
+edits winning over its result; one approval that connects every agent found
+and can install Hermes Agent, Black Team Code staying the default engine; the
+Room's driven runs, where a paid agent hands work to local members; and
+Hermes's tool groups, skills, plugins and MCP servers with their reading cost.
+
+Checked: Linux 767 engine tests (8 skipped), Node 52, Python 28, no failures.
+On the Dell, in the Linux window with a fresh data folder and the real Ornith
+1.5 35B-A3B: first run found Ornith's server and both Qwen 3.8 files; one
+approval connected Claude Code, Codex, Pi, OpenCode, Hermes Terminal and the
+installed Hermes; a chat was answered in 6 s. With Ornith's server stopped,
+Black Team started the file itself and answered in 41 s. With Ornith loaded by
+its own launcher, choosing Qwen 3.8 asked to stop Ornith (22.2 GB); after
+approval only that server stopped and Qwen answered in 89 s. Qwen3.5 0.8B was
+downloaded from Get a model with its vision file in 36 s; Optimize then ran by
+itself, tried three settings and kept 5 threads (reads 106 tokens/s, writes
+25), and put the model in use back. A Code task through Hermes on Ornith wrote
+the asked-for file (294 s, including loading Ornith). The window test passed on
+a fresh folder with the tiny model, including approve and deny.
+
+Found and fixed while testing: the recommended picks did not show (entries had
+no id), a server that had gone away after connecting was still used, and the
+memory question never appeared on Linux because the system counts a loaded
+model's weights as available.
+
+Not checked for this release: a real driven Room run (it needs a paid
+subscription or key; tested with stand-ins only), the Hermes Agent download
+on a computer without Hermes (run once by its builder in a sealed scratch
+home), the Mac app and its screens, which do not show the new pages yet, and a
+computer other than the Dell.
