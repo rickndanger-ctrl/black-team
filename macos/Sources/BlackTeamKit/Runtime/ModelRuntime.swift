@@ -351,6 +351,8 @@ public actor ModelRuntime {
     /// Checks the memory before a start of our own (nil: not checked) and stops the one server the person approved.
     private let memoryGuard: MemoryGuard?
     private let approvalStopTimeoutMs: Int
+    /// Applies a stored optimization result (Runtime/Tune.swift) to a model file before it is started; nil starts the model as set up.
+    private let tuning: (@Sendable (ModelConfig) -> ModelConfig)?
 
     private var state = RuntimeState.off
     private var error: String?
@@ -376,8 +378,9 @@ public actor ModelRuntime {
                 cores: @escaping @Sendable () -> Int = { SystemInfo.cpuTopology().cores },
                 startupTimeoutMs: Int = 120_000, pollIntervalMs: Int = 350, stopTimeoutMs: Int = 3000, killTimeoutMs: Int = 1000,
                 launchGuard: (@Sendable () throws -> Void)? = nil,
-                fallbackRuntime: @escaping @Sendable () -> String = { "" }, memoryGuard: MemoryGuard? = nil, approvalStopTimeoutMs: Int = 15_000) {
-        self.launchGuard = launchGuard
+                fallbackRuntime: @escaping @Sendable () -> String = { "" }, memoryGuard: MemoryGuard? = nil, approvalStopTimeoutMs: Int = 15_000,
+                tuning: (@Sendable (ModelConfig) -> ModelConfig)? = nil) {
+        self.launchGuard = launchGuard; self.tuning = tuning
         self.fallbackRuntime = fallbackRuntime; self.memoryGuard = memoryGuard; self.approvalStopTimeoutMs = approvalStopTimeoutMs
         self.configStore = configStore; self.spawn = spawn; self.fetch = fetch; self.reservePort = reservePort
         self.helpProbe = help; self.environment = environment; self.appleSilicon = appleSilicon; self.cores = cores
@@ -484,7 +487,8 @@ public actor ModelRuntime {
         error = nil
         do {
             if let previous = self.launch, !previous.exited { throw BlackTeamError("The previous model process has not stopped.") }
-            let config = try configStore.read()
+            var config = try configStore.read()
+            if let tuning { config.model = tuning(config.model) }
             // A cloud model runs at its service; the Backend never asks this runtime to start one.
             if config.model.source == "cloud" { throw BlackTeamError("A cloud model runs at its service, so there is nothing to start on \(Place.this).") }
             _ = try validateModelFiles(config.model, cloud: configStore.cloud)

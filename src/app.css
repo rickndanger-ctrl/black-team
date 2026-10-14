@@ -243,7 +243,7 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .welcome-step p { font-size: 12.5px; color: var(--muted); }
 .model-list { margin: 0 0 20px; padding: 26px 28px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow), inset 0 1px 0 var(--edge); }
 .model-list ul { margin: 14px 0 0; padding: 0; list-style: none; }
-.model-list li { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 0; border-top: 1px solid var(--line); }
+.model-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 0; border-top: 1px solid var(--line); }
 .model-list li > div:first-child { min-width: 0; }
 .model-list li strong { display: block; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 .model-list li span { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
@@ -686,3 +686,15 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .starter-tag { margin-left: 8px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
 .starter-models .vision-download { margin-top: 14px; }
 @media (max-width: 720px) { .starter-list li { flex-direction: column; align-items: stretch; } }
+
+.model-list .optimize-line { flex: 1 0 100%; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: -4px; }
+.model-list .optimize-line span { flex: 1; min-width: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.model-list .optimize-line button { flex-shrink: 0; }
+.optimize-progress { display: grid; gap: 8px; margin: 16px 0 4px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--field); }
+.optimize-progress strong { display: block; font-size: 13px; color: var(--ink); }
+.optimize-progress span { font-size: 12.5px; color: var(--ink-2); }
+.optimize-progress progress { width: 100%; height: 6px; accent-color: var(--ink); }
+.optimize-progress small { font-size: 11.5px; color: var(--muted); }
+.optimize-progress ul { margin: 0; padding-left: 18px; font-size: 11.5px; color: var(--muted); }
+.optimize-progress button { justify-self: start; }
+@media (max-width: 720px) { .model-list .optimize-line { flex-direction: column; align-items: stretch; } }

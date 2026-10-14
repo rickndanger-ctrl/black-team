@@ -33,6 +33,8 @@ public final class Backend: @unchecked Sendable {
     public let configStore: ConfigStore
     public let history: History
     public let savedModels: SavedModels
+    /// What optimizing a model measured, per model (Runtime/Tune.swift).
+    public let tuning: TuningStore
     public let memory: Memory
     public let integrations: Integrations
     public let images: ImageStore
@@ -87,6 +89,10 @@ public final class Backend: @unchecked Sendable {
     let visionInstall = VisionInstallState()
     /// The window's starter model download, likewise.
     let starterInstall = VisionInstallState()
+    /// The optimization in progress or last finished (App/BackendTune.swift), and what it measures and starts with. Replaced only by tests.
+    let tuneState = TuneState()
+    var tuneEnvironment = TuneEnvironment()
+    var tuneTrial: (@Sendable (ConfigStore, Int) -> BackendRuntime)?
 
     private var keeperFile: String { dataFolder + "/keeper.json" }
     private var projectsFile: String { dataFolder + "/projects.json" }
@@ -110,6 +116,8 @@ public final class Backend: @unchecked Sendable {
         try privateDirectory(dataFolder)
         configStore = try ConfigStore(stateDir: dataFolder, cloud: cloud)
         savedModels = try SavedModels(stateDir: dataFolder, cloud: cloud)
+        let tuningStore = TuningStore(stateDir: dataFolder)
+        tuning = tuningStore
         // Someone who set up a model before the list existed sees it there from the start.
         if let current = try? configStore.read().model, savedModels.read().isEmpty,
            (current.source == "cloud" ? !current.id.isEmpty && !current.apiKey.isEmpty
@@ -127,12 +135,14 @@ public final class Backend: @unchecked Sendable {
         sharedLock.acquire()
         engineLock = sharedLock
         let madeInstaller = runtimeInstaller ?? RuntimeInstaller(dataFolder: URL(fileURLWithPath: dataFolder))
-        let backendRuntime = customRuntime ?? ModelRuntime(configStore: configStore, launchGuard: {
+        let localGuard: @Sendable () throws -> Void = {
             if let refusal = sharedLock.refusalForLocalModel() { throw BlackTeamError(refusal) }
-        }, fallbackRuntime: {
+        }
+        let backendRuntime = customRuntime ?? ModelRuntime(configStore: configStore, launchGuard: localGuard, fallbackRuntime: {
             // A found model that is not running is started with the downloaded llama.cpp, or one found on this computer.
             madeInstaller.installedRuntime()?.executable ?? cache.get().runtime
-        }, memoryGuard: MemoryGuard())
+        }, memoryGuard: MemoryGuard(), tuning: tunedLaunch(store: tuningStore))
+        tuneTrial = { scratch, startupMs in ModelRuntime(configStore: scratch, fetch: fetch, startupTimeoutMs: startupMs, launchGuard: localGuard) }
         runtime = backendRuntime
         engine = try customEngine ?? Engine(stateDir: dataFolder, vault: memory, fetch: stream, graph: { cache.get().graph }, cloud: cloud)
         self.fetch = fetch
@@ -332,6 +342,7 @@ public final class Backend: @unchecked Sendable {
 
         lock.lock(); defer { lock.unlock() }
         if active != nil { throw BlackTeamError("A response is already running. Wait or stop it before sending another.") }
+        if tuneState.running { throw BlackTeamError("Black Team is optimizing a model for \(Place.this). Wait for it to finish, or stop it, then send your message.") }
         let config = try configStore.read()
         if !setupComplete(config) {
             throw BlackTeamError("Complete model setup in the desktop app first.")
@@ -847,6 +858,7 @@ public final class Backend: @unchecked Sendable {
         stopPhoneAccess()
         installer.cancel()
         cancel()
+        cancelOptimize()
         try? await runtime.dispose()
         await waitForIdle()
         await roomTeamSettle()

@@ -164,6 +164,44 @@ length capped by the memory left beside its weights (32,768, 16,384 or 8,192
 tokens); raise or lower it in Settings. The Workspace page lists what the running
 launch used, such as "CPU · 6 threads · q8 cache · vision · MTP draft".
 
+## Optimizing a model
+
+The settings in "How a model file is started" are sensible guesses. **Optimize** measures this
+computer and keeps what is fastest for one model. In **Settings → Models** each model file shows
+either "Optimized for this computer: 6 threads · 32,768 context · MTP draft · reads 54 tokens/s,
+writes 12" or an **Optimize** button. From the terminal: `black-team optimize [model]`.
+
+What it does. It starts the model up to four times (about 3 minutes in all) and stops it again after
+each test. The first start uses the settings Black Team uses today, at the largest standard context
+(65,536, 32,768, 16,384 or 8,192 tokens, never more than the model was trained for) that loads and
+leaves memory to spare; a size that does not load, or leaves less than 2 GB (or an eighth of your
+memory), is stepped down. The launches left try one change each, only where the llama.cpp build
+understands it and the file exists: a graphics chip, the draft or MTP model switched off, the
+performance cores only (Apple silicon and other CPUs that report them), and one thread fewer than the
+physical cores. A change is kept only if it is at least 3% better.
+
+What is measured. Each start gets the same test: a fixed text of about 1,000 tokens, then 64 tokens
+written, with the prompt cache off. The speeds are the ones the model's own server reports (how fast it
+read the prompt and how fast it wrote), plus the memory the model process holds. Reading counts less
+than writing when settings are compared.
+
+What it never does. It does not run while a response is being written, and nothing else starts the
+model until it is done. You can stop it at any point. When it ends or is stopped, the model is as
+you left it: stopped if it was stopped, started again if it was running. Stopping discards the run.
+
+What is kept. The result is saved per model in `tuning.json` in Black Team's data folder (readable
+only by you), with the llama.cpp program, the model file size and the hardware it was measured with.
+The chosen threads, graphics-chip and draft settings are used the next time the model starts; the
+chosen context becomes the model's context setting, which you can still change in Settings. If the
+llama.cpp program, the model file or the computer's hardware changes, the result is marked **Needs
+optimizing again** and Black Team goes back to its usual settings until you do. The numbers are
+estimates for this computer only: a different computer, a different load or a hotter day gives
+different ones, and they say nothing about quality.
+
+A model on a server that someone else runs is only measured, with one test message and the speed
+it reports; Black Team changes nothing there because its settings belong to that server. A cloud
+model has nothing to optimize.
+
 ## Switching and sharing
 
 Every model you set up is kept in a list, so you set each one up once. With two
