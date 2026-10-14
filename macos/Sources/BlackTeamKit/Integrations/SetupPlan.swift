@@ -128,7 +128,7 @@ public func buildSetupPlan(_ c: SetupContext) -> SetupPlan {
         let waiting = "Hermes Agent has to be installed first."
         steps.append(SetupStep(
             id: "hermes-connect", kind: "connect", title: "Connect Hermes",
-            detail: "Lets Black Team's Code conversations call Hermes tools, using \(model).",
+            detail: "Lets a Code conversation use Hermes and its tools when you choose it, using \(model). Black Team Code stays the default.",
             changes: ["Saves where Hermes is, so Code can start it.", "Hermes uses a private profile for each conversation and never your own."],
             state: enabled ? .done : ready ? .willDo : .needsSomething, needs: enabled || ready ? nil : waiting))
         steps.append(SetupStep(
@@ -247,7 +247,8 @@ public func applySetup(approved ids: [String], services: SetupServices, progress
                 var settings = try services.store.read()
                 guard settings.hermes.enabled else { finish("skipped", "Hermes is not connected, so its tools were not chosen."); continue }
                 settings.hermes.coding = true; settings.hermes.browser = false; settings.hermes.desktop = false
-                try services.store.save(JSONValue.object(["hermes": .encoded(settings.hermes), "engine": "hermes"]))
+                // Black Team Code stays what runs new Code conversations; Hermes is a choice the person makes.
+                try services.store.save(JSONValue.object(["hermes": .encoded(settings.hermes)]))
                 finish("done", "Hermes's file and terminal tools are on. Browser and desktop control are off.")
             default:
                 guard step.id.hasPrefix("connect:") else { finish("skipped", "Unknown step."); continue }

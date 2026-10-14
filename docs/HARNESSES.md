@@ -31,9 +31,9 @@ and trying again carries on. A Hermes you installed yourself is used as it is:
 the card only connects it.
 
 Connecting enables Hermes with files, terminal, search and planning on, browser
-and desktop control off, and makes it what runs new Code conversations (change
-that under **Settings → Agents & apps**). Existing conversations keep the engine
-they started with. Hermes is mainly useful for its browser and desktop tools.
+and desktop control off. Black Team Code stays what runs new Code conversations;
+choose Hermes for them under **Settings → Agents & apps** when you want its
+tools. Existing conversations keep the engine they started with. Hermes is mainly useful for its browser and desktop tools.
 
 You can still do it by hand: open **Settings → Agents & apps** and choose
 **Connect Hermes** when one is found (select an installation first if several are

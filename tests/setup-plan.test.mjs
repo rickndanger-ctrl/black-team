@@ -30,7 +30,7 @@ test('the card appears when offered, never after Not now, always when asked, and
 
 test('the ready message names Hermes tools only when Hermes was connected', () => {
   const run = results => ({done: true, results});
-  assert.equal(readyMessage(run([{id: 'hermes-connect', status: 'done', message: 'Hermes is connected.'}])).title, 'Ready: Code can now use Hermes tools');
+  assert.equal(readyMessage(run([{id: 'hermes-connect', status: 'done', message: 'Hermes is connected.'}])).title, 'Ready: Hermes is connected. Choose it for a Code conversation to use its tools');
   assert.equal(readyMessage(run([{id: 'connect:claude', status: 'done', message: 'Claude Code is connected.'}])).title, 'Ready: your agents are connected');
   assert.equal(readyMessage(run([{id: 'hermes-install', status: 'failed', message: 'x'}])).ready, false);
   assert.equal(readyMessage(run([{id: 'connect:claude', status: 'done', message: 'Already done.'}])).title, 'Everything was already set up');

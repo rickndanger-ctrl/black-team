@@ -16,7 +16,7 @@ export function cardView({offer, run, hidden = false, asked = false}) {
   return offer.show && !hidden ? 'plan' : null;
 }
 
-/** The headline after a run: names Hermes tools only when Hermes is now connected. */
+/** The headline after a run: names Hermes only when Hermes is now connected. */
 export function readyMessage(run) {
   const results = run?.results || [];
   const worked = id => results.some(result => result.id === id && result.status === 'done');
@@ -24,7 +24,7 @@ export function readyMessage(run) {
   const hermes = worked('hermes-connect') || worked('hermes-tools');
   const anything = results.some(result => result.status === 'done' && !/^Already done/.test(result.message));
   if (failed.length && !anything) return {title: 'Setup did not finish', ready: false};
-  if (hermes) return {title: 'Ready: Code can now use Hermes tools', ready: true};
+  if (hermes) return {title: 'Ready: Hermes is connected. Choose it for a Code conversation to use its tools', ready: true};
   if (anything) return {title: 'Ready: your agents are connected', ready: true};
   return {title: 'Everything was already set up', ready: true};
 }

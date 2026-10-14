@@ -195,7 +195,7 @@ final class SetupPlanTests: XCTestCase {
         XCTAssertTrue(settings.hermes.coding)
         XCTAssertFalse(settings.hermes.browser, "browser stays off")
         XCTAssertFalse(settings.hermes.desktop, "desktop control stays off")
-        XCTAssertEqual(settings.engine, "hermes")
+        XCTAssertNotEqual(settings.engine, "hermes", "Black Team Code stays the default engine")
         XCTAssertEqual(events.statuses(for: "hermes-install").prefix(2), ["running", "running"])
         XCTAssertEqual(events.statuses(for: "hermes-install").last, "done")
         XCTAssertTrue(m.plan.isComplete)
