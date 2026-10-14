@@ -162,7 +162,7 @@ public final class Backend: @unchecked Sendable {
         }, memoryGuard: MemoryGuard(), tuning: tunedLaunch(store: tuningStore))
         tuneTrial = { scratch, startupMs in ModelRuntime(configStore: scratch, fetch: fetch, startupTimeoutMs: startupMs, launchGuard: localGuard) }
         runtime = backendRuntime
-        engine = try customEngine ?? Engine(stateDir: dataFolder, vault: memory, fetch: stream, graph: { cache.get().graph }, cloud: cloud)
+        engine = try customEngine ?? Engine(stateDir: dataFolder, vault: memory, fetch: stream, graph: { cache.get().graph }, cloud: cloud, skills: SkillStore(dataFolder: dataFolder))
         self.fetch = fetch
         self.stream = stream
         planner = contextPlanner ?? { messages, context, mode, endpoint, headers, signal in

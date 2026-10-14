@@ -79,15 +79,15 @@ public final class Tools: @unchecked Sendable {
         .object(["type": "function", "function": .object(["name": .string(name), "description": .string(description), "parameters": parameters])])
     }
     private static let schemaList: [JSONValue] = [
-        entry("read", "Read lines of a text file, numbered. Search first; read only what you need.", param(["path": ["type": "string"], "start": ["type": "integer", "description": "First line, from 1"], "lines": ["type": "integer", "description": "How many lines"]], ["path"])),
-        entry("search", "Search file contents with a regular expression (ripgrep). Returns path:line:text.", param(["pattern": ["type": "string"], "path": ["type": "string", "description": "File or folder; default workspace"], "glob": ["type": "string", "description": "e.g. *.py"]], ["pattern"])),
+        entry("read", "Read lines of a text file, numbered. Search first; read only what you need.", param(["path": ["type": "string", "minLength": 1], "start": ["type": "integer", "description": "First line, from 1"], "lines": ["type": "integer", "description": "How many lines"]], ["path"])),
+        entry("search", "Search file contents with a regular expression (ripgrep). Returns path:line:text.", param(["pattern": ["type": "string", "minLength": 1], "path": ["type": "string", "description": "File or folder; default workspace"], "glob": ["type": "string", "description": "e.g. *.py"]], ["pattern"])),
         entry("list", "List a folder.", param(["path": ["type": "string"]])),
-        entry("edit", "Replace one exact piece of text in a file. `old` must match exactly once.", param(["path": ["type": "string"], "old": ["type": "string"], "new": ["type": "string"]], ["path", "old", "new"])),
-        entry("write", "Create or overwrite a file in the workspace.", param(["path": ["type": "string"], "content": ["type": "string"]], ["path", "content"])),
-        entry("run", "Run a shell command in the workspace. Output is shortened; pipe long output through tail.", param(["command": ["type": "string"], "timeout": ["type": "integer", "description": "Seconds, default 120"]], ["command"])),
-        entry("todo", "Replace your todo list. Keep it current: it survives when older tool output is trimmed.", param(["items": ["type": "array", "items": ["type": "object", "properties": ["text": ["type": "string"], "done": ["type": "boolean"]], "required": ["text"]]]], ["items"])),
-        entry("publish", "Attach a finished workspace file to the conversation so it can be downloaded on the phone.", param(["path": ["type": "string"]], ["path"])),
-        entry("map", "Ask the code map of the workspace which files and functions relate to a question. Returns names with paths and line numbers. Use it before reading many files. Code only.", param(["question": ["type": "string"], "refresh": ["type": "boolean", "description": "Rebuild the map first, after large changes"]], ["question"])),
+        entry("edit", "Replace one exact piece of text in a file. `old` must match exactly once.", param(["path": ["type": "string", "minLength": 1], "old": ["type": "string", "minLength": 1], "new": ["type": "string"]], ["path", "old", "new"])),
+        entry("write", "Create or overwrite a file in the workspace.", param(["path": ["type": "string", "minLength": 1], "content": ["type": "string", "maxLength": 400000]], ["path", "content"])),
+        entry("run", "Run a shell command in the workspace. Output is shortened; pipe long output through tail.", param(["command": ["type": "string", "minLength": 1, "maxLength": 4000], "timeout": ["type": "integer", "description": "Seconds, default 120"]], ["command"])),
+        entry("todo", "Replace your todo list. Keep it current: it survives when older tool output is trimmed.", param(["items": ["type": "array", "maxItems": 40, "items": ["type": "object", "properties": ["text": ["type": "string"], "done": ["type": "boolean"]], "required": ["text"]]]], ["items"])),
+        entry("publish", "Attach a finished workspace file to the conversation so it can be downloaded on the phone.", param(["path": ["type": "string", "minLength": 1]], ["path"])),
+        entry("map", "Ask the code map of the workspace which files and functions relate to a question. Returns names with paths and line numbers. Use it before reading many files. Code only.", param(["question": ["type": "string", "minLength": 1, "maxLength": 500], "refresh": ["type": "boolean", "description": "Rebuild the map first, after large changes"]], ["question"])),
     ]
     /// The tool list sent to the model: a JSON array of `{type: "function", function: {name, description, parameters}}`.
     public static let SCHEMAS: JSONValue = .array(schemaList)
@@ -496,6 +496,8 @@ public final class Tools: @unchecked Sendable {
     public func call(_ name: String, _ args: JSONValue? = nil) async -> ToolResult {
         let names = ["read", "search", "list", "edit", "write", "run", "map", "todo", "publish"]
         guard names.contains(name) else { return ToolResult(output: "Unknown tool \(name). Tools: \(names.joined(separator: ", ")).", log: nil, error: true) }
+        // The arguments are checked against the tool's own schema first; a mismatch goes back to the model as the answer.
+        if let problem = Tools.argumentProblem(name, args ?? [:]) { return ToolResult(output: problem, log: nil, error: true) }
         let arguments = args?.object ?? [:]
         do {
             switch name {

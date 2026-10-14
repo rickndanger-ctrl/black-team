@@ -81,7 +81,8 @@ final class ToolsTests: XCTestCase {
         XCTAssertEqual(r.output, "[x] edit a.txt\n[ ] next"); XCTAssertNil(r.log)
         XCTAssertEqual(t.todo, [TodoItem(text: "edit a.txt", done: true), TodoItem(text: "next", done: false)])
         XCTAssertEqual(Tools.renderTodo([]), "(empty)")
-        r = await t.call("todo", ["items": "x"]); assertMatch(r.output, "up to 40")
+        r = await t.call("todo", ["items": "x"]); XCTAssertEqual(r.output, "Error: argument `items` must be a list. Call todo again with corrected arguments.")
+        r = await t.call("todo", ["items": .array(Array(repeating: ["text": "x"], count: 41))]); assertMatch(r.output, "too many items \\(41; the most allowed is 40\\)")
     }
 
     func testClipCountsUTF16AndKeepsPairsWhole() {

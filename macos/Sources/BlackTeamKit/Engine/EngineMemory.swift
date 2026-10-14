@@ -15,12 +15,19 @@ public struct EngineMemory: Equatable, Sendable {
     public var counted: Int?
     /// The user's Core memory, read once per conversation so the cached prompt stays valid.
     public var core: String?
+    /// Where the run is (phase, steps, tool, tokens): what a restart needs to show and continue it.
+    public var run = RunRecord()
+    /// What the model was told about the skills it has, read once per conversation like `core`; nil until read, empty when there are none.
+    public var skills: String?
+    /// A note, written when earlier steps were trimmed, of what they did. Kept with the conversation.
+    public var summary: String?
 
     public init(messages: [JSONValue] = [], requests: [String] = [], log: [String] = [], todo: [TodoItem] = [],
-                readSpeed: Double = 40, writeSpeed: Double = 12, promptTokens: Int = 0, trims: Int = 0, counted: Int? = nil, core: String? = nil) {
+                readSpeed: Double = 40, writeSpeed: Double = 12, promptTokens: Int = 0, trims: Int = 0, counted: Int? = nil, core: String? = nil,
+                run: RunRecord = RunRecord(), skills: String? = nil, summary: String? = nil) {
         self.messages = messages; self.requests = requests; self.log = log; self.todo = todo
         self.readSpeed = readSpeed; self.writeSpeed = writeSpeed; self.promptTokens = promptTokens; self.trims = trims
-        self.counted = counted; self.core = core
+        self.counted = counted; self.core = core; self.run = run; self.skills = skills; self.summary = summary
     }
 
     /// Reads a saved record, tolerating missing fields.
@@ -35,7 +42,7 @@ public struct EngineMemory: Equatable, Sendable {
             },
             readSpeed: json["readSpeed"]?.double ?? readSpeed, writeSpeed: json["writeSpeed"]?.double ?? writeSpeed,
             promptTokens: json["promptTokens"]?.int ?? 0, trims: json["trims"]?.int ?? 0,
-            counted: json["counted"]?.int, core: json["core"]?.string)
+            counted: json["counted"]?.int, core: json["core"]?.string, run: RunRecord(json: json["run"]), skills: json["skills"]?.string, summary: json["summary"]?.string)
     }
 
     var json: JSONValue {
@@ -47,6 +54,9 @@ public struct EngineMemory: Equatable, Sendable {
         ]
         if let counted { object["counted"] = .number(Double(counted)) }
         if let core { object["core"] = .string(core) }
+        if let skills { object["skills"] = .string(skills) }
+        if let summary { object["summary"] = .string(summary) }
+        object["run"] = run.json
         return .object(object)
     }
 }
@@ -114,9 +124,8 @@ extension Engine {
 
     /// Replace the oldest steps with the record kept so far. Cuts only at a step boundary, so a tool
     /// call is never separated from its result.
-    @discardableResult
-    public static func trim(_ memory: inout EngineMemory, _ budget: Int) -> Bool {
-        let messages = memory.messages
+    /// Where `trim` would cut: the messages before this index are the ones dropped. Below 1 means nothing can be trimmed.
+    static func cutPoint(_ messages: [JSONValue], _ budget: Int) -> Int {
         let keepTokens = budget / 4
         // A step starts at a user or assistant message; its tool results follow it.
         var cut = -1, kept = 0
@@ -129,6 +138,13 @@ extension Engine {
             }
             index -= 1
         }
+        return cut
+    }
+
+    @discardableResult
+    public static func trim(_ memory: inout EngineMemory, _ budget: Int) -> Bool {
+        let messages = memory.messages
+        let cut = cutPoint(messages, budget)
         if cut < 1 { return false }
         let dropped = messages[0..<cut]
         // The record itself is sized to the budget, so a small context window is not refilled by its own summary.
@@ -138,10 +154,11 @@ extension Engine {
         let notes = dropped.filter { $0["role"]?.string == "assistant" && !EText.trim($0["content"]?.string ?? "").isEmpty }
             .suffix(3).map { "- \(EText.prefix(EText.trim($0["content"]?.string ?? ""), 400))" }.joined(separator: "\n")
         let log = memory.log.count > lines ? ["(\(memory.log.count - lines) earlier steps not listed)"] + memory.log.suffix(lines) : memory.log
+        let written = (memory.summary ?? "").isEmpty ? "" : "A summary of the trimmed steps:\n\(memory.summary!)\n\n"
         let record = """
         [Earlier steps were trimmed to keep you fast. This record is what you keep. Files can be read again.]
 
-        The user's requests in this conversation:
+        \(written)The user's requests in this conversation:
         \(requests.isEmpty ? "- (none recorded)" : requests)
 
         Your todo list:
