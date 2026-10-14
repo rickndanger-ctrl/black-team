@@ -78,6 +78,17 @@ private final class TimerBox: @unchecked Sendable {
     var task: Task<Void, Never>?
 }
 
+/// Seconds spent waiting for a person's answer and whether an unattended run's question ran out of time. Waiting does not count against
+/// the turn's time budget: a question left overnight must not use up the run.
+private final class WaitLedger: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seconds = 0.0, expired = false
+    func add(_ value: Double) { lock.lock(); seconds += max(0, value); lock.unlock() }
+    func expire() { lock.lock(); expired = true; lock.unlock() }
+    var waited: Double { lock.lock(); defer { lock.unlock() }; return seconds }
+    var didExpire: Bool { lock.lock(); defer { lock.unlock() }; return expired }
+}
+
 /// Black Team Code's agent loop, written for local models. See the notes at the top of engine.cjs:
 /// the model's real speed sizes the budgets, history is only ever appended to so the server's prompt
 /// cache stays valid, and trimming needs no model call.
@@ -214,8 +225,16 @@ public final class Engine: @unchecked Sendable {
         let turn = TurnState(thread: thread, save: save, now: now)
         turn.reset()
         let started = now()
+        let ledger = WaitLedger()
+        // A scheduled run says how long its question may wait; a run with a person at the window keeps the five minutes.
+        let unattended = job.unattended
+        let approvalSeconds = unattended?.approvalSeconds ?? Engine.APPROVAL_SECONDS
         let note: (String, String) -> Void = { name, output in turn.event(["type": "status", "name": .string(name), "output": .string(output)]) }
-        func checkStopped() throws { if stop.isCancelled || Task.isCancelled { throw CancellationError() } }
+        func checkStopped() throws {
+            if stop.isCancelled || Task.isCancelled { throw CancellationError() }
+            // An unattended run whose question nobody answered in time ends here, as "not approved".
+            if ledger.didExpire { throw BlackTeamError(Engine.notApprovedMessage) }
+        }
 
         // Approval card: resolves when the person answers in the app, or denies itself after five minutes.
         let gate = ApprovalGate()
@@ -224,15 +243,22 @@ public final class Engine: @unchecked Sendable {
                 let id = UUID().uuidString.lowercased()
                 let digest = SHA256.hash(data: Data(request.command.utf8)).map { String(format: "%02x", $0) }.joined()
                 let once = Once(), timer = TimerBox()
+                let askedAt = now()
                 let finish: @Sendable (String) -> Void = { choice in
                     guard once.take() else { return }
                     timer.task?.cancel(); gate.set(nil); job.withdraw()
+                    ledger.add(now().timeIntervalSince(askedAt))
                     continuation.resume(returning: choice)
                 }
-                timer.task = Task { try? await Task.sleep(nanoseconds: UInt64(Engine.APPROVAL_SECONDS) * 1_000_000_000); finish("deny") }
+                timer.task = Task {
+                    try? await Task.sleep(nanoseconds: UInt64(approvalSeconds) * 1_000_000_000)
+                    if Task.isCancelled { return }
+                    if unattended != nil { ledger.expire() }
+                    finish("deny")
+                }
                 gate.set { finish("deny") }
                 job.present(PendingApproval(id: id, digest: digest, command: EText.prefix(redact(request.command), 8000), description: request.description,
-                                            expires: EText.millis(now()) + Int64(Engine.APPROVAL_SECONDS) * 1000)) { answer in
+                                            expires: EText.millis(now()) + Int64(approvalSeconds) * 1000)) { answer in
                     guard answer.id == id, answer.digest == digest, ["once", "deny"].contains(answer.choice) else { throw BlackTeamError("No matching active approval.") }
                     job.progress = answer.choice == "once" ? "Approved. Continuing\u{2026}" : "Declined. Continuing\u{2026}"
                     finish(answer.choice)
@@ -251,7 +277,7 @@ public final class Engine: @unchecked Sendable {
         let resultLimit = LimitBox(limits.resultChars)
         let mapper = graph()
         let tools = try Tools(workspace: workspace, artifacts: artifacts, undoDir: undoDir, home: home, deny: [stateDir], limit: { resultLimit.value }, ask: ask,
-                              signal: stop, useRtk: useRtk, graph: mapper, graphDir: mapper.isEmpty ? "" : stateDir + "/graphs")
+                              signal: stop, useRtk: useRtk, graph: mapper, graphDir: mapper.isEmpty ? "" : stateDir + "/graphs", unattended: unattended?.permission)
         // The todo list belongs to the tools; a saved one is put back through the todo tool.
         if !memory.todo.isEmpty { _ = await tools.call("todo", ["items": .array(memory.todo.map { ["text": .string($0.text), "done": .bool($0.done)] })]) }
         let vault = cloudThread ? nil : self.vault
@@ -318,7 +344,7 @@ public final class Engine: @unchecked Sendable {
                 if step > Engine.MAX_STEPS {
                     unfinished = "I stopped at the limit of \(Engine.MAX_STEPS) steps for one turn, and the task is not finished. Send \"continue\" and I will pick up from my todo list."; break
                 }
-                if now().timeIntervalSince(started) > Double(room == nil ? Engine.RUN_SECONDS : TeamLimits.minutes * 60) {
+                if now().timeIntervalSince(started) - ledger.waited > Double(room == nil ? Engine.RUN_SECONDS : TeamLimits.minutes * 60) {
                     unfinished = "I stopped at the time limit for one turn, and the task is not finished. Send \"continue\" and I will pick up from my todo list."; break
                 }
                 let size = max(memory.promptTokens != 0 ? memory.promptTokens + Engine.estimate(Array(memory.messages.dropFirst(memory.counted ?? 0))) : 0, Engine.estimate(memory.messages) + 900)

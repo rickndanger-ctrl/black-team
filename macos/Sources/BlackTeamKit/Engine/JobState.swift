@@ -68,6 +68,7 @@ public final class JobState: @unchecked Sendable {
     private var approver: (@Sendable (ApprovalAnswer) throws -> Void)?
     private var observers: [Int: @Sendable (JobSnapshot) -> Void] = [:]
     private var nextObserver = 0
+    private var policy: UnattendedPolicy?
 
     public init(id: String = UUID().uuidString.lowercased(), threadId: String? = nil, kind: String = "agent", state: String = "running", progress: String = "") {
         self.id = id; self.threadId = threadId; self.kind = kind
@@ -95,6 +96,12 @@ public final class JobState: @unchecked Sendable {
     }
     /// The command waiting for an answer, if any.
     public var approval: PendingApproval? { snapshot.approval }
+
+    /// Set only for a scheduled run, before it starts: what it may do without asking and how long a question may wait.
+    public var unattended: UnattendedPolicy? {
+        get { lock.lock(); defer { lock.unlock() }; return policy }
+        set { lock.lock(); policy = newValue; lock.unlock() }
+    }
 
     /// Answers the pending approval. Throws "No matching active approval." unless the id and digest
     /// match the one waiting and the choice is "once" or "deny". Callable from any thread.

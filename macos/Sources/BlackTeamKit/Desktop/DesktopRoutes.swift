@@ -47,6 +47,11 @@ final class DesktopRoutes: @unchecked Sendable {
     func handle(_ head: HTTPHead, body: Data, access: PhoneAccess) async throws -> HTTPResponse? {
         let path = head.path, method = head.method
         let who: DesktopAccess = access == .desktop ? .desktop : .phone
+        // The background service (Service/ServiceRoutes.swift): a window counts as open unless the command is the one asking.
+        if let hooks = backend.service {
+            if who == .desktop, head.headers[ServiceClient.clientHeader.lowercased()] != "cli" { hooks.noteWindow() }
+            if ServiceRoutes.owns(path) { return try await ServiceRoutes(hooks, backend).handle(head, body: body, who: who) }
+        }
         switch (method, path) {
         case ("POST", "/api/chat"): return try await mine { try self.chat(try self.json(head, body), who) }
         case ("GET", "/api/privacy"): return try await mine { try self.privacy(head, who) }

@@ -35,11 +35,13 @@ public struct SetupStep: Codable, Equatable, Sendable {
     /// What is missing, when the state is `needsSomething`.
     public var needs: String?
     public var commands: [SetupInstallHint]
+    /// A step the person has to choose: it is listed, but never ticked for them and never offered unasked.
+    public var optIn: Bool
 
     public init(id: String, kind: String, title: String, detail: String, changes: [String] = [], state: SetupStepState, needs: String? = nil,
-                commands: [SetupInstallHint] = []) {
+                commands: [SetupInstallHint] = [], optIn: Bool = false) {
         self.id = id; self.kind = kind; self.title = title; self.detail = detail; self.changes = changes
-        self.state = state; self.needs = needs; self.commands = commands
+        self.state = state; self.needs = needs; self.commands = commands; self.optIn = optIn
     }
 
     /// Only a step marked will-do can be approved.
@@ -50,8 +52,8 @@ public struct SetupPlan: Codable, Equatable, Sendable {
     public var steps: [SetupStep]
     public init(steps: [SetupStep]) { self.steps = steps }
 
-    /// The steps approving would run.
-    public var pending: [SetupStep] { steps.filter(\.approvable) }
+    /// The steps approving would run, without the ones the person has to choose for themselves.
+    public var pending: [SetupStep] { steps.filter { $0.approvable && !$0.optIn } }
     /// Nothing left to approve.
     public var isComplete: Bool { pending.isEmpty }
 
@@ -72,11 +74,16 @@ public struct SetupContext: Sendable {
     /// The context the model in use is set to; 0 when not known. Hermes refuses a model set below `hermesMinimumContext`.
     public var modelContext = 0
     public var dataFolder: String
+    /// This computer can keep a background service (a user session with systemd, or launchd). False: the step is not listed.
+    public var serviceSupported: Bool
+    /// The background service's unit is already written.
+    public var serviceInstalled: Bool
 
     public init(found: DiscoveryResult, hermesInstalls: [HermesInstall], settings: IntegrationSettings, hermesSupported: Bool, tooling: HermesTooling,
-                modelName: String = "", dataFolder: String = "") {
+                modelName: String = "", dataFolder: String = "", serviceSupported: Bool = false, serviceInstalled: Bool = false) {
         self.found = found; self.hermesInstalls = hermesInstalls; self.settings = settings; self.hermesSupported = hermesSupported
         self.tooling = tooling; self.modelName = modelName; self.dataFolder = dataFolder
+        self.serviceSupported = serviceSupported; self.serviceInstalled = serviceInstalled
     }
 }
 
@@ -159,6 +166,18 @@ public func buildSetupPlan(_ c: SetupContext) -> SetupPlan {
                                detail: "Black Team does not install these. If you want one, run its install command yourself, then set up again.",
                                state: .needsSomething, needs: "Not installed", commands: missing))
     }
+    // 4. Keeping Black Team running when the window is closed. Listed, never ticked for the person.
+    if c.serviceSupported {
+        steps.append(SetupStep(
+            id: "background-service", kind: "service", title: "Keep Black Team running in the background",
+            detail: c.serviceInstalled ? "Black Team starts when you log in, so scheduled work carries on with the window closed."
+                                       : "Starts Black Team when you log in, so scheduled work carries on with the window closed. Off unless you choose it.",
+            changes: ["Writes one file for your user only: \(ServicePlatform.current == .systemd ? "~/.config/systemd/user/black-team.service" : "~/Library/LaunchAgents/com.blackteam.service.plist"). No administrator rights.",
+                      "It does not start anything now; it starts at your next login (or run: black-team service start).",
+                      "The model stops after 10 idle minutes to free memory, and starts again when needed.",
+                      "Turn it off any time in Settings, App & data, or with: black-team service uninstall."],
+            state: c.serviceInstalled ? .done : .willDo, optIn: true))
+    }
     return SetupPlan(steps: steps)
 }
 
@@ -191,8 +210,10 @@ public struct SetupServices: Sendable {
     /// What is on this computer right now, asked again for every run so a repeat run sees what the last one did.
     public var context: @Sendable () -> SetupContext
     public var installer: HermesInstalling
-    public init(store: Integrations, context: @escaping @Sendable () -> SetupContext, installer: HermesInstalling) {
-        self.store = store; self.context = context; self.installer = installer
+    /// Writes the background service's unit. Nil: that step is skipped.
+    public var service: ServiceInstalling?
+    public init(store: Integrations, context: @escaping @Sendable () -> SetupContext, installer: HermesInstalling, service: ServiceInstalling? = nil) {
+        self.store = store; self.context = context; self.installer = installer; self.service = service
     }
 }
 
@@ -257,6 +278,10 @@ public func applySetup(approved ids: [String], services: SetupServices, progress
                 // Black Team Code stays what runs new Code conversations; Hermes is a choice the person makes.
                 try services.store.save(JSONValue.object(["hermes": .encoded(settings.hermes)]))
                 finish("done", "Hermes's file and terminal tools are on. Browser and desktop control are off.")
+            case "background-service":
+                guard let installer = services.service else { finish("skipped", "The background service is not available here."); continue }
+                _ = try await installer.install()
+                finish("done", "Black Team will keep running in the background from your next login. Start it now with: black-team service start")
             default:
                 guard step.id.hasPrefix("connect:") else { finish("skipped", "Unknown step."); continue }
                 let result = try connectHarness(id: String(step.id.dropFirst("connect:".count)), store: services.store, found: context.found)

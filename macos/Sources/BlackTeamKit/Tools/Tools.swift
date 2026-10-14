@@ -101,6 +101,8 @@ public final class Tools: @unchecked Sendable {
     private let signal: CancelSignal?
     private let useRtk: Bool
     private let graph: String, graphDir: String
+    /// How a scheduled (unattended) run is held: nil is the usual interactive rule (only risky commands ask).
+    private let unattended: UnattendedPermission?
     private let lock = NSLock()
     private var todoItems: [TodoItem] = []
     private var stale = false
@@ -112,17 +114,22 @@ public final class Tools: @unchecked Sendable {
 
     /// The tools offered to the model. `map` is offered only when a graphify program and a folder for its maps were given.
     public var schemas: JSONValue {
-        guard let all = Tools.SCHEMAS.array else { return .array([]) }
+        guard var all = Tools.SCHEMAS.array else { return .array([]) }
+        // A read-only scheduled run is not even offered the tools that change things.
+        if unattended == .readOnly { all = all.filter { !Tools.changing.contains($0["function"]?["name"]?.string ?? "") } }
         if !graph.isEmpty && !graphDir.isEmpty { return .array(all) }
         return .array(all.filter { $0["function"]?["name"]?.string != "map" })
     }
+    /// The tools that change files or run commands.
+    static let changing: Set<String> = ["edit", "write", "run", "publish"]
     public var schemaList: [JSONValue] { schemas.array ?? [] }
 
     /// Finds an optional program (rtk, graphify) on PATH. Returns nil when it is not installed.
     public static func findProgram(_ name: String) -> String? { lookUpProgram(name) }
 
     /// graph: the graphify executable, when installed; its map of the workspace is kept under graphDir, not in the project.
-    public init(workspace: String, artifacts: String, undoDir: String, home: String = NSHomeDirectory(), owner: String = "The user", deny: [String] = [], limit: @escaping @Sendable () -> Int = { 8000 }, ask: @escaping Ask = { _ in "deny" }, signal: CancelSignal? = nil, useRtk: Bool = true, graph: String = "", graphDir: String = "") throws {
+    public init(workspace: String, artifacts: String, undoDir: String, home: String = NSHomeDirectory(), owner: String = "The user", deny: [String] = [], limit: @escaping @Sendable () -> Int = { 8000 }, ask: @escaping Ask = { _ in "deny" }, signal: CancelSignal? = nil, useRtk: Bool = true, graph: String = "", graphDir: String = "", unattended: UnattendedPermission? = nil) throws {
+        self.unattended = unattended
         guard let realRoot = PathUtil.realpath(workspace) else { throw BlackTeamError("ENOENT: no such file or directory: \(workspace)") }
         guard let realHome = PathUtil.realpath(home) else { throw BlackTeamError("ENOENT: no such file or directory: \(home)") }
         root = realRoot
@@ -314,8 +321,17 @@ public final class Tools: @unchecked Sendable {
         return ToolResult(output: (rows.isEmpty ? "(empty)" : rows.joined(separator: "\n")) + (entries.count > 200 ? "\n(\(entries.count - 200) more)" : ""), log: "list \(relative(dir)) (\(entries.count))")
     }
 
+    /// A scheduled run at the "ask" level asks before every change to a file; nil means go ahead.
+    private func confirmChange(_ verb: String, _ file: String) async -> ToolResult? {
+        guard unattended == .ask else { return nil }
+        let choice = await ask(ApprovalRequest(command: "\(verb) \(relative(file))", description: "Change this file in your project?"))
+        if choice == "once" { return nil }
+        return ToolResult(output: "\(owner) declined this change. Do not retry it; continue another way or ask.", log: "\(verb) declined: \(relative(file))", error: true)
+    }
+
     private func edit(_ args: [String: JSONValue]) async throws -> ToolResult {
         let file = try resolve(args["path"], write: true)
+        if let declined = await confirmChange("edit", file) { return declined }
         guard let old = args["old"]?.string, !old.isEmpty, let next = args["new"]?.string else { throw fail("Give old and new text.") }
         let text = try PathUtil.readText(file)
         // Occurrences are counted left to right without overlap, as split() does.
@@ -341,6 +357,7 @@ public final class Tools: @unchecked Sendable {
 
     private func write(_ args: [String: JSONValue]) async throws -> ToolResult {
         let file = try resolve(args["path"], write: true)
+        if let declined = await confirmChange("write", file) { return declined }
         guard let content = args["content"]?.string else { throw fail("Give the file content.") }
         if JSString.length(content) > 400000 { throw fail("Content is too large for one write.") }
         try FileManager.default.createDirectory(atPath: PathUtil.dirname(file), withIntermediateDirectories: true)
@@ -355,7 +372,9 @@ public final class Tools: @unchecked Sendable {
 
     private func run(_ args: [String: JSONValue]) async throws -> ToolResult {
         guard let command = args["command"]?.string, !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, JSString.length(command) <= 4000 else { throw fail("Give one shell command.") }
-        if Tools.RISKY.test(command) || Tools.SECRET.test(command) || denied.contains(where: { command.contains(PathUtil.basename($0)) }) {
+        // A scheduled run asks before every terminal command, whatever the command is. (Read-only never reaches here.)
+        let alwaysAsk = unattended == .ask || unattended == .allowInProject
+        if alwaysAsk || Tools.RISKY.test(command) || Tools.SECRET.test(command) || denied.contains(where: { command.contains(PathUtil.basename($0)) }) {
             let choice = await ask(ApprovalRequest(command: command, description: "Run this command on your computer?"))
             if choice != "once" { return ToolResult(output: "\(owner) declined this command. Do not retry it; continue another way or ask.", log: "run declined: \(JSString.prefix(command, 100))", error: true) }
         }
@@ -496,6 +515,9 @@ public final class Tools: @unchecked Sendable {
     public func call(_ name: String, _ args: JSONValue? = nil) async -> ToolResult {
         let names = ["read", "search", "list", "edit", "write", "run", "map", "todo", "publish"]
         guard names.contains(name) else { return ToolResult(output: "Unknown tool \(name). Tools: \(names.joined(separator: ", ")).", log: nil, error: true) }
+        if unattended == .readOnly, Tools.changing.contains(name) {
+            return ToolResult(output: "Error: this scheduled task is read-only. It can read and search, but it cannot change files or run commands.", log: nil, error: true)
+        }
         let arguments = args?.object ?? [:]
         do {
             switch name {

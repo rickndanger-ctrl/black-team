@@ -24,7 +24,7 @@ public struct DesktopServiceOptions: Sendable {
 public final class DesktopService: @unchecked Sendable {
     public let backend: Backend
     /// Answers the control channel's actions. Tests replace it to control what "installed on this computer" means.
-    public var control: DesktopControl
+    public var control: DesktopControl { didSet { backend.service?.control = control } }
     public let session: DesktopSession
     private let options: DesktopServiceOptions
 
@@ -35,6 +35,9 @@ public final class DesktopService: @unchecked Sendable {
         backend = try given ?? Backend(dataFolder: options.dataFolder, version: options.version,
                                        discover: { discoverLinux().result }, program: "the Black Team app")
         control = DesktopControl(backend)
+        // Schedules, the inbox and the "keep running" switch (Service/); the background service replaces this with its own, which also runs them.
+        if backend.service == nil { backend.service = ServiceHooks(backend: backend, mode: .window) }
+        backend.service?.control = control
     }
 
     /// The port it listens on (the real one when started on port 0).

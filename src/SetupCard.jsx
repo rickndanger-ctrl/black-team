@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {native} from './desktop.mjs';
-import {approvableIds, cardView, readyMessage, resultKey, stateLabel} from './setupPlan.mjs';
+import {approvableIds, cardView, defaultPickedIds, readyMessage, resultKey, stateLabel} from './setupPlan.mjs';
 import {onModelReady} from './setupOffer.mjs';
 
 // "Set up your agents": one approval connects every agent found on this computer and installs Hermes. The engine makes the plan
@@ -29,7 +29,7 @@ export default function SetupCard({status, busy, mode = 'workspace', onChat, onD
     try {
       const next = await native('setup-plan', {reason: reasons[mode] || 'asked'});
       setOffer(next);
-      setPicked(approvableIds(next.plan));
+      setPicked(defaultPickedIds(next.plan));
     } catch (cause) {setError(cause.message);}
   }, [mode]);
   // Read again when a run ends, so what it did is reflected, and when a model has just become ready.
@@ -109,7 +109,7 @@ export default function SetupCard({status, busy, mode = 'workspace', onChat, onD
         <label className="checkbox-field"><input type="checkbox" checked={picked.includes(step.id)} onChange={event => setPicked(event.target.checked ? [...picked, step.id] : picked.filter(id => id !== step.id))}/><strong>{step.title}</strong></label>
         <ul>{step.changes.map(change => <li key={change}>{change}</li>)}</ul>
       </fieldset>)}
-      <small>Untick a step to leave it out. Some steps need an earlier one (Hermes has to be installed before it can be connected).</small>
+      <small>Untick a step to leave it out; a step that is not ticked, such as keeping Black Team running in the background, is only done if you tick it. Some steps need an earlier one (Hermes has to be installed before it can be connected).</small>
     </details>}
     {notes.map(note => <div className="inline-note" key={note.id}>
       <strong>{note.title}</strong> <span>{note.detail}</span>

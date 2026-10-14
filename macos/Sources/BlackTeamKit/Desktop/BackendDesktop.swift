@@ -62,6 +62,8 @@ extension Backend {
         let scripts = locked { desktopOptions?.scripts }
         json["hermesEnabled"] = .bool(scripts != nil && (try? integrations.read().hermes.enabled) == true)
         json["dictation"] = .bool(!dictationTool().isEmpty)
+        // The background service: the inbox count (the badge), and whether the model was unloaded to free memory (Service/ServiceHooks.swift).
+        if let hooks = locked({ service }) { json["service"] = hooks.statusJSON() }
         let service = phone()
         let phoneStatus = try await service.manager.status()
         var url = phoneStatus.url

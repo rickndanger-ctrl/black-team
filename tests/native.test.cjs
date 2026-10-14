@@ -24,8 +24,8 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 
 // Loads main.cjs with a mocked electron and a fake engine client. The fake engine echoes every request as {action, data}
 // unless a test sets a reply in world.replies; the status it returns is world.status.
-async function boot({ startError = null } = {}) {
-  const captured = { errors: [], prompts: [], opened: [], quit: undefined };
+async function boot({ startError = null, attached = false, openError = null } = {}) {
+  const captured = { errors: [], prompts: [], opened: [], commands: [], quit: undefined };
   const world = {
     status: { job: { state: 'done' }, runtime: { busy: false } },
     messageChoice: 0,
@@ -90,12 +90,16 @@ async function boot({ startError = null } = {}) {
       if (this.onStop) this.onStop();
     }
   }
+  // The background service: an engine the window attaches to. Closing the window must only let go of it.
+  class FakeAttachedEngine extends FakeEngineClient {
+    constructor() { super({}); this.attached = true; }
+  }
   const electron = {
     app, BrowserWindow,
     ipcMain: { handle: (name, callback) => { handlers.set(name, callback); } },
     dialog: {
       showErrorBox: (...args) => captured.errors.push(args),
-      showMessageBoxSync: (_window, options) => { captured.prompts.push(options); return world.messageChoice; },
+      showMessageBoxSync: (first, second) => { captured.prompts.push(second || first); return world.messageChoice; },
       showOpenDialog: async (_window, options) => { captured.dialogOptions = options; return { canceled: true, filePaths: [] }; },
     },
     shell: {
@@ -118,9 +122,19 @@ async function boot({ startError = null } = {}) {
       chmodSync: () => {},
       lstatSync: () => ({ isSymbolicLink: () => false }),
     };
+    if (name === 'node:child_process') return { execFile: (program, args, options, done) => { captured.commands.push([program, ...args]); done(null, world.unitOutput || ''); } };
     if (name === './engine-client.cjs') return {
       EngineClient: FakeEngineClient,
       resolveEngine: options => { captured.resolveOptions = options; return '/engine/black-team'; },
+      // Attach to the service when the test says one is running; otherwise start the engine as before.
+      openEngine: async options => {
+        captured.openOptions = options;
+        captured.opens = (captured.opens || 0) + 1;
+        if (openError && captured.opens === 1) throw openError;
+        if (attached) { const engine = new FakeAttachedEngine(); return { engine, ready: await engine.start(), attached: true }; }
+        const engine = options.spawn();
+        try { return { engine, ready: await engine.start(), attached: false }; } catch (failure) { await engine.stop(); throw failure; }
+      },
     };
     throw new Error(`Unexpected require in main.cjs: ${name}`);
   };
@@ -410,3 +424,68 @@ test('a failed engine start is reported, the engine is stopped, and no window is
   assert.equal(captured.quit, true);
   assert.equal(captured.window, undefined);
 });
+
+test('without the background service the engine is started as before, and the window asks for the service only through openEngine', async () => {
+  const { captured } = await boot();
+  assert.equal(captured.opens, 1);
+  assert.equal(captured.openOptions.version, '0.1.0-test');
+  assert.equal(captured.openOptions.dataDir, stateDir);
+  assert.equal(captured.engine.constructor.name, 'FakeEngineClient');
+  assert.equal(captured.engineOptions.args[0], 'desktop-service');
+  // Nothing was run on the system just to open the window.
+  assert.deepEqual(captured.commands, []);
+});
+
+test('the unit is only asked about and started by its fixed name, and only when the person turned it on', async () => {
+  const { world, captured } = await boot();
+  world.unitOutput = 'enabled';
+  assert.equal(await captured.openOptions.unitEnabled(), true);
+  await captured.openOptions.startUnit();
+  world.unitOutput = 'disabled';
+  assert.equal(await captured.openOptions.unitEnabled(), false);
+  assert.deepEqual(captured.commands.map(command => [...command]), [
+    ['systemctl', '--user', 'is-enabled', 'black-team.service'],
+    ['systemctl', '--user', 'start', 'black-team.service'],
+    ['systemctl', '--user', 'is-enabled', 'black-team.service'],
+  ]);
+});
+
+test('attached to the background service, closing the window and quitting leave it running and ask nothing', async () => {
+  const { handlers, event, captured, world, app } = await boot({ attached: true });
+  assert.equal(captured.loaded, ready.bootstrapURL);
+  const request = handlers.get('black-team:request');
+  // Even with a job running, there is no prompt: the service carries on without the window.
+  world.status = { job: { state: 'running' }, runtime: { busy: true } };
+  assert.equal((await request(event(), 'status')).job.state, 'running');
+  const closing = { prevented: false, preventDefault() { this.prevented = true; } };
+  captured.window.emit('close', closing);
+  assert.equal(closing.prevented, false);
+  assert.equal(captured.prompts.length, 0);
+  app.emit('before-quit', { preventDefault() {} });
+  await settle();
+  assert.equal(captured.prompts.length, 0);
+  assert.equal(captured.engine.stopCalls, 1, 'quitting detaches');
+  assert.equal(captured.quit, true);
+});
+
+test('if the background service stops while the window is open, the window says so in plain words', async () => {
+  const { captured } = await boot({ attached: true });
+  captured.engine.emit('exit', { expected: false, error: null, code: null });
+  assert.equal(captured.errors.length, 1);
+  assert.equal(captured.errors[0][0], 'Black Team background service stopped');
+  assert.match(captured.errors[0][1], /black-team service start/);
+  assert.equal(captured.quit, true);
+});
+
+test('a background service of another version offers to restart it, then opens', async () => {
+  const error = Object.assign(new Error('Black Team\u2019s background service is version 1.0.0, but this window is version 0.1.0-test. Restart the background service, then open Black Team again.'), { restartable: true });
+  const { captured, world } = await boot({ openError: error, attached: true });
+  assert.equal(captured.prompts[0].message, 'Restart the background service');
+  assert.equal(captured.prompts[0].detail, error.message);
+  assert.deepEqual([...captured.prompts[0].buttons], ['Restart the background service', 'Quit']);
+  assert.deepEqual(captured.commands.map(command => [...command]), [['systemctl', '--user', 'restart', 'black-team.service']]);
+  assert.equal(captured.opens, 2);
+  assert.ok(captured.window, 'the window opened after the restart');
+  void world;
+});
+

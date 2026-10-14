@@ -30,7 +30,12 @@ Commands (black-team <command> --help for details):
   memory core | list | search         what Black Team remembers
   phone status | enable | disable | link | reset
   hermes tools | skills | plugins | mcp | key   what your connected Hermes may do in a conversation
-  serve                              keep Black Team and phone access running
+  serve                               keep Black Team and phone access running
+  service install | uninstall | start | stop | status | logs
+                                      keep Black Team running in the background, from login
+  schedule list | add | remove | pause | resume | run
+                                      messages sent on a schedule, as normal conversations
+  inbox [approve|deny <id>]           what is waiting for your answer
   install-command [--to <folder>]     put `black-team` on your PATH
 
 Options for everything: --json prints JSON; --help and --version.
@@ -38,6 +43,42 @@ The data folder is the app's own; BLACK_TEAM_DATA=<folder> uses another.
 """
 
 let commandHelp: [String: String] = [
+    "service": """
+    Usage: black-team service install | uninstall | start | stop | restart | status | logs [-n <lines>]
+           black-team service set idle-minutes|approval-hours|runs-per-day <number>
+           black-team service run [--data <folder>] [--port <n>]
+    Keeps Black Team's engine running in the background from login, so scheduled work carries on when the window is closed.
+    It is off until you turn it on, and it never runs as root.
+      install     writes a per-user unit (a systemd user unit on Linux, a launchd agent on a Mac) and turns it on for your next login
+                  Nothing else is written or changed. It does not start the service: use start (or log in again).
+      uninstall   stops the service and removes exactly what install wrote
+      start|stop|restart   control the installed service
+      status      is it running, what it is doing, and what waits for you. Exit status 0 when running, 3 when not
+      logs        the last lines it wrote
+      set         idle-minutes: stop the model after this many idle minutes (default 10, 0 = never);
+                  approval-hours: how long a question waits for you before the run ends as not approved (default 24);
+                  runs-per-day: the most scheduled runs that may start in a day (default 24)
+      run         the service itself, in the foreground (this is what the unit starts)
+    The window and this command attach to the running service instead of starting a second engine.
+    """,
+    "schedule": """
+    Usage: black-team schedule list
+           black-team schedule add --name <name> --message <text> --when <when> [--project <name>] [--kind chat|code]
+                                   [--permission read-only|ask|allow-in-project] [--model <key>]
+           black-team schedule remove|pause|resume|run <name or id>
+    Sends a message on a schedule, as a normal conversation in the project (it shows in the window, on the phone and in history).
+    <when> is one of: every 30 minutes, every 2 hours, daily at 9:30, weekdays at 17:00, once at 2026-10-14 09:30.
+    Permission (Code only): read-only never changes anything or asks; ask (default) waits for your answer before a file change or a command;
+    allow-in-project changes files in the project folder without asking and still asks before a command.
+    A question waits in the inbox (black-team inbox) and ends the run as "not approved" if nobody answers in time.
+    Schedules run while the background service is on (black-team service install). Without it you can still edit them and run none.
+    A run missed while the computer was off runs once when the service starts. Up to 20 schedules and 24 runs a day.
+    """,
+    "inbox": """
+    Usage: black-team inbox
+           black-team inbox approve|deny <id>
+    Lists the questions that wait for you (from scheduled Code runs), with what they want to do. approve lets that one step run; deny refuses it.
+    """,
     "status": """
     Usage: black-team [--json] status
     Shows whether set-up is complete, the model in use, the runtime, the number of saved models and conversations, memory, and warnings.
