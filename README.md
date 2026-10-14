@@ -70,8 +70,9 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
 - **Bring Hermes if you use it.** Connect an installed Hermes Agent for its
   browser or desktop tools and choose it for Code conversations. It is optional.
 - **Dictate.** When a system dictation tool is installed (Voxtype is detected),
-  a microphone button in the text bar starts and stops it. Speech is transcribed
-  on your computer by that tool.
+  a microphone button beside each writing box (messages, Room goals, tasks and
+  notes, memory notes and search, project names) starts and stops it. Speech is
+  transcribed on your computer by that tool.
 - **Work privately from your phone.** Send instructions, read replies and tool
   activity, respond to approval cards, stop tasks, and download attached files
   through your private network. Your computer does the work.

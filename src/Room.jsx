@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import Markdown from './Markdown.jsx';
 import {api, post} from './http.mjs';
+import MicButton from './Dictate.jsx';
 
 // The Room page: a team of saved models, cloud models and subscription agents working on one project.
 // The engine decides who may take part, what leaves this computer and what each digest covers; this page shows its answers.
@@ -26,6 +27,9 @@ export default function Room({status, project, onOpenChat}) {
   const live = useRef(true);
   const shown = useRef(projectId);
   useEffect(() => {live.current = true; return () => {live.current = false;};}, []);
+
+  // Each writing box gets a microphone when this computer has a dictation tool.
+  const mic = (field, value, disabled) => status.dictation && <MicButton field={field} value={value} disabled={disabled} onError={setError}/>;
 
   // A quiet read is a background refresh: it leaves the error on the page alone, whether it works or not.
   const read = async (id, quiet = false) => {
@@ -97,9 +101,9 @@ export default function Room({status, project, onOpenChat}) {
     <div className="room-project"><span>Project</span><select className="agent-picker" aria-label="Project" value={projectId || ''} onChange={event => setProjectId(event.target.value)}>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
     {error && <Banner onClose={() => setError('')}>{error}</Banner>}
     {!room ? <p className="memory-empty">Opening the room…</p> : <>
-      <Members key={`members-${projectId}`} room={room} status={status} busy={busy} change={change}/>
-      <TeamRun key={`team-${projectId}`} room={room} busy={busy} running={running} request={request} change={change}/>
-      <Tasks key={`tasks-${projectId}`} room={room} busy={busy} running={running} change={change}/>
+      <Members key={`members-${projectId}`} room={room} status={status} busy={busy} change={change} mic={mic}/>
+      <TeamRun key={`team-${projectId}`} room={room} busy={busy} running={running} request={request} change={change} mic={mic}/>
+      <Tasks key={`tasks-${projectId}`} room={room} busy={busy} running={running} change={change} mic={mic}/>
       <HandOff key={`handoff-${projectId}`} room={room} busy={busy} running={running} request={request} change={change}/>
       <RoomLog room={room}/>
     </>}
@@ -107,7 +111,8 @@ export default function Room({status, project, onOpenChat}) {
 }
 
 // Who is on the team, and the row that adds a member: a saved model (local or cloud) or an installed agent.
-function Members({room, status, busy, change}) {
+function Members({room, status, busy, change, mic}) {
+  const roleBox = useRef(null);
   const agents = (status.agents || []).filter(agent => agent.installed);
   const models = status.models || [];
   const options = [
@@ -146,7 +151,7 @@ function Members({room, status, busy, change}) {
           <p className="room-sub">Add a member</p>
           <div className="button-row">
             <select className="agent-picker" aria-label="New member" value={chosen?.value || ''} disabled={busy} onChange={event => setPick(event.target.value)}>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-            <input className="room-input" value={role} maxLength={80} placeholder="Role, for example builder or reviewer" aria-label="Role" disabled={busy} onChange={event => setRole(event.target.value)}/>
+            <input ref={roleBox} className="room-input" value={role} maxLength={80} placeholder="Role, for example builder or reviewer" aria-label="Role" disabled={busy} onChange={event => setRole(event.target.value)}/>{mic(roleBox, role, busy)}
             {chosen?.agent
               ? <select className="agent-picker" aria-label="Member permission" value={permission} disabled={busy} onChange={event => setPermission(event.target.value)}>{PERMISSIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
               : <select className="agent-picker" aria-label="Member work" value={work} disabled={busy} onChange={event => setWork(event.target.value)}>{WORK.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>}
@@ -158,7 +163,8 @@ function Members({room, status, busy, change}) {
 }
 
 // The team run: the goal, the lead and reviewer, the agreement to confirm, the team's conversation and the report.
-function TeamRun({room, busy, running, request, change}) {
+function TeamRun({room, busy, running, request, change, mic}) {
+  const goalBox = useRef(null);
   const members = room.members;
   const [goal, setGoal] = useState('');
   const [lead, setLead] = useState('');
@@ -183,7 +189,7 @@ function TeamRun({room, busy, running, request, change}) {
   return <section className="local-model-panel room-card" aria-label="Team run">
     <span className="eyebrow">TEAM RUN</span>
     <h2>Give the team a goal</h2>
-    <div className="room-goal"><textarea aria-label="Goal" value={goal} maxLength={2000} placeholder="What should the team do?" disabled={running} onChange={event => {setGoal(event.target.value); setAgreement(null);}}/></div>
+    <div className="room-goal"><textarea ref={goalBox} aria-label="Goal" value={goal} maxLength={2000} placeholder="What should the team do?" disabled={running} onChange={event => {setGoal(event.target.value); setAgreement(null);}}/>{mic(goalBox, goal, running)}</div>
     <div className="button-row room-run-row">
       <label><span>Lead</span><select className="agent-picker" aria-label="Lead" value={leadId} disabled={running || busy || !members.length} onChange={event => setLead(event.target.value)}>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
       <label><span>Reviewer</span><select className="agent-picker" aria-label="Reviewer" value={reviewerId} disabled={running || busy || !members.length} onChange={event => setReviewer(event.target.value)}><option value="">No reviewer</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
@@ -214,7 +220,8 @@ function TeamRun({room, busy, running, request, change}) {
 }
 
 // The team's to-do list: four columns. Adding a task by hand is the optional path.
-function Tasks({room, busy, running, change}) {
+function Tasks({room, busy, running, change, mic}) {
+  const titleBox = useRef(null);
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [assignee, setAssignee] = useState('');
@@ -233,14 +240,14 @@ function Tasks({room, busy, running, change}) {
       const items = tasks.filter(task => task.status === column);
       return <div className="room-column" key={column}>
         <div className="room-col-head"><strong>{STATE[column]}</strong><small>{items.length}</small></div>
-        {items.map(task => <TaskCard key={task.id} task={task} room={room} busy={busy} running={running} change={change}/>)}
+        {items.map(task => <TaskCard key={task.id} task={task} room={room} busy={busy} running={running} change={change} mic={mic}/>)}
       </div>;
     })}</div>
     {adding
       ? <div className="room-add">
           <p className="room-sub">Optional: give one member a single job without a team run. Say what should be done, choose who does it, press Add, then press Start on the task.</p>
           <div className="button-row">
-            <input className="room-input" value={title} maxLength={200} placeholder="What should be done, in a few words" aria-label="Task title" disabled={busy} onChange={event => setTitle(event.target.value)}/>
+            <input ref={titleBox} className="room-input" value={title} maxLength={200} placeholder="What should be done, in a few words" aria-label="Task title" disabled={busy} onChange={event => setTitle(event.target.value)}/>{mic(titleBox, title, busy)}
             <select className="agent-picker" aria-label="Assignee" value={assignee} disabled={busy} onChange={event => setAssignee(event.target.value)}><option value="">Nobody yet</option>{room.members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
             <button type="button" className="primary" disabled={busy || running || !title.trim()} onClick={add}>Add</button>
             <button type="button" className="link-button" onClick={() => {setAdding(false); setTitle(''); setAssignee('');}}>Cancel</button>
@@ -251,7 +258,8 @@ function Tasks({room, busy, running, change}) {
 }
 
 // One task: a card that opens in place to its detail, result, note and the actions for its state.
-function TaskCard({task, room, busy, running, change}) {
+function TaskCard({task, room, busy, running, change, mic}) {
+  const noteBox = useRef(null);
   const [open, setOpen] = useState(false);
   const [sendingBack, setSendingBack] = useState(false);
   const [note, setNote] = useState('');
@@ -282,7 +290,7 @@ function TaskCard({task, room, busy, running, change}) {
         : null}
       {task.status === 'review' && sendingBack && <div className="room-add">
         <div className="button-row">
-          <input className="room-input" value={note} maxLength={1000} placeholder="Note for the member" aria-label="Note for the member" disabled={locked} onChange={event => setNote(event.target.value)}/>
+          <input ref={noteBox} className="room-input" value={note} maxLength={1000} placeholder="Note for the member" aria-label="Note for the member" disabled={locked} onChange={event => setNote(event.target.value)}/>{mic(noteBox, note, locked)}
           <button type="button" className="primary" disabled={locked} onClick={sendBack}>Send back</button>
           <button type="button" className="link-button" disabled={locked} onClick={() => {setSendingBack(false); setNote('');}}>Cancel</button>
         </div>
