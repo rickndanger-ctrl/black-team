@@ -94,9 +94,13 @@ final class HelperSupervisorTests: XCTestCase {
         let dir = try folder()
         let fake = try script(dir, "fake", "echo up >> \"$1\"\nexec sleep 60")
         let supervisor = HelperSupervisor(dataFolder: dir, sleep: { _ in }, poll: 0.01, grace: 1)
-        try supervisor.register(HelperSpec(id: "sick", name: "Sick", executable: fake, arguments: [dir + "/ups"], health: { false }, healthEvery: 0.02, healthFailures: 2, initialBackoff: 0))
+        // It answers until it has written that it is up (a process can take a moment to start on a busy Mac), then stops answering.
+        let ups = dir + "/ups"
+        let lines: @Sendable () -> Int = { ((try? String(contentsOfFile: ups, encoding: .utf8)) ?? "").split(separator: "\n").count }
+        try supervisor.register(HelperSpec(id: "sick", name: "Sick", executable: fake, arguments: [ups], health: { lines() == 0 }, healthEvery: 0.02, healthFailures: 2, initialBackoff: 0))
         try supervisor.start()
         try await wait("a restart") { (supervisor.status().first?.restarts ?? 0) >= 1 }
+        try await wait("the second start") { lines() >= 2 }
         await supervisor.stop()
         XCTAssertEqual(supervisor.status().first?.lastExit, "It stopped answering and was restarted.")
         XCTAssertGreaterThanOrEqual(try String(contentsOfFile: dir + "/ups", encoding: .utf8).split(separator: "\n").count, 2)

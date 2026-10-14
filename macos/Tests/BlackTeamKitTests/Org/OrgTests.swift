@@ -616,7 +616,7 @@ final class OrgTests: XCTestCase {
         _ = try r.backend.orgCreate(projectId: r.pid, template: "small", local: r.localKey)
         let local = try r.backend.orgAgreement(projectId: r.pid)
         XCTAssertFalse(local.leavesThisMac); XCTAssertTrue(local.memoryUsed); XCTAssertEqual(local.services, [])
-        XCTAssertTrue(local.text.contains("Every role runs on this computer, so nothing leaves it."), local.text)
+        XCTAssertTrue(local.text.contains("Every role runs on \(Place.this), so nothing leaves it."), local.text)
         XCTAssertTrue(local.text.contains("your own branch and folder are never changed") && local.text.contains("nothing is merged unless you do it"))
         _ = try r.backend.orgRemove(projectId: r.pid)
         _ = try r.backend.orgCreate(projectId: r.pid, template: "small", local: r.localKey, leadModel: r.cloudKey)

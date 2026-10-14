@@ -247,6 +247,9 @@ final class ServiceUnitTests: XCTestCase {
     }
 
     func testTheBackendsPlanListsTheStepOnlyWhereSystemctlIsAndApprovingItInstalls() async throws {
+        #if !os(Linux)
+        throw XCTSkip("systemd is Linux only; on a Mac only the black-team command offers the background service")
+        #endif
         final class Installer: ServiceInstalling, @unchecked Sendable {
             var installs = 0
             func isInstalled() -> Bool { installs > 0 }
