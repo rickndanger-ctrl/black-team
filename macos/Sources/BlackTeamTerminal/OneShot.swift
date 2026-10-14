@@ -14,7 +14,7 @@ public struct OneShotOptions: Equatable {
 
     public enum ParseError: Error, Equatable { case message(String) }
 
-    public static let commandNames: Set<String> = ["status", "chat", "code", "agent", "room", "starter", "runtime", "vision", "cloud", "phone", "models", "find",
+    public static let commandNames: Set<String> = ["status", "chat", "code", "agent", "room", "starter", "setup", "runtime", "vision", "cloud", "phone", "models", "find",
                                                    "use", "memory", "serve", "install-command", "help", "version"]
 
     /// True when the arguments ask for one-shot use: -p or --print, with no subcommand first.

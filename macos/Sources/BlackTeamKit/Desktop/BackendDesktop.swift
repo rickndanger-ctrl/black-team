@@ -49,6 +49,7 @@ extension Backend {
         // Subscription agents found on this computer. Whether one is signed in is learned only when it runs (a reply says `needsSignIn`).
         json["visionInstall"] = visionInstallBefore
         json["starterInstall"] = starterInstallBefore
+        json["setupRun"] = setupRun.json
         json["agents"] = .array(AgentService.allCases.map { DesktopControl.agentJSON($0, installed: agentInstalled($0)) })
         if json["job"] == nil { json["job"] = .null }   // the web app reads `job`, which is null when nothing runs
         // As lib/server.cjs: Hermes is offered when this service has the runner's scripts and Hermes is enabled in its settings.

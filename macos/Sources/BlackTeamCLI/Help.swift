@@ -12,6 +12,7 @@ Usage:
 Commands (black-team <command> --help for details):
   status                              set-up state, runtime, saved models, hardware
   starter list | install <id>         the starter models; download the runtime and one of them
+  setup [--yes]                       connect the agents on this computer and install Hermes, after one approval
   runtime status | install            the downloaded llama.cpp program
   find                                look for running model servers and model files
   models                              the saved models
@@ -41,6 +42,16 @@ let commandHelp: [String: String] = [
            black-team starter install <id>
       list      the starter models, what is installed, and the recommendation for this computer
       install   download the llama.cpp runtime and one starter model, and set it up
+    """,
+    "setup": """
+    Usage: black-team setup [--yes]
+    Shows what it would do to set up your agents, and asks once. Nothing is installed, downloaded or connected until you answer yes.
+      - connects each agent found on this computer (Claude Code, Codex, Pi, OpenCode, DeepSeek Harness, Aider) so it opens with your model
+      - installs Hermes Agent into Black Team's own folder, if it is not installed (from github.com and the Python package index), then connects it
+      - agents that are not installed are listed with their makers' install commands; Black Team never runs those
+    Answering no is remembered, so the window does not ask again for the same things.
+      --yes   approve every step without asking
+    --json prints the plan (or, with --yes, the result of each step).
     """,
     "runtime": """
     Usage: black-team runtime status

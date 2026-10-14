@@ -14,12 +14,14 @@ public final class DesktopControl: @unchecked Sendable {
         "cloud-discover", "cloud-save", "project-cloud", "agents-status", "agent-signin", "agent-update",
         // Starter model and vision file downloads (Desktop/DesktopVision.swift).
         "vision-install", "vision-cancel", "starter-list", "starter-install", "starter-cancel",
+        // "Set up your agents": the plan, one approval, Not now, stop (Desktop/DesktopSetup.swift).
+        "setup-plan", "setup-apply", "setup-dismiss", "setup-cancel",
     ]
     /// Actions that change something: one at a time.
     static let changing: Set<String> = [
         "integrations-save", "harness-connect", "harness-launch", "setup-save", "models-add", "models-ignore", "model-switch", "model-forget",
         "runtime-start", "runtime-stop", "phone-save", "phone-setup", "phone-off", "phone-connect", "phone-disconnect",
-        "cloud-save", "project-cloud", "agent-signin", "agent-update",
+        "cloud-save", "project-cloud", "agent-signin", "agent-update", "setup-apply", "setup-dismiss",
     ]
 
     let backend: Backend
@@ -34,7 +36,7 @@ public final class DesktopControl: @unchecked Sendable {
 
     private func discovered() -> LinuxDiscovery {
         let saved = (try? backend.integrations.read().hermes) ?? HermesSettings()
-        return discoverLinux(home: home, env: environment, saved: saved)
+        return discoverLinux(home: home, env: environment, saved: saved, extraSources: [HermesInstaller.sourceFolder(dataFolder: backend.dataFolder)])
     }
 
     /// Answers one request. `data` is the request's input object (an empty one when none was sent). The control channel is the
@@ -65,6 +67,12 @@ public final class DesktopControl: @unchecked Sendable {
         case "starter-cancel":
             try unsupported([], "Unsupported setup setting.")
             return starterStop()
+        case "setup-plan":
+            try unsupported(["reason"], "Unsupported setup setting.")
+            return try setupPlanJSON(input)
+        case "setup-cancel":
+            try unsupported([], "Unsupported setup setting.")
+            return setupStop()
         case "server-discover":
             try unsupported(["endpoint", "apiKey"], "Unsupported server discovery setting.")
             // A key that is not text is refused as a key, never silently dropped.
@@ -136,6 +144,13 @@ public final class DesktopControl: @unchecked Sendable {
                 return try connectHarness(id: id, store: backend.integrations, found: found)
             }
             return ["connected": .bool(connected.connected), "name": .string(connected.name)]
+        case "setup-apply":
+            try unsupported(["ids"], "Unsupported setup setting.")
+            return try setupStart(input)
+        case "setup-dismiss":
+            try unsupported([], "Unsupported setup setting.")
+            try backend.dismissSetupOffer()
+            return ["dismissed": true]
         case "setup-save":
             let saved = try await backend.saveSetup(value)
             var object: [String: JSONValue] = ["saved": .bool(saved.saved)]

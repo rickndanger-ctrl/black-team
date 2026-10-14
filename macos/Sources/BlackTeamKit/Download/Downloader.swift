@@ -30,6 +30,9 @@ public enum DownloadHosts {
     public static let github = ["github.com", "githubusercontent.com"]
     /// huggingface.co redirects to its CDN (seen 2026-10: us.aws.cdn.hf.co; also cdn-lfs*.hf.co, *.xethub.hf.co).
     public static let huggingFace = ["huggingface.co", "hf.co"]
+    /// A GitHub source archive (`github.com/<owner>/<repo>/archive/<commit>.tar.gz`) redirects to codeload.github.com and nowhere
+    /// else. Narrower than `github`: release-asset hosts and other GitHub subdomains are not allowed for it.
+    public static let githubArchive = ["codeload.github.com"]
 
     public static func host(_ host: String, matches suffixes: [String]) -> Bool {
         let host = host.lowercased()
