@@ -77,6 +77,10 @@ final class BackendSetupTests: XCTestCase {
 
     func testAModelFoundAfterSetupJoinsTheListAndARemovedOneStaysOut() async throws {
         let fixture = try BackendFixture(self)
+        // A found file needs a llama.cpp to run it; the downloaded one, so the test does not lean on a server running here.
+        let installer = StubInstaller(fixture.files.dir)
+        fixture.installer = installer
+        installer.current = try installer.writeRuntime()
         let backend = try fixture.make()
         ggufFile(backend.dataFolder + "/models/Found-3B-Q4.gguf")
         let report = await backend.findMyModels()
