@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.25**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.26**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -941,3 +941,31 @@ Not checked for this release: the Mac app's Room refresh on screen (it
 compiles and calls the load the page already used); the window test on a
 Linux computer other than the Dell; and the lists carried from alpha.20 and
 alpha.22.
+
+## Live follow-up — October 13, 2026 (alpha.26)
+
+One change to the Linux window after alpha.25.
+
+**A microphone beside every writing box.** The dictation button was only on
+the message box. One shared button now sits beside the Room goal, member
+role, task title and send-back note, the memory search, note name and note
+editor, and both project name boxes. Paths, addresses, keys and number fields
+have none. The system has one dictation session, so pressing a second
+microphone stops the first. The message box's microphone is switched off
+while the box itself is; before, it could start listening with nowhere to
+type. The buttons show only when a dictation tool is found (Voxtype), as
+before. The Mac app is unchanged: it has no dictation button, and macOS
+dictation works in its text boxes already.
+
+Checked: Linux 606 engine tests (6 skipped), macOS 546 (5 skipped), Node 43,
+Python 24, no failures. In the Linux window on a fresh data folder, with the
+dictate call answered locally, each microphone moved the cursor to its own
+box (Search memory, New note name, Note editor, Role, Goal, Task title) and
+lit up, with no window errors. In a clean home, alpha.26 installed over
+alpha.25 kept the model and the conversation and passed the window test and
+the command test.
+
+Not checked for this release: real speech arriving in the new boxes; the
+send-back note and sidebar project microphones pressed in the window (same
+button); the window test on a Linux computer other than the Dell; and the
+lists carried from alpha.20 and alpha.22.
