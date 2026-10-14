@@ -86,8 +86,12 @@ public enum AgentTools {
     /// The level picks the tool's own modes: Claude Code `manual` / `acceptEdits` / `auto`, Codex a read-only / workspace-write
     /// sandbox, the latter with automatic approval review for Auto. `allowedTools` are Claude Code rules for this one run only.
     /// Nothing here skips permissions: no bypass mode, no full-access sandbox.
+    ///
+    /// `room` is for the driver of a room only: it adds the room's MCP server (`black-team mcp-room`) to THIS launch, on the command line,
+    /// so the agent's own configuration files are not touched. The server is named `blackteam` and offers `team` and `delegate`.
     public static func arguments(service: AgentService, task: String, session: String?, workspace: String,
-                                 permission: AgentPermission = .edit, allowedTools: [String] = []) -> [String] {
+                                 permission: AgentPermission = .edit, allowedTools: [String] = [], room: (program: String, runFile: String)? = nil) -> [String] {
+        let roomArguments = room.map { ["mcp-room", "--run", $0.runFile] }
         switch service {
         case .claudeCode:
             let mode = ["ask": "manual", "edit": "acceptEdits", "auto": "auto"][permission.rawValue]!
@@ -95,21 +99,35 @@ public enum AgentTools {
             // over by Black Team is about the project folder, so those are left out of this run.
             var args = ["-p", task, "--output-format", "stream-json", "--verbose", "--permission-mode", mode]
             // The rules follow their flag as separate arguments; the next flag ends the list.
-            if !allowedTools.isEmpty { args += ["--allowedTools"] + allowedTools }
-            args += ["--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}"]
+            // The room's two tools are allowed by name; under `-p` nothing could be asked about them.
+            let allowed = allowedTools + (room == nil ? [] : RoomTools.names.map { "mcp__blackteam__" + $0 })
+            if !allowed.isEmpty { args += ["--allowedTools"] + allowed }
+            var servers = "{\"mcpServers\":{}}"
+            if let room, let roomArguments {
+                servers = JSONValue.object(["mcpServers": ["blackteam": ["command": .string(room.program), "args": .array(roomArguments.map { .string($0) })]]]).text()
+            }
+            args += ["--strict-mcp-config", "--mcp-config", servers]
             if let session { args += ["--resume", session] }
             return args
         case .codex:
             let sandbox = permission == .ask ? "read-only" : "workspace-write"
+            // Codex takes the server as configuration overrides for this one launch. A delegation can take minutes, so the tool timeout is an hour.
+            var server: [String] = []
+            if let room, let roomArguments {
+                server = ["-c", "mcp_servers.blackteam.command=" + JSONValue.string(room.program).text(),
+                          "-c", "mcp_servers.blackteam.args=" + JSONValue.array(roomArguments.map { .string($0) }).text(),
+                          "-c", "mcp_servers.blackteam.tool_timeout_sec=3600",
+                          "-c", "mcp_servers.blackteam.default_tools_approval_mode=\"approve\""]
+            }
             if let session {
                 // `exec resume` does not take --approve-for-me; its configuration is what that flag sets.
-                var args = ["exec", "resume", session, "--json", "--skip-git-repo-check", "-c", "sandbox_mode=\"\(sandbox)\""]
+                var args = ["exec", "resume", session, "--json", "--skip-git-repo-check", "-c", "sandbox_mode=\"\(sandbox)\""] + server
                 if permission == .auto { args += ["-c", "approval_policy=\"on-request\"", "-c", "approvals_reviewer=\"auto_review\""] }
                 return args + [task]
             }
             // --approve-for-me brings its own workspace-write sandbox; Codex refuses it together with --sandbox.
             let level = permission == .auto ? ["--approve-for-me"] : ["-s", sandbox]
-            return ["exec", "--json", "--skip-git-repo-check", "-C", workspace] + level + [task]
+            return ["exec", "--json", "--skip-git-repo-check", "-C", workspace] + level + server + [task]
         }
     }
 }

@@ -278,6 +278,7 @@ final class DesktopRoutes: @unchecked Sendable {
         if head.method == "GET" && path == "/api/room" {
             return .json(200, Self.roomJSON(try backend.room(projectId: head.queryValue("project") ?? "")))
         }
+        if head.method == "GET" && path == "/api/room/roster" { return .json(200, ["agents": .encoded(backend.roster())]) }
         guard head.method == "POST" else { throw HTTPFailure("Not found.", 404) }
         let input = try json(head, body)
         let project = try string(input, "project") ?? ""
@@ -316,12 +317,26 @@ final class DesktopRoutes: @unchecked Sendable {
         case "/api/room/handoff":
             return state(try backend.roomHandOff(projectId: project, taskId: try text("taskId"), to: try text("to"), title: try text("title"), detail: try text("detail"),
                                                  includeResult: input["includeResult"]?.bool ?? true, digest: try text("digest")))
+        case "/api/room/roster/create":
+            return .json(200, ["agents": .encoded(try backend.rosterCreate(name: try text("name"), role: try text("role"), modelKey: try string(input, "modelKey"),
+                                                                        agent: try string(input, "agent"), permission: try string(input, "permission"),
+                                                                        work: try string(input, "work")))])
+        case "/api/room/roster/remove":
+            return .json(200, ["agents": .encoded(try backend.rosterRemove(id: try text("rosterId")))])
+        case "/api/room/roster/add":
+            return state(try backend.roomAddFromRoster(projectId: project, rosterId: try text("rosterId")))
+        case "/api/room/roster/save":
+            return .json(200, ["agents": .encoded(try backend.roomSaveToRoster(projectId: project, memberId: try text("memberId")))])
         case "/api/room/team/preview":
-            return .json(200, .encoded(try backend.roomTeamPreview(projectId: project, goal: try text("goal"), leadId: try string(input, "leadId"),
-                                                                  reviewerId: try string(input, "reviewerId"))))
+            let lead = try string(input, "leadId")
+            let driven = input["driven"]?.bool ?? backend.roomCanDrive(projectId: project, leadId: lead)
+            return .json(200, .encoded(try backend.roomTeamPreview(projectId: project, goal: try text("goal"), leadId: lead,
+                                                                  reviewerId: try string(input, "reviewerId"), driven: driven)))
         case "/api/room/team/run":
-            return .json(200, .encoded(try backend.roomTeamRun(projectId: project, goal: try text("goal"), leadId: try string(input, "leadId"),
-                                                              reviewerId: try string(input, "reviewerId"), digest: try text("digest"), from: .mac)))
+            let lead = try string(input, "leadId")
+            let driven = input["driven"]?.bool ?? backend.roomCanDrive(projectId: project, leadId: lead)
+            return .json(200, .encoded(try backend.roomTeamRun(projectId: project, goal: try text("goal"), leadId: lead,
+                                                              reviewerId: try string(input, "reviewerId"), digest: try text("digest"), from: .mac, driven: driven)))
         case "/api/room/team/stop":
             return state(try backend.roomTeamStop(projectId: project))
         default:

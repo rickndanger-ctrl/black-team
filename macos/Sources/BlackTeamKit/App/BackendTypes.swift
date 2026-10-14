@@ -24,10 +24,22 @@ public protocol CodeEngine: AnyObject, Sendable {
     func undo(_ id: String?) throws -> UndoResult
     /// Takes the vault's contents out of a Code conversation before it is sent to a cloud service.
     func scrubForCloud(_ threadId: String) throws
+    /// A Code turn for the driver of a room: the same as `run`, with the room's `team` and `delegate` tools added. An engine that
+    /// does not know them (a test's stand-in) runs the turn without.
+    func runDriven(thread: ThreadRef, config: Config, runtime: EngineRuntime, endpoint: String, job: JobState, signal: CancelSignal?,
+                   save: @escaping @Sendable (JSONValue) throws -> Void, mode: String, workspace: String?, room: RoomToolHost?) async throws
+    /// The reading and writing speed measured for a local model, by the identity the engine keeps it under; nil when never measured.
+    func measuredSpeeds(identity: String) -> (read: Double, write: Double)?
 }
 
 extension CodeEngine {
     public func scrubForCloud(_ threadId: String) throws {}
+    public func runDriven(thread: ThreadRef, config: Config, runtime: EngineRuntime, endpoint: String, job: JobState, signal: CancelSignal?,
+                   save: @escaping @Sendable (JSONValue) throws -> Void, mode: String, workspace: String?, room: RoomToolHost?) async throws {
+        try await run(thread: thread, config: config, runtime: runtime, endpoint: endpoint, job: job, signal: signal, save: save, mode: mode, workspace: workspace)
+    }
+    /// The reading and writing speed measured for a local model, by the identity the engine keeps it under; nil when never measured.
+    public func measuredSpeeds(identity: String) -> (read: Double, write: Double)? { nil }
 }
 
 extension Engine: CodeEngine {}

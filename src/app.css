@@ -686,3 +686,8 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .starter-tag { margin-left: 8px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
 .starter-models .vision-download { margin-top: 14px; }
 @media (max-width: 720px) { .starter-list li { flex-direction: column; align-items: stretch; } }
+.room-ledger { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 12px; }
+.room-ledger th, .room-ledger td { padding: 7px 10px 7px 0; border-top: 1px solid var(--line); text-align: left; }
+.room-ledger th { font: 10px var(--font-mono); letter-spacing: .08em; color: var(--muted); font-weight: 400; }
+.room-line details { margin-top: 6px; font-size: 12px; }
+.room-line summary { cursor: pointer; color: var(--muted); }

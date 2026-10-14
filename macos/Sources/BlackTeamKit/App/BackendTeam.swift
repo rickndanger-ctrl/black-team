@@ -243,7 +243,7 @@ enum TeamText {
 extension Backend {
     // MARK: Preview
 
-    private func teamLead(_ data: RoomData, _ given: String?) throws -> RoomMember {
+    func teamLead(_ data: RoomData, _ given: String?) throws -> RoomMember {
         if let given {
             guard let member = data.members.first(where: { $0.id == given }) else { throw BlackTeamError("The lead is not a member of this room.") }
             return member
@@ -251,7 +251,9 @@ extension Backend {
         return data.members.first { $0.agent == "claude-code" } ?? data.members[0]
     }
 
-    func teamPreviewBuild(project: Project, data: RoomData, goal rawGoal: String, leadId: String?, reviewerId: String?) throws -> TeamPreview {
+    func teamPreviewBuild(project: Project, data: RoomData, goal rawGoal: String, leadId: String?, reviewerId rawReviewer: String?, driven: Bool = false) throws -> TeamPreview {
+        // A driven run is reviewed by its driver; a separate reviewer is not used.
+        let reviewerId = driven ? nil : rawReviewer
         let goal = EText.trim(rawGoal)
         if goal.isEmpty || EText.length(goal) > TeamLimits.goal || RoomStore.clean(.string(goal), max: TeamLimits.goal, multiline: true) == nil {
             throw BlackTeamError("Give the team a goal of up to \(EText.grouped(TeamLimits.goal)) characters.")
@@ -270,7 +272,28 @@ extension Backend {
         }
         let cloud = previews.filter { $0.kind == "cloud" }
         var agreement = "This run shares your goal and each member's results with every member of this team: \(previews.map(\.name).joined(separator: ", ")). "
-        if cloud.isEmpty {
+        var caps: DriveCaps?
+        if driven {
+            guard data.members.count > 1 else { throw BlackTeamError("Add at least one other member for the driver to hand work to.") }
+            let view = roomView(lead, project: project)
+            guard canDrive(view) else {
+                throw BlackTeamError("\(lead.name) cannot drive a run: a driver is a cloud model that does Code work, or Claude Code or Codex.")
+            }
+            let theCaps = driveCapsOverride ?? DriveCaps.standard
+            caps = theCaps
+            let helpers = previews.filter { $0.id != lead.id }
+            let local = helpers.filter { $0.kind == "local" }, paid = helpers.filter { $0.kind == "cloud" }
+            let driverProvider = view.provider
+            agreement = "Driven run. \(lead.name) is a paid member and drives: it works on your goal and hands pieces of it to \(helpers.map(\.name).joined(separator: ", ")), waits for each result and checks it. "
+                + "Your goal, \(lead.name)\u{2019}s instructions, the files it names and the project files it reads are shared with every member. "
+                + (local.count == 1 ? "What \(local[0].name) reads, writes and answers" : "What \(local.isEmpty ? "the members" : local.map(\.name).joined(separator: ", ")) read, write and answer")
+                + " for those pieces is sent back to \(lead.name), so it goes to \(driverProvider). "
+                + "\(lead.name) also reads and may change files in your project folder with its own tools. "
+            if !paid.isEmpty {
+                agreement += "\(paid.map(\.name).joined(separator: ", ")) \(paid.count == 1 ? "is" : "are") also paid: what \(paid.count == 1 ? "it is" : "they are") given is sent to \(Set(paid.map(\.provider)).sorted().joined(separator: ", ")). "
+            }
+            agreement += "Your memory is not used in this run. Limits: up to \(theCaps.delegations) hand-offs, \(theCaps.minutes) minutes and \(EText.grouped(theCaps.paidTokens)) tokens on paid services; Stop ends it at once."
+        } else if cloud.isEmpty {
             agreement += "Every member runs on \(Place.this), so nothing leaves it."
         } else {
             var providers: [String] = []
@@ -278,19 +301,25 @@ extension Backend {
             agreement += "\(cloud.map(\.name).joined(separator: ", ")) \(cloud.count == 1 ? "is" : "are") cloud: what is shared with \(cloud.count == 1 ? "it" : "them") is sent to \(providers.joined(separator: ", ")). "
                 + "Your memory is not used in a team run that has a cloud member."
         }
-        let basis: JSONValue = .array([.string(goal), .array(previews.map { .string($0.id) }),
+        var basis: JSONValue = .array([.string(goal), .array(previews.map { .string($0.id) }),
                                        .array(previews.map { .array([.string($0.kind), .string($0.provider)]) }),
                                        .string(lead.id), reviewer.map { .string($0.id) } ?? .null])
+        if driven, var list = basis.array { list.append(.string("driven")); list.append(.string(caps.map { JSONValue.encoded($0).text() } ?? "")); basis = .array(list) }
         let digest = SHA256.hash(data: Data(basis.text().utf8)).map { String(format: "%02x", $0) }.joined()
         return TeamPreview(projectId: project.id, goal: goal, leadId: lead.id, reviewerId: reviewer?.id, members: previews, leavesThisMac: !cloud.isEmpty,
-                           memoryUsed: cloud.isEmpty, agreement: agreement, digest: digest)
+                           memoryUsed: cloud.isEmpty, agreement: agreement, digest: digest, mode: driven ? "driven" : nil, caps: caps)
     }
 
     /// What a team run would share and where it would go. Show `agreement` as it is, then pass `digest` to `roomTeamRun`.
     public func roomTeamPreview(projectId: String, goal: String, leadId: String? = nil, reviewerId: String? = nil) throws -> TeamPreview {
+        try roomTeamPreview(projectId: projectId, goal: goal, leadId: leadId, reviewerId: reviewerId, driven: false)
+    }
+
+    /// `driven: true` previews a driven run (Room/RoomDriver.swift): the lead must be a paid member that can drive.
+    public func roomTeamPreview(projectId: String, goal: String, leadId: String?, reviewerId: String?, driven: Bool) throws -> TeamPreview {
         let project = try roomProject(projectId)
         roomLock.lock(); defer { roomLock.unlock() }
-        return try teamPreviewBuild(project: project, data: roomLoad(projectId), goal: goal, leadId: leadId, reviewerId: reviewerId)
+        return try teamPreviewBuild(project: project, data: roomLoad(projectId), goal: goal, leadId: leadId, reviewerId: reviewerId, driven: driven)
     }
 
     // MARK: Starting
@@ -301,13 +330,20 @@ extension Backend {
     @discardableResult
     public func roomTeamRun(projectId: String, goal: String, leadId: String? = nil, reviewerId: String? = nil, digest: String,
                             from origin: SubmitOrigin = .mac) throws -> TeamRun {
+        try roomTeamRun(projectId: projectId, goal: goal, leadId: leadId, reviewerId: reviewerId, digest: digest, from: origin, driven: false)
+    }
+
+    /// `driven: true` starts a driven run, with the digest of the driven preview.
+    @discardableResult
+    public func roomTeamRun(projectId: String, goal: String, leadId: String?, reviewerId: String?, digest: String, from origin: SubmitOrigin,
+                            driven: Bool) throws -> TeamRun {
         let project = try roomProject(projectId)
         let preview: TeamPreview
         let members: [RoomMember]
         do {
             roomLock.lock(); defer { roomLock.unlock() }
             let data = roomLoad(projectId)
-            preview = try teamPreviewBuild(project: project, data: data, goal: goal, leadId: leadId, reviewerId: reviewerId)
+            preview = try teamPreviewBuild(project: project, data: data, goal: goal, leadId: leadId, reviewerId: reviewerId, driven: driven)
             members = data.members
         }
         guard preview.digest == digest else {
@@ -334,7 +370,7 @@ extension Backend {
         lock.unlock()
         let stamp = roomNow()
         let first = TeamRun(id: runId, goal: preview.goal, leadId: lead.id, reviewerId: reviewer?.id, phase: .planning, current: nil, runs: 0, started: stamp,
-                            updated: stamp, report: "", message: "", log: [])
+                            updated: stamp, report: "", message: "", log: [], mode: driven ? "driven" : nil, delegations: driven ? [] : nil)
         do {
             _ = try roomMutate(projectId) { data in
                 // Tasks an earlier run added but never finished would sit in To do beside this run's tasks and read
@@ -350,10 +386,10 @@ extension Backend {
         let context = TeamContext(control: control, projectId: projectId, goal: preview.goal, lead: lead, reviewer: reviewer, members: members,
                                   useMemory: preview.memoryUsed, origin: origin, deadline: now().addingTimeInterval(Double(TeamLimits.minutes) * 60))
         teamLog(context, member: nil, kind: "system", taskId: nil,
-                "Team run started with \(members.count) member\(members.count == 1 ? "" : "s"). Lead: \(lead.name)."
-                + (reviewer.map { " Reviewer: \($0.name)." } ?? " No reviewer.")
+                "Team run started with \(members.count) member\(members.count == 1 ? "" : "s"). \(driven ? "Driver" : "Lead"): \(lead.name)."
+                + (driven ? "" : (reviewer.map { " Reviewer: \($0.name)." } ?? " No reviewer."))
                 + (preview.memoryUsed ? "" : " Memory is not used in this run."))
-        control.task = Task { [self] in await teamMain(context) }
+        if driven { driveStart(context) } else { control.task = Task { [self] in await teamMain(context) } }
         return (try? room(projectId: projectId).team) ?? first
     }
 
@@ -375,6 +411,7 @@ extension Backend {
             // Only the team's own job is cancelled, never one somebody else started in between.
             let ours = locked { active != nil && job?.threadId != nil && job?.threadId == control.thread }
             if ours { cancel() }
+            drivers.scope(control.runId)?.stopAll()
         }
         return try room(projectId: projectId)
     }
@@ -399,7 +436,7 @@ extension Backend {
 
     // MARK: Recording
 
-    private func teamUpdate(_ c: TeamContext, _ body: (inout TeamRun) -> Void) {
+    func teamUpdate(_ c: TeamContext, _ body: (inout TeamRun) -> Void) {
         _ = try? roomMutate(c.projectId) { data in
             guard var team = data.team, team.id == c.control.runId else { return }
             body(&team)
@@ -417,17 +454,17 @@ extension Backend {
         }
     }
 
-    private func teamPhase(_ c: TeamContext, _ phase: TeamPhase, current: String? = nil) {
+    func teamPhase(_ c: TeamContext, _ phase: TeamPhase, current: String? = nil) {
         teamUpdate(c) { $0.phase = phase; $0.current = current }
     }
 
-    private func teamCheckpoint(_ c: TeamContext) throws {
+    func teamCheckpoint(_ c: TeamContext) throws {
         if c.control.stopped { throw TeamEnd.stopped("Stopped by you.") }
         if locked({ closing }) { throw TeamEnd.stopped("Black Team was closed during this run.") }
         if now() >= c.deadline { throw TeamEnd.stopped("Stopped at the time cap: a team run is limited to \(TeamLimits.minutes) minutes.") }
     }
 
-    private func teamCountRun(_ c: TeamContext) throws {
+    func teamCountRun(_ c: TeamContext) throws {
         if c.control.runs >= TeamLimits.runs {
             throw TeamEnd.stopped("Stopped at the run cap: a team run is limited to \(TeamLimits.runs) member runs.")
         }
@@ -592,7 +629,7 @@ extension Backend {
     }
 
     /// The final reply of a conversation, or why there is none.
-    private func teamReply(threadId: String) -> (text: String?, error: String) {
+    func teamReply(threadId: String) -> (text: String?, error: String) {
         guard let thread = history.get(threadId), let last = thread["messages"]?.array?.last, last["role"]?.string == "assistant" else {
             return (nil, "The conversation could not be found.")
         }
@@ -603,7 +640,7 @@ extension Backend {
         }
     }
 
-    private func teamRunning(_ threadId: String?) -> Bool {
+    func teamRunning(_ threadId: String?) -> Bool {
         guard let threadId else { return false }
         return locked { active != nil && job?.threadId == threadId }
     }

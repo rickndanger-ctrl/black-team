@@ -162,17 +162,32 @@ public final class Engine: @unchecked Sendable {
     /// throws `CancellationError`; any other failure is a `BlackTeamError` with the key redacted.
     public func run(thread: ThreadRef, config: Config, runtime: EngineRuntime, endpoint: String, job: JobState, signal: CancelSignal? = nil,
                     save: @escaping @Sendable (JSONValue) throws -> Void, mode: String = "balanced", workspace: String? = nil) async throws {
+        try await runDriven(thread: thread, config: config, runtime: runtime, endpoint: endpoint, job: job, signal: signal, save: save, mode: mode,
+                            workspace: workspace, room: nil)
+    }
+
+    /// The speeds this engine measured for a local model (`Engine` keeps them in `models.json`).
+    public func measuredSpeeds(identity: String) -> (read: Double, write: Double)? {
+        guard let known = profiles()[identity], let read = known["readSpeed"]?.double, let write = known["writeSpeed"]?.double, read > 0, write > 0 else { return nil }
+        return (read, write)
+    }
+
+    /// `run` for the driver of a room: `room` adds the tools `team` and `delegate`, answered by the room, and lengthens the turn to the
+    /// team's own time cap, because the driver spends most of it waiting for its members.
+    public func runDriven(thread: ThreadRef, config: Config, runtime: EngineRuntime, endpoint: String, job: JobState, signal: CancelSignal? = nil,
+                   save: @escaping @Sendable (JSONValue) throws -> Void, mode: String = "balanced", workspace: String? = nil, room: RoomToolHost?) async throws {
         let stop = CancelSignal()
         let unobserve = signal?.observe { stop.cancel() }
         defer { unobserve?() }
         if signal?.isCancelled == true { stop.cancel() }
         try await withTaskCancellationHandler {
-            try await self.perform(thread: thread, config: config, runtime: runtime, endpoint: endpoint, job: job, stop: stop, save: save, mode: mode, workspace: workspace ?? config.workspace)
+            try await self.perform(thread: thread, config: config, runtime: runtime, endpoint: endpoint, job: job, stop: stop, save: save, mode: mode,
+                                   workspace: workspace ?? config.workspace, room: room)
         } onCancel: { stop.cancel() }
     }
 
     private func perform(thread: ThreadRef, config: Config, runtime: EngineRuntime, endpoint: String, job: JobState, stop: CancelSignal,
-                         save: @escaping @Sendable (JSONValue) throws -> Void, mode: String, workspace: String) async throws {
+                         save: @escaping @Sendable (JSONValue) throws -> Void, mode: String, workspace: String, room: RoomToolHost?) async throws {
         let contextWindow = config.model.context
         if contextWindow < Engine.MIN_CONTEXT {
             throw BlackTeamError("Code needs a context window of at least \(EText.grouped(Engine.MIN_CONTEXT)) tokens. Raise it in Settings, and in your model server if you use one.")
@@ -242,6 +257,11 @@ public final class Engine: @unchecked Sendable {
         let vault = cloudThread ? nil : self.vault
         let remembers = vault != nil
         var schemas = tools.schemas.array ?? []
+        // A member run that must not change files (a driver's read-only delegation) is not offered, and cannot call, the tools that do.
+        let readOnly = thread.value["readOnly"]?.bool == true
+        let changing: Set<String> = ["edit", "write", "run", "publish"]
+        if readOnly { schemas = schemas.filter { !changing.contains($0["function"]?["name"]?.string ?? "") } }
+        if room != nil { schemas += RoomTools.schemas }
         if remembers { schemas += MEMORY_TOOLS.array ?? [] }
         // Core memory is read once per conversation and then left alone, so the cached prompt stays valid.
         if let vault, memory.core == nil { memory.core = vault.core() }
@@ -252,6 +272,11 @@ public final class Engine: @unchecked Sendable {
             if let core = memory.core, !core.isEmpty { system += "\n\nWhat you already know about the user:\n\(core)" }
         }
         let dispatch: (String, JSONValue) async -> ToolResult = { name, args in
+            if readOnly, changing.contains(name) { return ToolResult(output: "Error: this job is read-only, so \(name) is not available.", log: nil, error: true) }
+            if let room, RoomTools.names.contains(name) {
+                let reply = await room.callTool(name, args)
+                return ToolResult(output: reply.text, log: "\(name) \(EText.prefix(args["member"]?.string ?? "", 40))", error: reply.isError)
+            }
             guard let vault, name == "remember" || name == "recall" else { return await tools.call(name, args) }
             do {
                 if name == "recall" {
@@ -293,7 +318,7 @@ public final class Engine: @unchecked Sendable {
                 if step > Engine.MAX_STEPS {
                     unfinished = "I stopped at the limit of \(Engine.MAX_STEPS) steps for one turn, and the task is not finished. Send \"continue\" and I will pick up from my todo list."; break
                 }
-                if now().timeIntervalSince(started) > Double(Engine.RUN_SECONDS) {
+                if now().timeIntervalSince(started) > Double(room == nil ? Engine.RUN_SECONDS : TeamLimits.minutes * 60) {
                     unfinished = "I stopped at the time limit for one turn, and the task is not finished. Send \"continue\" and I will pick up from my todo list."; break
                 }
                 let size = max(memory.promptTokens != 0 ? memory.promptTokens + Engine.estimate(Array(memory.messages.dropFirst(memory.counted ?? 0))) : 0, Engine.estimate(memory.messages) + 900)
@@ -352,6 +377,7 @@ public final class Engine: @unchecked Sendable {
                     throw error
                 }
                 if cloud, let usage = result.usage { thread.addUsage(CloudUsage(prompt: usage.promptTokens, completion: usage.completionTokens, cached: usage.cachedTokens)); try turn.persist() }
+                if !cloud, let usage = result.usage { thread.addLocalUsage(prompt: usage.promptTokens, completion: usage.completionTokens) }
                 if !cloud, let timings = result.timings {
                     if timings.promptN >= 300 && timings.promptPerSecond > 0 { memory.readSpeed = memory.readSpeed * 0.5 + timings.promptPerSecond * 0.5 }
                     if timings.predictedN >= 20 && timings.predictedPerSecond > 0 { memory.writeSpeed = memory.writeSpeed * 0.5 + timings.predictedPerSecond * 0.5 }

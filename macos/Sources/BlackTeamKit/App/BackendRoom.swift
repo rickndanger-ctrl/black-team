@@ -53,7 +53,7 @@ extension Backend {
 
     private func roomRunning(threadId: String?) -> Bool {
         guard let threadId else { return false }
-        return locked { active != nil && job?.threadId == threadId }
+        return locked { active != nil && job?.threadId == threadId } || drivers.runningChild(threadId) != nil
     }
 
     /// What a finished (or abandoned) conversation says about a task: its reply, or why it did not finish.
@@ -109,6 +109,12 @@ extension Backend {
     }
 
     func roomView(_ m: RoomMember, project: Project) -> RoomMemberView {
+        var view = roomViewBase(m, project: project)
+        view.canDrive = canDrive(view)
+        return view
+    }
+
+    private func roomViewBase(_ m: RoomMember, project: Project) -> RoomMemberView {
         var view = RoomMemberView(id: m.id, name: m.name, role: m.role, modelKey: m.modelKey, agent: m.agent, permission: m.permission, work: m.work,
                                   kind: "local", provider: "", usable: true, reason: "")
         let localOnly = "The project \(project.name) is local only, so cloud members are not used in it."
@@ -326,40 +332,48 @@ extension Backend {
     }
 
     /// `roomStart`, with the message given (a team run builds its own) and a switch that keeps the memory vault out of the run.
-    func roomStartTask(projectId: String, taskId: String, from origin: SubmitOrigin, message override: String?, useMemory: Bool) async throws -> RoomState {
+    func roomStartTask(projectId: String, taskId: String, from origin: SubmitOrigin, message override: String?, useMemory: Bool,
+                       nested: DriverScope? = nil, readOnly: Bool = false) async throws -> RoomState {
         let project = try roomProject(projectId)
-        if isBusy { throw BlackTeamError("A response is already running. Wait or stop it before starting a task.") }
+        if nested == nil, isBusy { throw BlackTeamError("A response is already running. Wait or stop it before starting a task.") }
         let (member, task) = try roomStartable(projectId: projectId, taskId: taskId)
         let sentBack = task.failed ? nil : (task.note.isEmpty ? nil : task.note)
         let message = override ?? roomMessage(title: task.title, detail: task.detail, inherited: task.inherited, sentBack: sentBack)
         let send = try await roomSender(member: member, message: message, threadId: task.threadId, projectId: projectId, project: project, origin: origin,
-                                        useMemory: useMemory, readOnly: false)
-        return try roomLaunch(projectId: projectId, taskId: taskId, project: project, send)
+                                        useMemory: useMemory, readOnly: readOnly, nested: nested)
+        return try roomLaunch(projectId: projectId, taskId: taskId, project: project, nested: nested, send)
     }
 
     /// Gets a member ready to receive `message` and returns the call that sends it. The privacy gate is asked BEFORE the model is
     /// switched, so a refusal changes nothing; `submit` / `submitAgentTask` ask it again when the message is sent.
     /// `readOnly` is for a step that must not change files (a team's plan, review and report): models answer as Chat and agents run in Ask.
+    ///
+    /// `nested` makes the run a member run beneath a driver: it does not take the foreground slot, picks its model without the busy check, and
+    /// "read only" then means Code work without the tools that change files. `driving` is the run this member drives (its `team` and `delegate` tools).
     func roomSender(member: RoomMember, message: String, threadId: String?, projectId: String, project: Project, origin: SubmitOrigin,
-                    useMemory: Bool, readOnly: Bool) async throws -> (String) throws -> SubmitResult {
+                    useMemory: Bool, readOnly: Bool, nested: DriverScope? = nil, driving: DriverScope? = nil) async throws -> (String) throws -> SubmitResult {
         let existing = threadId.flatMap { history.get($0) }
         if let key = member.modelKey {
             guard let saved = savedModels.find(key) else { throw BlackTeamError("The model for \(member.name) is no longer in your list.") }
-            let kind = member.work == "chat" || readOnly ? "chat" : "agent"
+            let kind = member.work == "chat" || (readOnly && nested == nil) ? "chat" : "agent"
             if saved.source == "cloud" {
                 let check = cloudDecision(destination: .model(host: cloudHost(saved.endpoint, rules: cloudRules), name: saved.name), alternative: nil,
                                           existing: existing, project: project, kind: kind, viaPhone: origin == .phone)
                 if let refusal = check.refusal { throw BlackTeamError(refusal) }
             }
-            if keyOf(try configStore.read().model) != key { _ = try await switchTo(key: key) }
+            if keyOf(try configStore.read().model) != key {
+                if let nested { try await driverSelect(nested, key: key) } else if driving != nil { try await driverSelect(driving!, key: key) } else { _ = try await switchTo(key: key) }
+            }
             return { requestId in
-                try self.submit(message: message, kind: kind, requestId: requestId, threadId: threadId, project: projectId, from: origin, useMemory: useMemory)
+                try self.submitCore(message: message, kind: kind, mode: "balanced", requestId: requestId, threadId: threadId, project: projectId, workspace: nil,
+                                    images: [], from: origin, useMemory: useMemory, nested: nested, room: driving, readOnly: readOnly && nested != nil && kind == "agent")
             }
         }
         guard let service = member.service else { throw BlackTeamError("\(member.name) has nothing to run.") }
         let level = readOnly ? AgentPermission.ask : (member.permission.flatMap { AgentPermission(rawValue: $0) } ?? .edit)
         return { requestId in
-            try self.submitAgentTask(service: service, message: message, requestId: requestId, threadId: threadId, project: projectId, permission: level, from: origin)
+            try self.submitAgentCore(service: service, message: message, requestId: requestId, threadId: threadId, project: projectId, workspace: nil,
+                                     permission: level, from: origin, nested: nested, driving: driving)
         }
     }
 
@@ -374,7 +388,7 @@ extension Backend {
         return (member, task)
     }
 
-    private func roomLaunch(projectId: String, taskId: String, project: Project, _ send: (String) throws -> SubmitResult) throws -> RoomState {
+    private func roomLaunch(projectId: String, taskId: String, project: Project, nested: DriverScope? = nil, _ send: (String) throws -> SubmitResult) throws -> RoomState {
         roomLock.lock(); defer { roomLock.unlock() }
         var data = roomLoad(projectId)
         // Checked again under the lock: the task may have changed while the model was switching.
@@ -388,6 +402,8 @@ extension Backend {
         try RoomStore.save(data, dataFolder: dataFolder, projectId: projectId)
         changed()
         let threadId = sent.threadId
+        // A driver settles its own delegations (BackendDriver.swift), once the member run beneath it has ended.
+        if nested != nil { return roomState(project, data) }
         RoomWatchers.shared.add { token in
             Task { [self] in
                 await waitForIdle()
@@ -398,7 +414,7 @@ extension Backend {
         return roomState(project, data)
     }
 
-    private func roomFinish(projectId: String, taskId: String, threadId: String) {
+    func roomFinish(projectId: String, taskId: String, threadId: String) {
         roomLock.lock(); defer { roomLock.unlock() }
         var data = RoomStore.load(dataFolder: dataFolder, projectId: projectId)
         guard let i = data.tasks.firstIndex(where: { $0.id == taskId }), data.tasks[i].status == .doing, data.tasks[i].threadId == threadId,
