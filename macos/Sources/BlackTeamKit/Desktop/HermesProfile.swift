@@ -34,6 +34,9 @@ struct HermesProfilePlan {
         }
         let own = HermesAbilities.ownSkillsPath(store.dataFolder)
         if chosen.ownSkills, HermesCatalog.ownSkillCount(own) > 0 { skillLinks["own"] = own }
+        // The skills Black Team Code saved are in Hermes's own format, so the same folder is linked, not copied.
+        let shared = SkillStore(dataFolder: store.dataFolder).folder
+        if chosen.blackTeamSkills, HermesCatalog.ownSkillCount(shared) > 0 { skillLinks["black-team"] = shared }
         if !skillLinks.isEmpty, !toolsets.contains("skills") { toolsets.append("skills") }
 
         // Plugins: Hermes's own are named in `plugins.enabled`; one the person installed is also linked in.

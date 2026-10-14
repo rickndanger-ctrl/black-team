@@ -47,6 +47,7 @@ final class DesktopRoutes: @unchecked Sendable {
     func handle(_ head: HTTPHead, body: Data, access: PhoneAccess) async throws -> HTTPResponse? {
         let path = head.path, method = head.method
         let who: DesktopAccess = access == .desktop ? .desktop : .phone
+        if CodeRoutes.claims(path) { return try await CodeRoutes(backend).handle(head, body: body, access: who) }
         switch (method, path) {
         case ("POST", "/api/chat"): return try await mine { try self.chat(try self.json(head, body), who) }
         case ("GET", "/api/privacy"): return try await mine { try self.privacy(head, who) }

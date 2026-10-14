@@ -114,6 +114,7 @@ export default function HermesAbilities({status, busy, onAction}) {
           {shown.map(skill => <label className="checkbox-field full" key={skill.id}><input type="checkbox" checked={skill.on} onChange={e => setSkills(e.target.checked ? [...onSkills, skill.id] : onSkills.filter(id => id !== skill.id))}/><span><strong>{skill.name}</strong> — {skill.description}</span></label>)}
         </details>; })}
       {(view.skills?.optional || []).length > 0 && <details><summary>Optional skills ({view.skills.optional.length}) — optional, off</summary>{view.skills.optional.filter(matches).map(skill => <p className="inline-note" key={skill.id}><strong>{skill.name}</strong> — {skill.description} <small>(optional, off)</small></p>)}<small>Optional skills are installed with Hermes itself.</small></details>}
+      <label className="checkbox-field full"><input type="checkbox" checked={!!view.skills?.blackTeam?.on} onChange={e => save({blackTeamSkills: e.target.checked})}/><span>Black Team Code's skills — {view.skills?.blackTeam?.count || 0} saved in <code>{view.skills?.blackTeam?.folder}</code>. Code saves them there and Hermes reads the same files. Manage them on the Memory page.</span></label>
       <label className="checkbox-field full"><input type="checkbox" checked={!!view.skills?.own?.on} onChange={e => save({ownSkills: e.target.checked})}/><span>Your own skills — {view.skills?.own?.count || 0} found in <code>{view.skills?.own?.folder}</code>. Put a folder with a SKILL.md inside to add one.</span></label>
     </details>
 
