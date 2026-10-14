@@ -226,6 +226,10 @@ let commandHelp: [String: String] = [
                                               [--skill NOTE] [--price-in X --price-out Y] [--tokens-per-day N] [--money-per-day X]
            black-team org set <project> [--gates spec,ship] [--tokens-per-day N] [--money-per-day X] [--standup "daily at 9:00"|off] [--name N]
            black-team org start <project> [--yes]        shows what would leave this computer, then starts picking up tickets with --yes
+           black-team org link <project> --board <folder> [--repo <path>] [--backlog]   work from an Obsidian board of ticket notes
+           black-team org work <project> on|off [--yes]   put your local models to work for the board, or stop (tickets are given back)
+           black-team org board <project>                 what the board holds and who owns what
+           black-team org unlink <project>
            black-team org pause <project> | resume <project> | step <project> | standup <project> | remove <project>
            black-team org routine <project> [add "<title>" --when "weekdays at 9:00" [--detail D] | remove <n>]
     An organization is a team of agents (lead, product manager, designer, architect, engineers, reviewer, QA, docs, release manager) that
@@ -234,6 +238,9 @@ let commandHelp: [String: String] = [
     use the prices you enter, and a daily ceiling pauses the organization. Local models are slow: expect hours for a full ticket.
     <role> is its number from `org show`, or its name. `org start` keeps picking up tickets while Black Team runs; for work that
     carries on with the window closed, use `black-team service install`.
+    `org link` points the organization at a folder of ticket notes (an Obsidian board) that other agents work from too. `org work ... on`
+    takes free `ready` tickets from it, claims each with a 2 hour lease, works on its own branch org/T-<n>-..., and writes progress and
+    artifacts back into the note. It never touches a ticket another owner holds. Nothing leaves this computer unless a role is paid.
     """,
     "ticket": """
     Usage: black-team ticket add <project> "<title>" [--detail D] [--ui yes|no]

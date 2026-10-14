@@ -68,6 +68,15 @@ extension Backend {
     /// Changes one ticket under the lock (read again first, so a change made in between is never overwritten) and saves.
     @discardableResult
     func orgTicketMutate(_ projectId: String, _ id: String, _ body: (inout OrgTicket) throws -> Void) throws -> OrgTicket {
+        let saved = try orgTicketMutateQuiet(projectId, id, body)
+        // A ticket that came from an Obsidian board writes its progress back into the note (Org/OrgBoard.swift).
+        if saved.boardId != nil { orgBoardPush(saved) }
+        return saved
+    }
+
+    /// The same without writing to the board: for what only changes Black Team's own bookkeeping.
+    @discardableResult
+    func orgTicketMutateQuiet(_ projectId: String, _ id: String, _ body: (inout OrgTicket) throws -> Void) throws -> OrgTicket {
         orgLock.lock(); defer { orgLock.unlock() }
         var all = OrgStore.tickets(dataFolder, projectId)
         guard let at = all.firstIndex(where: { $0.id == id }) else { throw BlackTeamError("That ticket is not in this organization.") }
@@ -126,7 +135,7 @@ extension Backend {
         return OrgState(projectId: projectId, projectName: project.name, cloudAllowed: project.cloudAllowed, git: orgIsGit(project), organization: org,
                         roles: org.map { o in o.roles.map { orgRoleView($0, org: o, project: project, tickets: tickets, usage: usage) } } ?? [],
                         tickets: tickets, ledger: orgLedger(usage: usage, day: orgDay()), templates: OrgTemplates.list, choices: orgChoices(),
-                        busy: isBusy || orgRuntime.stepping, stages: OrgStage.allCases.map(\.rawValue))
+                        busy: isBusy || orgRuntime.stepping, stages: OrgStage.allCases.map(\.rawValue), board: org.flatMap { orgBoardInfo($0) })
     }
 
     // MARK: Making and editing
@@ -344,6 +353,8 @@ extension Backend {
     public func orgPause(projectId: String, reason: String = "Paused by you.") throws -> OrgState {
         try orgMutate(projectId) { $0.paused = true; $0.pausedReason = reason }
         if let c = orgRuntime.current, c.project == projectId { orgRuntime.stopRequested = true; cancel() }
+        // Tickets held on a board are given back, so another team can take them while this one is paused.
+        orgBoardReleaseAll(projectId, why: "Black Team was paused.")
         return try orgState(projectId: projectId)
     }
 
@@ -351,6 +362,7 @@ extension Backend {
     public func orgResume(projectId: String) throws -> OrgState {
         let org = try orgRequire(projectId)
         if !org.running { throw BlackTeamError("Start the organization first: read what it sends and confirm.") }
+        orgBoardRuntime.forget(prefix: projectId)
         let usage = OrgStore.usage(dataFolder, projectId)
         if let why = orgCeiling(org, usage: usage, day: orgDay()) { throw BlackTeamError(why + " Raise the ceiling or wait until tomorrow.") }
         try orgMutate(projectId) { $0.paused = false; $0.pausedReason = "" }
@@ -404,6 +416,7 @@ extension Backend {
     public func orgFindTicket(projectId: String, _ given: String) throws -> OrgTicket {
         let all = orgTickets(projectId)
         let text = EText.trim(given)
+        if let t = all.first(where: { $0.boardId?.lowercased() == text.lowercased() }) { return t }
         let digits = text.lowercased().hasPrefix("t-") ? String(text.dropFirst(2)) : text
         if let n = Int(digits), let t = all.first(where: { $0.number == n }) { return t }
         if let t = all.first(where: { $0.id == text }) ?? all.first(where: { text.count >= 6 && $0.id.hasPrefix(text.lowercased()) }) { return t }

@@ -7,6 +7,8 @@ import Foundation
 //   GET  /api/org/ticket?project=&id= one ticket with the text of its artifacts (desktop)
 //   GET  /api/org/agreement?project=  what starting it would send, and where (desktop)
 //   POST /api/org/create | remove | update | start | pause | resume | step | standup
+//   GET  /api/org/board?project=      what the linked Obsidian board holds and who owns what (desktop)
+//   POST /api/org/board/link | unlink | options | work   (desktop; Org/OrgBoard.swift)
 //   POST /api/org/role/save | add | remove | roster
 //   POST /api/org/routine/add | remove
 //   POST /api/org/ticket/add          (a phone may add a ticket; one that may use paid roles waits for a yes from the computer)
@@ -56,6 +58,7 @@ final class OrgRoutes: @unchecked Sendable {
             switch path {
             case "/api/org": return try state(project)
             case "/api/org/agreement": return .encoded(try backend.orgAgreement(projectId: project))
+            case "/api/org/board": return .encoded(try backend.orgBoardStatus(projectId: project))
             case "/api/org/ticket":
                 let detail = try backend.ticketDetail(projectId: project, ticketId: query["id"] ?? "")
                 return ["ticket": .encoded(detail.ticket), "artifacts": .object(detail.artifacts.mapValues { .string($0) })]
@@ -85,6 +88,11 @@ final class OrgRoutes: @unchecked Sendable {
             return .encoded(try backend.orgCreate(projectId: pid, template: text("template"), name: optional("name"), local: optional("local"),
                                                   leadModel: optional("leadModel"), leadAgent: optional("leadAgent")))
         case "/api/org/remove": return .encoded(try backend.orgRemove(projectId: pid))
+        case "/api/org/board/link":
+            return .encoded(try backend.orgLink(projectId: pid, folder: text("folder"), repo: optional("repo"), takeBacklog: input["takeBacklog"]?.bool ?? false))
+        case "/api/org/board/unlink": return .encoded(try backend.orgUnlink(projectId: pid))
+        case "/api/org/board/options": return .encoded(try backend.orgBoardOptions(projectId: pid, takeBacklog: input["takeBacklog"]?.bool ?? false))
+        case "/api/org/board/work": return .encoded(try backend.orgWork(projectId: pid, on: input["on"]?.bool ?? false, confirmPaid: input["confirmPaid"]?.bool ?? false))
         case "/api/org/update":
             var budget: OrgBudget?
             if let b = input["budget"], b.object != nil {

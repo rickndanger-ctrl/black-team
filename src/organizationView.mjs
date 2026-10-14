@@ -81,6 +81,34 @@ export function artifactKind(name) {
   return 'code';
 }
 
+// MARK: Working for a board
+
+/** The big button's words, from the engine's answer about the board. */
+export function boardSwitch(board) {
+  return board?.working ? {on: true, label: 'Stop', busyLabel: 'Stopping…'} : {on: false, label: 'Start working', busyLabel: 'Starting…'};
+}
+
+/** The one local model every role runs on, or '' when the roles use different ones (or a paid one). */
+export function sharedLocalModel(state) {
+  const roles = state?.organization?.roles || [];
+  if (!roles.length) return '';
+  const keys = new Set(roles.map(role => role.modelKey || ''));
+  if (keys.size !== 1) return '';
+  const [key] = [...keys];
+  return (state.choices || []).some(item => item.kind === 'model' && item.key === key && !item.cloud) ? key : '';
+}
+
+/** The roles that run on a paid service, by name: working for the board then needs a yes from the person. */
+export function paidRoles(state) {
+  return (state?.roles || []).filter(view => view.kind === 'cloud').map(view => view.role.name);
+}
+
+/** The last part of a folder path, for a short label. */
+export function folderName(path = '') {
+  const parts = String(path).split('/').filter(Boolean);
+  return parts[parts.length - 1] || path;
+}
+
 /** Words for how many times review or QA sent a ticket back. */
 export function sendBackText(sendBacks = {}) {
   const parts = Object.entries(sendBacks).filter(([, n]) => n > 0).map(([stage, n]) => `${STAGE_TITLE[stage] || stage} ${n} ${n === 1 ? 'time' : 'times'}`);

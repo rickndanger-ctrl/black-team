@@ -87,8 +87,8 @@ else {
     });
     ipcMain.handle('black-team:pick',async(event,kind)=>{
       verify(event);
-      if(!['model','runtime','workspace','executable','hermes-source'].includes(kind))throw new Error('Unsupported chooser.');
-      const options=['workspace','hermes-source'].includes(kind)?{title:kind==='workspace'?'Choose your workspace':'Choose your Hermes installation',properties:['openDirectory']}:
+      if(!['model','runtime','workspace','executable','hermes-source','board-folder','repo-folder'].includes(kind))throw new Error('Unsupported chooser.');
+      const options=['workspace','hermes-source','board-folder','repo-folder'].includes(kind)?{title:{workspace:'Choose your workspace','hermes-source':'Choose your Hermes installation','board-folder':'Choose the Board folder (it holds Tickets)','repo-folder':'Choose the git repository the work happens in'}[kind],properties:['openDirectory']}:
         {title:kind==='model'?'Choose a local GGUF model':kind==='runtime'?'Choose llama-server from its extracted release':'Choose the application executable',properties:['openFile'],...(kind==='model'?{filters:[{name:'GGUF models',extensions:['gguf']}]}:{})};
       const result=await dialog.showOpenDialog(window,options);return result.canceled?null:result.filePaths[0]||null;
     });

@@ -47,11 +47,13 @@ extension Backend {
         // Another Black Team holds the engine (and the model) for this data folder: it does the work, this one only shows it.
         guard engineLock.isHeld else { return }
         let ids = orgProjectIds()
-        for id in ids { orgHousekeeping(id) }
+        for id in ids { orgHousekeeping(id); await orgBoardTick(id) }
         var ran = true
         while ran, !Task.isCancelled {
             ran = false
             for id in ids where (try? await orgStep(projectId: id)) == true { ran = true; break }
+            // After a stage: a gate approved in the note, a ticket to claim next.
+            if ran { for id in ids { await orgBoardTick(id) } }
         }
     }
 
@@ -66,7 +68,8 @@ extension Backend {
             }
         }
         guard org.running, !org.paused else { return }
-        orgRoutinesDue(org)
+        // While the organization works for a board, its tickets come from the board only.
+        if org.board?.working != true { orgRoutinesDue(org) }
         orgStandupDue(org)
     }
 

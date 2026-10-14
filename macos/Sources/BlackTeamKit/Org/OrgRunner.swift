@@ -34,7 +34,9 @@ extension Backend {
 
     /// The next ticket: one already furthest along first (finish before starting), then the oldest.
     func orgPick(_ projectId: String) -> OrgTicket? {
-        orgTickets(projectId).filter { $0.state == "ready" }.sorted { $0.stage.index != $1.stage.index ? $0.stage.index > $1.stage.index : $0.number < $1.number }.first
+        // While the organization works for a board, only the tickets taken from it are worked on.
+        let boardOnly = orgLoad(projectId)?.board?.working == true
+        return orgTickets(projectId).filter { $0.state == "ready" && (!boardOnly || $0.boardId != nil) }.sorted { $0.stage.index != $1.stage.index ? $0.stage.index > $1.stage.index : $0.number < $1.number }.first
     }
 
     /// Runs the next stage of the next ticket, if the computer is idle. Returns true when a stage ran (finished or not).
@@ -45,12 +47,19 @@ extension Backend {
         if org.paused || (!org.running && !force) { return false }
         guard orgIdle(), !locked({ closing }) else { return false }
         if orgEnforceCeiling(projectId) { return false }
-        guard let ticket = orgPick(projectId), orgRuntime.begin(project: projectId, ticket: ticket.id, role: "") else { return false }
+        guard var ticket = orgPick(projectId), orgRuntime.begin(project: projectId, ticket: ticket.id, role: "") else { return false }
         defer { orgRuntime.end() }
+        // A ticket from a board: the note is read again first (its text may have changed, someone may have taken it).
+        if ticket.boardId != nil {
+            guard let fresh = orgBoardStageStart(org, ticket) else { return false }
+            ticket = fresh
+        }
         let stage = ticket.stage
         try orgTicketMutate(projectId, ticket.id) { $0.state = "running"; $0.note = "" }
         do {
             let done = try await orgRun(org, ticket: ticket, stage: stage)
+            // A ticket Black Team let go of while the stage ran (another owner took it) is not moved on.
+            if ticket.boardId != nil, orgTicket(projectId, ticket.id)?.state == "cancelled" { return true }
             switch done {
             case .finished: try await orgComplete(org, ticketId: ticket.id, stage: stage)
             case .again: try orgTicketMutate(projectId, ticket.id) { $0.state = "ready"; $0.currentRole = nil }
@@ -141,6 +150,7 @@ extension Backend {
         let scheduleId = "org:" + ticket.id
         while teamRunning(threadId) {
             if orgRuntime.stopRequested || locked({ closing }) { cancel(); break }
+            orgBoardKeepAlive(org.projectId, ticketId: ticket.id)
             if let snap = locked({ job?.threadId == threadId ? job?.snapshot : nil }) {
                 if let ask = snap.approval, asked != ask.id {
                     asked = ask.id
@@ -254,13 +264,18 @@ extension Backend {
             t.artifacts.append(OrgArtifact(name: name, stage: stage.rawValue, title: title, created: roomNow(), bytes: text.utf8.count, role: role?.name ?? ""))
         }
         try OrgStore.writeArtifact(dataFolder, org.projectId, ticketId, name: name, text: text)
-        if let t = orgTicket(org.projectId, ticketId) { orgMirror(t, name: name, text: text) }
+        if let t = orgTicket(org.projectId, ticketId) {
+            orgMirror(t, name: name, text: text)
+            if t.boardId != nil { orgBoardShare(t, stage: stage, name: name, title: title, text: text) }
+        }
         return name
     }
 
     /// The folder the ticket's engineering happens in, when it has one yet; the project folder for a project without git.
     func orgMirrorRoot(_ t: OrgTicket) -> String? {
         if let work = t.work { return work + (t.prefix.map { $0.isEmpty ? "" : "/" + $0 } ?? "") }
+        // A board's work is always in a git repository, in the ticket's own worktree.
+        if t.boardId != nil { return nil }
         // A project without git is worked in directly; a git project's copy waits until the ticket has its own worktree.
         guard let project = try? roomProject(t.projectId) else { return nil }
         return orgIsGit(project) ? nil : project.workspace
@@ -280,20 +295,22 @@ extension Backend {
     /// if it does not exist yet. A project that is not a git repository is worked in directly, which the agreement and the docs say.
     func orgWorkspace(_ org: Organization, _ t: OrgTicket, branch needed: Bool) throws -> String {
         let project = try roomProject(org.projectId)
-        guard needed else { return project.workspace }
+        // A ticket from a board works in the repository the board was linked with, which is the project's folder unless another was chosen.
+        let home = t.boardId != nil ? (org.board?.repo ?? project.workspace) : project.workspace
+        guard needed else { return home }
         if let work = t.work { return work + (t.prefix.map { $0.isEmpty ? "" : "/" + $0 } ?? "") }
-        guard let top = OrgGit.toplevel(project.workspace) else { return project.workspace }
+        guard let top = OrgGit.toplevel(home) else { return home }
         guard let head = OrgGit.head(top) else {
             throw OrgHalt.blocked("\(project.name) is a git repository with no commits yet. Make a first commit so Black Team can branch from it, then retry.")
         }
-        let prefix = OrgGit.prefix(project.workspace)
-        var branch = OrgGit.branchName(number: t.number, title: t.title)
+        let prefix = OrgGit.prefix(home)
+        var branch = t.boardId.map { OrgGit.boardBranchName(id: $0, title: t.title) } ?? OrgGit.branchName(number: t.number, title: t.title)
         if OrgGit.run(["rev-parse", "--verify", "-q", "refs/heads/" + branch], in: top).ok { branch += "-" + String(t.id.prefix(4)) }
         // The working folder is inside the project, because the Code engine refuses to write in Black Team's own data folder. It is kept out
         // of the person's `git status` by the repository's local exclude file, which is never committed.
-        let path = project.workspace + "/.black-team/work/" + String(t.id.prefix(8))
+        let path = home + "/.black-team/work/" + String(t.id.prefix(8))
         do {
-            try FileManager.default.createDirectory(atPath: project.workspace + "/.black-team/work", withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(atPath: home + "/.black-team/work", withIntermediateDirectories: true)
             OrgGit.exclude(repo: top, pattern: "/" + prefix + ".black-team/work/")
             try OrgGit.addWorktree(repo: top, path: path, branch: branch, base: head)
         } catch { throw OrgHalt.blocked(messageOf(error)) }

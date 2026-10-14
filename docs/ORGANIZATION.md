@@ -152,6 +152,7 @@ black-team org show | start [--yes] | pause | resume | step | standup | remove <
 black-team org role <project> list | add <kind> | remove <role> | set <role> [--model|--agent|--access|--charter|--price-in/--price-out|...]
 black-team org set <project> [--gates spec,ship] [--tokens-per-day N] [--money-per-day X] [--standup "daily at 9:00"|off]
 black-team org routine <project> [add "<title>" --when "weekdays at 9:00" | remove <n>]
+black-team org link <project> --board <folder> [--repo <path>] [--backlog] | unlink <project> | work <project> on|off [--yes] | board <project>   (Obsidian board, below)
 black-team ticket add <project> "<title>" [--detail D] [--ui yes|no]
 black-team ticket list | show [--artifact <name>] | approve | send-back --note N | answer | retry | cancel <project> [<ticket>]
 ```
@@ -161,9 +162,94 @@ tickets up only while that command runs.
 
 ## Where it is stored
 
-`<data>/orgs/<project>/`: `org.json` (roles, gates, ceilings; **no API keys**, a role names a saved model by its key), `tickets.json`,
+`<data>/orgs/<project>/`: `org.json` (roles, gates, ceilings, and a linked board's two paths; **no API keys**, a role names a saved model by its key), `tickets.json`,
 `usage.json`, `tickets/<ticket>/` (the artifacts) and `standups/`. Folders are private (0700), files owner-only (0600). A gate is also
 an item in `<data>/inbox.json`.
+
+## Working from an Obsidian board
+
+An organization can take its tickets from a **board**: a folder of Markdown notes, one per ticket, that other agents (Claude Code, Codex,
+Hermes) work from too. One switch, **Start working**, puts your local models to work on the free tickets there; **Stop** gives them back.
+It is the same pipeline, gates, branches and ceilings as above; only where tickets come from, and where progress is written, changes.
+
+**Link it** (Organization page, the card "Work for the Black Team organization", or `black-team org link <project> --board <folder> [--repo <path>]`).
+The board folder holds `Tickets/` (Black Team makes `Artifacts/` beside it). The repository is where the work happens: the project's
+folder, or another git repository you choose. Only the two paths are stored. The folder must exist and be readable and writable by you,
+cannot be inside Black Team's data folder, and links that lead out of it are refused; the repository must be a git repository. If the
+project has no organization yet, linking makes one with every role on the local model in use. Nothing starts until you press **Start
+working** (or `black-team org work <project> on`); `black-team org board <project>` shows what the board holds and who owns what, and
+`black-team org unlink <project>` takes the link away.
+
+**The ticket note.** One `.md` file in `Tickets/`, with YAML front matter and four sections:
+
+```markdown
+---
+id: T-7
+title: Add dark mode
+status: ready          # backlog | ready | in-progress | review | blocked | done
+stage: intake          # intake | spec | design | plan | build | review | qa | ship
+priority: p1           # p0 (first) to p3
+owner:                 # who holds it; empty when free
+claimed:               # when it was claimed (ISO time)
+lease_until:           # a claim with a live lease belongs to its owner; an expired one is free
+role:
+branch:
+pr:
+created: 2026-10-01
+updated: 2026-10-13
+---
+## Context
+## Acceptance criteria
+## Plan
+## Log
+- 2026-10-13T22:10 black-team-local@box: Claimed by Black Team ...
+```
+
+Missing fields are tolerated. Fields and sections Black Team does not know are kept byte for byte (it changes one line at a time and never
+rewrites a note), other agents' text is never removed, and the case of `stage` and `priority` follows the note's own (`Intake` or
+`intake`). A note without front matter and an id is ignored and listed by `org board`.
+
+**The lease rule.** A note is a candidate when its status is `ready` (or `backlog`, if you allowed "take backlog too"; off by default) and
+it is free: no owner, or a `lease_until` in the past. A note with an owner and no lease is treated as held. Candidates are taken highest
+priority first, then oldest `created`. Black Team holds at most one ticket that is waiting its turn at a time (and at most three
+including ones waiting for you).
+
+**What Black Team writes.**
+
+- To claim: it reads the note, then writes `owner: black-team-local@<computer>`, `claimed`, `lease_until` (now + 2 hours), `status:
+  in-progress`, `stage` and a Log line, only if the note is still exactly what it read (compare-and-set), and reads it again to see the
+  claim stands. If another agent got there first it backs off and leaves their text alone. Every write goes to a hidden temporary file in
+  the same folder, keeps the note's file mode, and is renamed over the note, so a note is never half written.
+- Every 30 minutes of work it renews the lease (also during a long stage). It renews only its own claims.
+- As the ticket moves it writes `stage`, `role` and `branch` (`org/T-7-add-dark-mode`, made in the repository's own worktree folder
+  `.black-team/work/`), and a Log line for each step. Each stage's result is a file under `Artifacts/T-7/` (`spec.md`, `plan.md`,
+  `review.md`, `test-report.md`, `release-notes.md`, `diff-summary.md`, `diff.patch`, and the others) and the Log line links to it; big
+  text is never pasted into the note. A file another agent already wrote there is never overwritten (Black Team's copy gets
+  `-black-team` in its name).
+- Title and acceptance criteria edited by others while it works are read again at the start of each stage.
+- At a **gate** (by default the spec and shipping) the status becomes `review` and the Log says what waits for you; the gate is also in
+  Black Team's Inbox. On finishing, `status: done` and the claim is cleared (it is `review` first if the ship gate is on). A failure sets
+  `status: blocked` with the reason in the Log and clears the claim. It keeps the branch and **never merges or pushes**.
+- It does not edit your board's index page (`Board.md`); the notes are the truth.
+
+**Approving from the note.** Approve in Black Team (the Inbox or the Tickets page), **or** in the note: set `status: ready` and add a Log
+line, by you, that says `approved` (for example `- 2026-10-13T22:30 rick: approved`). On its next pass (a few seconds) Black Team carries
+on. A `ready` note without `approved` changes nothing, and Black Team says so once in the Log.
+
+**Never stepping on other agents.** A note held by someone else with a live lease is never touched, except for a Log line about Black Team's
+own work. If another owner takes a ticket Black Team holds, or it is marked done or blocked in the note, or it disappears from the
+board, Black Team stops working on it and tells you in the Inbox. Nothing is ever deleted or renamed. If the board folder goes away or
+cannot be written, everything stops and the Inbox says so; resume once it is fixed.
+
+**Stopping.** **Stop** (or `black-team org work <project> off`) stops the stage that is running and gives back every claim: it clears
+`owner` and `lease_until`, puts work in progress back to `ready` (a ticket waiting for you stays in `review`) and writes a Log line, so
+another team can take over. Pausing the organization and quitting Black Team give the claims back the same way; with Start working still
+on, the next start takes its own tickets back up. If Black Team is killed, the lease simply runs out within two hours.
+
+**Local only.** In this mode every role is local by default and nothing is sent to a cloud service. If you have configured a paid role,
+Start working asks for your yes first (`--yes` on the command line), the same agreement as any organization. Your memory vault is used
+only if every role is local, as before. It works with the background service (so it carries on with the window closed); without it, it
+works while Black Team is open or while `black-team org work <project> on` runs.
 
 ## What this does not do
 

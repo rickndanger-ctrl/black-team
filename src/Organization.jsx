@@ -1,6 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {api, post} from './http.mjs';
-import {STAGES, STAGE_TITLE, agentChoice, ceilingText, gateChoices, moneyText, roleStatusText, splitLines} from './organizationView.mjs';
+import {STAGES, STAGE_TITLE, agentChoice, boardSwitch, ceilingText, gateChoices, moneyText, paidRoles, roleStatusText, sharedLocalModel, splitLines} from './organizationView.mjs';
 
 // The Organization page: a team of agents that works on a project like a small company. The engine decides who may take part, what leaves
 // this computer and what a ceiling means; this page shows its answers and sends what the person types. Nothing here uses a browser prompt.
@@ -64,14 +64,96 @@ export default function Organization({status, project, onOpenTickets}) {
     <div className="room-project"><span>Project</span><select className="agent-picker" aria-label="Project" value={projectId || ''} onChange={event => setProjectId(event.target.value)}>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
     {error && <Banner onClose={() => setError('')}>{error}</Banner>}
     {!state ? <p className="memory-empty">Opening the organization…</p>
-      : !org ? <Create state={state} busy={busy} request={request}/>
       : <>
-        <Overview key={`o-${projectId}`} state={state} busy={busy} request={request} onOpenTickets={onOpenTickets}/>
-        <Chart key={`c-${projectId}`} state={state} busy={busy} request={request}/>
-        <Settings key={`s-${projectId}`} state={state} busy={busy} request={request}/>
-        <Ledger state={state}/>
+        <BoardCard key={`b-${projectId}`} state={state} busy={busy} request={request}/>
+        {!org ? <Create state={state} busy={busy} request={request}/>
+          : <>
+            <Overview key={`o-${projectId}`} state={state} busy={busy} request={request} onOpenTickets={onOpenTickets}/>
+            <Chart key={`c-${projectId}`} state={state} busy={busy} request={request}/>
+            <Settings key={`s-${projectId}`} state={state} busy={busy} request={request}/>
+            <Ledger state={state}/>
+          </>}
       </>}
   </>;
+}
+
+// Work for the Black Team organization: the organization takes its tickets from a board of notes in an Obsidian folder that other agents work
+// from too. One switch puts the local models to work or stops them. The engine does the claiming, the leases and the writing; this shows it.
+function BoardCard({state, busy, request}) {
+  const org = state.organization;
+  const link = org?.board;
+  const info = state.board;
+  const [folder, setFolder] = useState('');
+  const [repo, setRepo] = useState('');
+  const [backlog, setBacklog] = useState(false);
+  const [paidYes, setPaidYes] = useState(false);
+  const [notes, setNotes] = useState(null);
+  const choose = async (kind, set) => {
+    try {const picked = await window.blackTeam.pick(kind); if (picked) set(picked);} catch { /* the chooser was closed */ }
+  };
+  const switchInfo = boardSwitch(link);
+  const paid = paidRoles(state);
+  const shared = sharedLocalModel(state);
+  const local = state.choices.filter(item => item.kind === 'model' && !item.cloud);
+  const useModel = async key => {
+    for (const view of state.roles) {
+      const role = {...view.role};
+      delete role.agent; role.modelKey = key; role.work = role.work || 'code';
+      if (!await request('role/save', {role})) break;
+    }
+  };
+  const showBoard = async () => {
+    try {setNotes(await api(`/api/org/board?project=${encodeURIComponent(state.projectId)}`));}
+    catch (cause) {setNotes({error: cause.message});}
+  };
+  if (!link) {
+    return <section className="local-model-panel room-card" aria-label="Work for the Black Team organization">
+      <span className="eyebrow">OBSIDIAN BOARD</span>
+      <h2>Work for the Black Team organization</h2>
+      <p className="section-intro">Put your local models to work on a board of ticket notes in your Obsidian vault, next to the other agents that work from it. Black Team claims a free ticket, does it on a branch of its own in the repository, and writes its progress back into the note. It never merges or pushes, and nothing leaves this computer. It writes into the folder you choose.</p>
+      <div className="button-row">
+        <button type="button" className="secondary" disabled={busy} onClick={() => choose('board-folder', setFolder)}>{folder ? 'Change the board folder' : 'Choose the board folder'}</button>
+        <span className="message-note">{folder || 'The folder that holds Tickets, such as Black Team Org/Board'}</span>
+      </div>
+      <div className="button-row">
+        <button type="button" className="secondary" disabled={busy} onClick={() => choose('repo-folder', setRepo)}>{repo ? 'Change the repository' : 'Choose a repository'}</button>
+        <span className="message-note">{repo || `The work happens in ${state.projectName}'s folder unless you choose another git repository.`}</span>
+      </div>
+      <div className="button-row">
+        <label><input type="checkbox" checked={backlog} disabled={busy} onChange={event => setBacklog(event.target.checked)}/> Take backlog tickets too (off: only ready ones)</label>
+        <button type="button" className="primary" disabled={busy || !folder} onClick={() => request('board/link', {folder, ...(repo ? {repo} : {}), takeBacklog: backlog})}>Link the board</button>
+      </div>
+    </section>;
+  }
+  return <section className="local-model-panel room-card" aria-label="Work for the Black Team organization">
+    <span className="eyebrow">OBSIDIAN BOARD</span>
+    <h2>Work for the Black Team organization</h2>
+    <p className="section-intro"><span className={`room-state ${link.working ? 'doing' : ''}`}>{(link.working ? 'Working' : 'Stopped').toUpperCase()}</span>{' '}{info?.statusText || ''}</p>
+    <div className="button-row">
+      <button type="button" className={switchInfo.on ? 'secondary' : 'primary'} disabled={busy || (!switchInfo.on && paid.length > 0 && !paidYes)} onClick={() => request('board/work', {on: !switchInfo.on, confirmPaid: paidYes})}>{busy ? switchInfo.busyLabel : switchInfo.label}</button>
+      <button type="button" className="link-button" onClick={notes ? () => setNotes(null) : showBoard}>{notes ? 'Hide the board' : 'What is on the board'}</button>
+    </div>
+    {!switchInfo.on && paid.length > 0 && <label className="message-note"><input type="checkbox" checked={paidYes} disabled={busy} onChange={event => setPaidYes(event.target.checked)}/> {paid.join(', ')} use a paid service. What they are given is sent there. I agree.</label>}
+    {info && !info.reachable && <p className="notice error" role="alert">{info.problem}</p>}
+    <p className="message-note">Board: {link.folder}</p>
+    <p className="message-note">Repository: {link.repo}. Each ticket gets its own branch (org/T-…); nothing is merged or pushed. Black Team writes as {info?.owner}.</p>
+    <div className="button-row">
+      <label className="org-pick">The roles run on<select className="agent-picker" aria-label="Local model for the roles" value={shared} disabled={busy || link.working} onChange={event => useModel(event.target.value)}>{!shared && <option value="">Different models</option>}{local.map(item => <option key={item.key} value={item.key}>{item.name}</option>)}</select></label>
+    </div>
+    <p className="room-sub">Wait for my approval after</p>
+    <div className="button-row org-gates">{STAGES.map(stage => <label key={stage}><input type="checkbox" checked={org.gates.includes(stage)} disabled={busy} onChange={() => request('update', {gates: gateChoices(org.gates, stage)})}/> {STAGE_TITLE[stage]}</label>)}</div>
+    <p className="room-empty">To approve from the note instead, set its status to ready and add a Log line saying approved.</p>
+    <div className="button-row">
+      <label><input type="checkbox" checked={link.takeBacklog} disabled={busy} onChange={event => request('board/options', {takeBacklog: event.target.checked})}/> Take backlog tickets too</label>
+      <button type="button" className="link-button" disabled={busy || link.working} onClick={() => request('board/unlink', {})}>Unlink the board</button>
+    </div>
+    {notes && (notes.error ? <p className="notice error" role="alert">{notes.error}</p> : <>
+      <ul className="room-list">{notes.rows.map(row => <li key={row.id}><div><strong>{row.id} {row.title}</strong><em className="room-role">{row.status} · {row.stage || 'no stage'}</em></div><div className="button-row"><span className={`privacy-tag${row.holder === 'other' ? ' leaves' : ''}`}>{row.holder === 'free' ? 'Free' : row.holder === 'mine' ? 'Black Team' : row.owner}</span></div></li>)}</ul>
+      {notes.rows.length === 0 && <p className="room-empty">No tickets on the board.</p>}
+      {notes.ignored.length > 0 && <p className="message-note">Ignored (no usable front matter): {notes.ignored.join('; ')}</p>}
+    </>)}
+    <p className="room-empty">Works with the background service, so it carries on with this window closed. Without the service it works while Black Team is open.</p>
+  </section>;
 }
 
 // No organization yet: choose a template and what the roles run on.
