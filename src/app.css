@@ -698,3 +698,23 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .optimize-progress ul { margin: 0; padding-left: 18px; font-size: 11.5px; color: var(--muted); }
 .optimize-progress button { justify-self: start; }
 @media (max-width: 720px) { .model-list .optimize-line { flex-direction: column; align-items: stretch; } }
+
+/* Set up your agents */
+.setup-card { margin: 0 0 20px; padding: 22px 26px; border: 1px solid var(--line-2); border-radius: var(--radius-lg); background: var(--surface-2); }
+.setup-card h2 { margin: 6px 0 4px; font-size: 18px; font-weight: 500; }
+.setup-card p { font-size: 12.5px; color: var(--muted); }
+.setup-steps { list-style: none; margin: 16px 0; padding: 0; display: grid; gap: 8px; }
+.setup-step { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--field); }
+.setup-step > div { flex: 1; min-width: 0; }
+.setup-step strong { display: block; font-weight: 500; }
+.setup-step small { display: block; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.setup-step em { font-style: normal; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.setup-step.done em, .setup-step.done strong { color: var(--muted); }
+.setup-step.failed small { color: var(--bad); }
+.setup-step progress { flex: 0 0 140px; height: 6px; accent-color: var(--ink); }
+.setup-details { margin: 0 0 14px; font-size: 12.5px; }
+.setup-details summary { cursor: pointer; color: var(--muted); }
+.setup-details fieldset { margin: 12px 0 0; padding: 0; border: 0; }
+.setup-details ul { margin: 4px 0 0 26px; padding: 0; color: var(--muted); }
+.setup-commands { list-style: none; padding: 0; margin: 6px 0 0; }
+.setup-commands code { user-select: all; }

@@ -68,6 +68,20 @@ installed browser/desktop tools still have their own behavior and dependencies.
 There is no universal network sandbox. Browsing, tool commands, downloads and
 explicit transfers can access external services.
 
+**Set up your agents.** The setup card connects agents already on your computer
+and can install Hermes Agent. It does nothing until you press Approve (or answer
+yes to `black-team setup`); looking at what is on your computer only checks for
+files. Connecting an agent only saves a launcher in Black Team's settings. The
+Hermes install, and only that, contacts the internet, and only after approval:
+github.com (one fixed, checksum-checked source archive of Hermes Agent, which
+GitHub serves from codeload.github.com), the Python package index (pypi.org and
+its file host) for Hermes's Python packages, and, if you have no Python 3.14 and
+use uv, github.com again for a Python build. Nothing about you or your
+conversations is sent; these are ordinary downloads. Everything lands in Black
+Team's own data folder (`hermes/`). Your own `~/.hermes` and any Hermes you
+installed yourself are not touched. Agents that are not installed are listed with
+their makers' install commands as text; Black Team never runs those.
+
 Agent tools run as the OS user. The selected workspace is not a filesystem
 sandbox. Toolset switches and approval cards control application behavior, not
 all capabilities of a local process. The file publishing plugin limits attachments

@@ -85,6 +85,8 @@ struct HermesRunner: Sendable {
         try privateDirectory(artifacts)
         env["HERMES_HOME"] = profile
         env["BLACK_TEAM_HERMES_SOURCE"] = settings.source
+        // The Hermes Black Team installed keeps its tools in Black Team's folder; a Hermes the person installed keeps its own.
+        if settings.source == HermesInstaller.sourceFolder(dataFolder: dataFolder) { env["HERMES_RUNTIME_DIR"] = HermesInstaller.toolStore(dataFolder: dataFolder) }
         env["BLACK_TEAM_CONTEXT"] = String(context)
         env["COMPANION_WORKSPACE"] = workspace
         env["COMPANION_ARTIFACT_DIR"] = artifacts

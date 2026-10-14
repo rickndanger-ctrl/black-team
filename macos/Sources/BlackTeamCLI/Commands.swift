@@ -437,6 +437,49 @@ import BlackTeamKit
             }
             fail(usage, code: 2)
 
+        case "setup":
+            // One approval for every agent on this computer. Nothing is installed, downloaded or connected without a yes (or --yes).
+            let approveAll = arguments.contains("--yes")
+            arguments.removeAll { $0 == "--yes" }
+            if !arguments.isEmpty { fail(usage, code: 2) }
+            #if os(Linux)
+            backend.integrations.hermesSupported = true   // the command line sets Hermes up on Linux as the window does
+            #endif
+            let plan = backend.setupPlan()
+            if asJSON && !approveAll { printJSON(plan); return 0 }
+            if !asJSON {
+                print("Set up your agents")
+                for step in plan.steps where step.kind != "note" {
+                    let mark = step.state == .done ? "[done]" : step.state == .willDo ? "[will do]" : "[needs something]"
+                    print("  \(mark) \(step.title): \(step.detail)")
+                    for change in step.changes where step.state == .willDo { print("             - \(change)") }
+                    if let needs = step.needs, step.state == .needsSomething { print("             \(needs)") }
+                }
+                for step in plan.steps where step.kind == "note" {
+                    print("  \(step.title) (Black Team does not install these; the command is shown for you to run):")
+                    for hint in step.commands { print("    \(hint.name): \(hint.command)") }
+                }
+            }
+            let waiting = plan.pending
+            if waiting.isEmpty { if !asJSON { print("Nothing to set up.") } else { printJSON(plan) }; return 0 }
+            var approved = approveAll
+            if !approveAll {
+                if isatty(0) == 0 { print("Run `black-team setup --yes` to approve all of the steps marked [will do]."); return 1 }
+                print("Approve these \(waiting.count) step\(waiting.count == 1 ? "" : "s")? [y/N] ", terminator: "")
+                fflush(stdout)
+                approved = ["y", "yes"].contains((readLine() ?? "").trimmingCharacters(in: .whitespaces).lowercased())
+            }
+            if !approved { try? backend.dismissSetupOffer(); print("Not now. Nothing was changed."); return 0 }
+            let last = ProgressMemory()
+            let results = try await backend.applySetup(approved: waiting.map(\.id)) { event in
+                if asJSON { return }
+                if let line = last.line(SetupProgress(stage: event.stage, fraction: event.fraction, bytesPerSecond: event.bytesPerSecond)), event.status == "running" { print(line); fflush(stdout) }
+            }
+            if asJSON { printJSON(results) } else {
+                for result in results { print("\(result.status == "done" ? "done" : result.status): \(waiting.first { $0.id == result.id }?.title ?? result.id) - \(result.message)") }
+            }
+            return results.contains { $0.status == "failed" } ? 1 : 0
+
         case "runtime":
             let action = arguments.isEmpty ? "" : arguments.removeFirst()
             if action == "status" {

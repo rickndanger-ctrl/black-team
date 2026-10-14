@@ -13,17 +13,31 @@ and boundaries. [Memory](MEMORY.md) describes the vault it remembers in.
 
 ## Hermes (optional)
 
-Install [Hermes Agent](https://github.com/NousResearch/hermes-agent) and its needed
-dependencies separately. Open **Settings → Agents & apps**. Black Team scans for
-ready local installations and offers **Connect Hermes** when one is found. Select
-an installation first if several are found. Once connected, choose **Hermes** as
-what runs new Code conversations; existing conversations keep the engine they
-started with. Hermes is mainly useful for its browser and desktop tools.
+The **Set up your agents** card installs and connects Hermes for you after one
+approval. It appears after your first model is ready, on Workspace when something
+new is found, and under **Settings → Agents & apps** as the always-available card.
+**Not now** is remembered, so it does not come back for the same things. The
+command line does the same: `black-team setup` shows the plan and asks once;
+`--yes` approves it.
 
-If Hermes is elsewhere, choose **Choose Hermes folder**. Black Team checks that
-folder for its Python environment. If nothing is installed, **Install Hermes Agent**
-opens the upstream guide; finish that setup, then choose **Find again**. Connecting
-Hermes does not install it or download an agent automatically.
+If Hermes Agent is not on this computer, approving downloads one fixed version
+of [Hermes Agent](https://github.com/NousResearch/hermes-agent) (about 79 MB, from
+github.com, checked against a recorded SHA-256), builds its Python environment
+and installs its packages from the Python package index, all inside Black Team's
+data folder (`hermes/hermes-agent`). Your own `~/.hermes` and any Hermes you
+installed are not touched. It needs `uv`, or Python 3.14 (uv can fetch that);
+without either the card says what to install. Stopping keeps what was downloaded,
+and trying again carries on. A Hermes you installed yourself is used as it is:
+the card only connects it.
+
+Connecting enables Hermes with files, terminal, search and planning on, browser
+and desktop control off, and makes it what runs new Code conversations (change
+that under **Settings → Agents & apps**). Existing conversations keep the engine
+they started with. Hermes is mainly useful for its browser and desktop tools.
+
+You can still do it by hand: open **Settings → Agents & apps** and choose
+**Connect Hermes** when one is found (select an installation first if several are
+found), or **Choose Hermes folder** if it is elsewhere.
 
 For unusual layouts, **Tools and advanced setup** exposes the source directory
 (containing `hermes_bootstrap.py`) and its Python interpreter, with Browse buttons.
@@ -72,8 +86,8 @@ There is no unattended retry loop or automatic restart of interrupted work.
 
 ## Agents found on this computer
 
-The Workspace page lists the agents Black Team finds on your command path.
-**Connect** saves a launcher for one in a single step; **Open** then starts it
+The Workspace page lists the agents Black Team finds on your command path. The
+setup card connects them all at once; **Connect** saves a launcher for one in a single step; **Open** then starts it
 in a terminal, in your workspace folder, already pointed at the model you are
 using. Switch models in Black Team and the next Open uses the new one.
 
@@ -143,7 +157,7 @@ configuration or make network requests, and not every client honors these variab
 names. Check the effective provider in that harness before sending private content.
 
 Codex, DSH, Pi, Hermes terminal, or another client can be added when its installed
-version supports your local server. Black Team does not install them, rewrite
+version supports your local server. Black Team does not install them (the setup card shows their makers' install commands as text), rewrite
 all their profiles, promise compatibility with every model, or mirror their
 independent terminal sessions into Phone Companion. The built-in Black Team Agent
 provides the integrated phone tool/approval experience.

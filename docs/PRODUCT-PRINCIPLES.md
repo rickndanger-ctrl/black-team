@@ -31,15 +31,19 @@ new features and reviews, not just a settings redesign.
 | Use Ollama or LM Studio | Choose the provider → select an available model → Save and open chat |
 | Use another local server | Enter its local address → Find models → select → Save and open chat |
 | Use a GGUF file | Choose the file → select llama-server if not detected → Save and open chat |
-| Enable integrated agent tools | Agents & apps → Connect Hermes → Start agent conversation |
+| Set up every agent | Set up your agents card → Approve → Start an agent conversation |
+| Enable integrated agent tools | The same card installs and connects Hermes; by hand: Agents & apps → Connect Hermes → Start agent conversation |
 | Add an installed external app | Agents & apps → choose the detected app → Add app → Save changes |
 | Pair a phone | Connect both devices to Tailscale → Enable private phone access → scan the code |
 | Adjust technical settings | Open the relevant advanced section |
 
 These paths assume the corresponding model server, runtime or agent is installed.
 A custom executable can also be chosen; provider-specific configuration remains
-in that external app. Software installation, downloading model weights and
-universal provider adapters are not automatic in this alpha.
+in that external app. Nothing is installed, downloaded or connected without an
+approval. After one, Black Team connects the agents it finds and installs Hermes
+Agent into its own folder; other agents are never installed for you (their
+install commands are shown as text). Downloading model weights needs its own
+button, and universal provider adapters are not automatic in this alpha.
 
 ## Acceptance checks
 

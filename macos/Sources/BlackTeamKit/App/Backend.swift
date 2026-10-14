@@ -93,6 +93,12 @@ public final class Backend: @unchecked Sendable {
     let tuneState = TuneState()
     var tuneEnvironment = TuneEnvironment()
     var tuneTrial: (@Sendable (ConfigStore, Int) -> BackendRuntime)?
+    /// The "Set up your agents" run in progress and how far each step is (Desktop/DesktopSetup.swift). Idle until a run starts.
+    let setupRun = SetupRunState()
+    /// What the setup plan reads about this computer's command path. Tests point it at a folder of their own.
+    var setupEnvironment = ProcessInfo.processInfo.environment
+    /// Tests replace the Hermes installer so nothing is downloaded or run.
+    var hermesInstallerOverride: (@Sendable (FileDownloading) -> HermesInstalling)?
 
     private var keeperFile: String { dataFolder + "/keeper.json" }
     private var projectsFile: String { dataFolder + "/projects.json" }
