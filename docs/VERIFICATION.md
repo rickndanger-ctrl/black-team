@@ -1,6 +1,6 @@
 # Portable alpha verification
 
-Version reviewed: **0.1.0-alpha.26**. This source includes the local server,
+Version reviewed: **0.1.0-alpha.27**. This source includes the local server,
 configurable harness, performance, Black Team Code, the memory vault, projects
 and optional Hermes work added for the public Black Team project. It is separate from the older machine-specific installation.
 
@@ -969,3 +969,26 @@ Not checked for this release: real speech arriving in the new boxes; the
 send-back note and sidebar project microphones pressed in the window (same
 button); the window test on a Linux computer other than the Dell; and the
 lists carried from alpha.20 and alpha.22.
+
+## Live follow-up — October 13, 2026 (alpha.27)
+
+One layout fix to the Linux window after alpha.26.
+
+**Room boxes keep a readable width beside their microphone.** In "Add a
+member" the role box was squeezed until its placeholder was cut off. A
+general rule for inputs in a button row made the Room's role, task title and
+send-back note boxes shrink instead of letting the row wrap. Each box and its
+microphone are now one group that moves to its own line before the box gets
+narrow. The Mac app is unchanged.
+
+Checked: Linux 606 engine tests (6 skipped), macOS 546 (5 skipped), Node 43,
+Python 24, no failures. In the Linux window at 800 px wide on a fresh data
+folder, the role box was 274 px and showed its whole placeholder, the task
+title box 214 px with nothing cut off, and the page did not scroll sideways.
+In a clean home, alpha.27 installed over alpha.26 kept the model and the
+conversations and passed the window test and the command test.
+
+Not checked for this release: the send-back note box on screen (same
+grouping); the Room at phone width; real speech arriving in the boxes that
+gained a microphone in alpha.26; the window test on a Linux computer other
+than the Dell; and the lists carried from alpha.20 and alpha.22.
