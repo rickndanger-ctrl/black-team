@@ -42,6 +42,13 @@ computer" on Linux:
 - **Requests** carry standard fields only (no llama.cpp extras). Token counts from the service's own
   `usage` are shown per cloud conversation. Prices are not.
 - **Harnesses** (Claude Code, DeepSeek Harness and the rest) are not launched against a cloud model.
+- **A driven Room run** ([ROOM.md](ROOM.md)) has a paid member, the driver, hand pieces of work to the other members and receive their
+  results. So what local members read and write for those pieces is sent to the driver's service. The agreement shown before the run
+  says this and names the service and any other paid member; the run does not start unless its digest still matches the room, the
+  project allows cloud models, and the request is not from a phone. The vault is not used by any member of such a run. For Claude Code
+  and Codex the two tools are an MCP server started for that one launch (their own configuration is not edited); it talks to Black Team
+  over a socket in a private folder with a secret made for the run, which is deleted when the run ends. The roster of saved agents
+  (`roster.json`) holds no keys.
 
 What this does not cover: the service's own retention and training policy (read it); what a model says
 back, which is saved locally; and a model that quotes vault text it was shown in a *local* turn before a

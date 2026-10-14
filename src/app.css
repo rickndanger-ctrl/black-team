@@ -729,3 +729,9 @@ footer span { letter-spacing: 0; font-size: 9px; }
 .get-model .get-search input[type="search"] { flex: 1; min-width: 0; }
 .get-model .get-repo { margin-top: 14px; }
 .get-model .get-ready { border-left-color: var(--ok-line); }
+
+.room-ledger { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 12px; }
+.room-ledger th, .room-ledger td { padding: 7px 10px 7px 0; border-top: 1px solid var(--line); text-align: left; }
+.room-ledger th { font: 10px var(--font-mono); letter-spacing: .08em; color: var(--muted); font-weight: 400; }
+.room-line details { margin-top: 6px; font-size: 12px; }
+.room-line summary { cursor: pointer; color: var(--muted); }

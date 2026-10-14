@@ -54,6 +54,10 @@ and physical phones. See [verification and known limits](docs/VERIFICATION.md).
   folder of linked notes that only your local models use. Code saves and recalls
   facts; Chat is handed the few lines that match your message. A keeper holds it
   within limits, using your own model to condense notes that grow too long.
+- **A paid agent drives, your local models do the work.** In a project's [Room](docs/ROOM.md), a cloud model, Claude Code or
+  Codex can take a goal and hand real jobs (reading files, summarising, first drafts, tests) to your local models while it works,
+  then check the results. You see who was given what, and how many tokens the local and the paid side used. You confirm
+  first exactly what is sent where.
 - **Projects in the sidebar.** Name a project and it gets a folder to work in
   and its own notes and journal. Open it later and pick up where you left off.
 - **See what your computer is doing.** The desktop shows live whole-system CPU

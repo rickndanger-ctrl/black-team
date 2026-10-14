@@ -21,6 +21,7 @@ final class AgentTurn: @unchecked Sendable {
     private var sessionChanged = false
     private var overflowFlag = false
     private var deniedSteps: [AgentDenial] = []
+    private var tokens: CloudUsage?
 
     init(service: AgentService) { self.service = service }
 
@@ -32,6 +33,8 @@ final class AgentTurn: @unchecked Sendable {
             lock.lock(); stderrTail.append(clean); if stderrTail.count > 5 { stderrTail.removeFirst() }; lock.unlock()
             return
         }
+        // What the tool says it used, added up over the rounds of one reply. Nothing is reported by a tool that prints no figures.
+        if let used = AgentUsage.parse(line, service: service) { lock.lock(); tokens = (tokens ?? CloudUsage()) + used; lock.unlock() }
         for event in AgentEventParser.parse(line, service: service) { apply(event) }
     }
 
@@ -86,6 +89,8 @@ final class AgentTurn: @unchecked Sendable {
     }
 
     /// True once the reply has reached the 256 KiB limit.
+    /// What the tool reported it used in this reply, or nil when it printed no figures.
+    var usage: CloudUsage? { lock.lock(); defer { lock.unlock() }; return tokens }
     var overflowed: Bool { lock.lock(); defer { lock.unlock() }; return overflowFlag }
 
     /// The tool's session id, reported once: the first time it is seen after it was read.

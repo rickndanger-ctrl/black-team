@@ -153,10 +153,14 @@ let commandHelp: [String: String] = [
            black-team room accept <project> <task>
            black-team room sendback <project> <task> --note N
            black-team room handoff <project> <task> --to <member> [--title T] [--detail D] [--no-result] [--yes]
-           black-team room team <project> "<goal>" [--lead <member>] [--reviewer <member>] [--yes]
+           black-team room team <project> "<goal>" [--lead <member>] [--reviewer <member>] [--pipeline] [--yes]
            black-team room team stop <project>
+           black-team room roster [list] | add --name N --role R (--model <key> | --agent claude|codex) | remove <n> | use <project> <n> | save <project> <member>
     <task> is its number from `room show`, or its id. handoff and team show exactly what would be shared and whether it leaves this
     computer, then stop; --yes sends or runs.
+    When the lead is a paid member (a cloud model that does code work, Claude Code or Codex) the team run is DRIVEN: the lead works on the
+    goal and hands real jobs to the other members while it works, then the tokens each side used are listed. --pipeline runs plan, work,
+    review, report instead. The roster holds agents you made once; `roster use` adds one to a project's room.
     """,
     "memory": """
     Usage: black-team memory core

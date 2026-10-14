@@ -214,4 +214,42 @@ final class WindowRoomTests: XCTestCase {
         XCTAssertEqual(run.status, 200, run.text)
         await r.backend.roomTeamSettle()
     }
+
+    // MARK: Driven runs and the roster through the window's routes
+
+    func testTheWindowChoosesADrivenRunForAPaidLeadAndManagesTheRoster() async throws {
+        let s = try await setup()
+        let r = s.r, pid = s.project.id
+        _ = try await member(r, s.project, ["name": "Claude Code", "role": "lead", "agent": "claude-code"])
+        _ = try await member(r, s.project, ["name": "Ornith", "role": "reader", "modelKey": .string(r.localKey), "work": "code"])
+        let room = await r.desktop("GET", "/api/room?project=\(pid)")
+        XCTAssertEqual(room["members"]?.array?.compactMap { $0["canDrive"]?.bool }, [true, false])
+        // With no say from the window, a paid lead drives; the window can still ask for the old pipeline.
+        let driven = await r.desktop("POST", "/api/room/team/preview", ["project": .string(pid), "goal": "Ship it"])
+        XCTAssertEqual(driven.status, 200, driven.text)
+        XCTAssertEqual(driven["mode"]?.string, "driven"); XCTAssertEqual(driven["caps"]?["delegations"]?.int, 12)
+        XCTAssertTrue(driven["agreement"]?.string?.contains("is sent back to Claude Code, so it goes to anthropic.com") == true)
+        let pipeline = await r.desktop("POST", "/api/room/team/preview", ["project": .string(pid), "goal": "Ship it", "driven": false])
+        XCTAssertNil(pipeline["mode"]); XCTAssertNotEqual(pipeline["digest"], driven["digest"])
+        // The roster: make one agent, add it to a room, save a member, remove one.
+        let made = await r.desktop("POST", "/api/room/roster/create", ["name": "Reader", "role": "reader", "modelKey": .string(r.localKey)])
+        XCTAssertEqual(made.status, 200, made.text)
+        let rosterId = try XCTUnwrap(made["agents"]?[0]?["entry"]?["id"]?.string)
+        let other = try await r.project("Other Work", cloud: false)
+        let used = await r.desktop("POST", "/api/room/roster/add", ["project": .string(other.id), "rosterId": .string(rosterId)])
+        XCTAssertEqual(used["members"]?[0]?["name"]?.string, "Reader"); XCTAssertEqual(used["members"]?[0]?["role"]?.string, "reader")
+        let saved = await r.desktop("POST", "/api/room/roster/save", ["project": .string(pid), "memberId": .string(try XCTUnwrap(room["members"]?[0]?["id"]?.string))])
+        XCTAssertEqual(saved["agents"]?.array?.count, 2)
+        let listed = await r.desktop("GET", "/api/room/roster")
+        XCTAssertEqual(listed["agents"]?.array?.count, 2)
+        let removed = await r.desktop("POST", "/api/room/roster/remove", ["rosterId": .string(rosterId)])
+        XCTAssertEqual(removed["agents"]?.array?.count, 1)
+        let gone = await r.desktop("POST", "/api/room/roster/remove", ["rosterId": .string(rosterId)])
+        XCTAssertEqual(gone.status, 400); XCTAssertEqual(gone.error, "That agent is not in the roster.")
+        // A phone gets none of it.
+        for (method, path) in [("GET", "/api/room/roster"), ("POST", "/api/room/roster/create"), ("POST", "/api/room/roster/add")] {
+            let answer = await r.phone(method, path, method == "POST" ? ["name": "X"] : nil)
+            XCTAssertEqual(answer.status, 403, path)
+        }
+    }
 }
