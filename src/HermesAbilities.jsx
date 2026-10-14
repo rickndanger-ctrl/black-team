@@ -93,6 +93,7 @@ export default function HermesAbilities({status, busy, onAction}) {
   return <fieldset className="full hermes-abilities" disabled={disabled}>
     <div className="panel-heading"><div><h3>What Hermes can do</h3></div><button type="button" className="text-button" onClick={() => load(true)}>Read again</button></div>
     {view.problem && <p className="inline-note full">{view.problem}</p>}
+    {status.config?.model?.context > 0 && status.config.model.context < 64000 && <p role="alert" className="inline-note full">Hermes needs a model set to 64,000 tokens of context or more. {status.config.model.name || 'Your model'} is set to {status.config.model.context.toLocaleString('en-US')}, so Hermes will refuse it. Raise the context under Settings → Models if this computer has the memory, or use Black Team Code.</p>}
     <div className="connection-card full"><div><h4>Reading cost</h4>
       <p>{typeof view.total?.tokens === 'number' ? <>Everything switched on adds {tokensText(view.total.tokens)} to every message. Black Team’s own file tools are included ({tokensText(view.companionTokens)}).</> : 'The cost of these tools is not known for this Hermes.'}{view.total?.context ? ` Your model reads up to ${view.total.context.toLocaleString()} tokens at once.` : ''}</p>
       {view.total?.warning && <p role="alert" className="error-text inline-note">{view.total.warning}</p>}</div></div>

@@ -7,6 +7,9 @@ import Foundation
 //
 // Step IDs: `connect:<agent id>`, `hermes-install`, `hermes-connect`, `hermes-tools`, and `agents-missing` (only ever a note).
 
+/// Hermes Agent refuses a model whose context is set lower than this.
+public let hermesMinimumContext = 64_000
+
 public enum SetupStepState: String, Codable, Equatable, Sendable {
     case done
     case willDo = "will-do"
@@ -66,6 +69,8 @@ public struct SetupContext: Sendable {
     public var tooling: HermesTooling
     /// The model in use, for the descriptions; empty when none is set up yet.
     public var modelName: String
+    /// The context the model in use is set to; 0 when not known. Hermes refuses a model set below `hermesMinimumContext`.
+    public var modelContext = 0
     public var dataFolder: String
 
     public init(found: DiscoveryResult, hermesInstalls: [HermesInstall], settings: IntegrationSettings, hermesSupported: Bool, tooling: HermesTooling,
@@ -129,7 +134,9 @@ public func buildSetupPlan(_ c: SetupContext) -> SetupPlan {
         steps.append(SetupStep(
             id: "hermes-connect", kind: "connect", title: "Connect Hermes",
             detail: "Lets a Code conversation use Hermes and its tools when you choose it, using \(model). Black Team Code stays the default.",
-            changes: ["Saves where Hermes is, so Code can start it.", "Hermes uses a private profile for each conversation and never your own."],
+            changes: ["Saves where Hermes is, so Code can start it.", "Hermes uses a private profile for each conversation and never your own."]
+                + (c.modelContext > 0 && c.modelContext < hermesMinimumContext
+                   ? ["Hermes needs a model set to 64,000 tokens of context or more; \(model) is set to \(EText.grouped(c.modelContext)). Raise it under Settings → Models before you choose Hermes, if \(Place.this) has the memory."] : []),
             state: enabled ? .done : ready ? .willDo : .needsSomething, needs: enabled || ready ? nil : waiting))
         steps.append(SetupStep(
             id: "hermes-tools", kind: "tools", title: "Choose Hermes's tools",

@@ -17,8 +17,10 @@ extension Backend {
         #else
         found = discoverInstalled(home: home, env: setupEnvironment)
         #endif
-        return SetupContext(found: found, hermesInstalls: installs, settings: settings, hermesSupported: integrations.hermesSupported,
-                            tooling: findHermesTooling(home: home, env: setupEnvironment), modelName: model, dataFolder: dataFolder)
+        var context = SetupContext(found: found, hermesInstalls: installs, settings: settings, hermesSupported: integrations.hermesSupported,
+                                   tooling: findHermesTooling(home: home, env: setupEnvironment), modelName: model, dataFolder: dataFolder)
+        context.modelContext = (try? configStore.read().model.context) ?? 0
+        return context
     }
 
     /// The steps that would set up every agent on this computer, each marked done, will do, or needs something.
