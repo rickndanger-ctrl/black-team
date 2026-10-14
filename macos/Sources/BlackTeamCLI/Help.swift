@@ -50,7 +50,8 @@ let commandHelp: [String: String] = [
     """,
     "find": """
     Usage: black-team find
-    Looks for running model servers and model files on this computer.
+    Looks for running model servers and model files on this computer. Once Black Team is set up, the ones it
+    can run are added to your models; one you removed stays out.
     """,
     "models": """
     Usage: black-team models

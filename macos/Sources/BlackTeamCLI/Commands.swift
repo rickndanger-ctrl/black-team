@@ -457,6 +457,7 @@ import BlackTeamKit
             for item in found.servers { print("server\t\(item.key)\t\(item.server.name)\t\(item.server.endpoint)\(item.saved ? "\tsaved" : "")") }
             for item in found.files { print("file\t\(item.key)\t\(item.file.name)\t\(item.file.file)\t\(gigabytes(Int64(item.file.bytes)))\(item.saved ? "\tsaved" : "")") }
             if found.servers.isEmpty && found.files.isEmpty { print("No model servers or model files found.") }
+            for name in found.added { print("added\t\(name)") }
             print("runtime: \(found.runtime.isEmpty ? "none" : found.runtime)")
             return 0
 

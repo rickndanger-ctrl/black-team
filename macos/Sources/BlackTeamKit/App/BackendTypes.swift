@@ -325,6 +325,8 @@ public struct FoundModelsReport: Codable, Equatable, Sendable {
     public var files: [MarkedFile]
     public var runtime: String
     public var looked: Looked
+    /// Names of the found models this look put in the list.
+    public var added: [String] = []
 
     /// Where the finder looked.
     public struct Looked: Codable, Equatable, Sendable { public var ports: [Int]; public var folders: [String] }
