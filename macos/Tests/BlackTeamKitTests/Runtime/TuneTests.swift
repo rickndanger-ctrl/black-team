@@ -437,6 +437,11 @@ final class TuneTests: XCTestCase {
         var other = sixCores
         other.cores = 4
         XCTAssertEqual(tunedLaunch(store: store, hardware: { other })(model).threads, model.threads)
+        // A hand edit wins: the result is not applied once the person changed the settings.
+        entry.handEdited = true
+        try store.save(entry)
+        XCTAssertEqual(hook(model).threads, model.threads)
+        entry.handEdited = nil
         // A server's readout is never applied.
         entry.kind = "measured"
         try store.save(entry)

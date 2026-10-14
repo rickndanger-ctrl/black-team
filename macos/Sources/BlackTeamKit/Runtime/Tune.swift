@@ -73,6 +73,8 @@ public struct TuneEntry: Codable, Equatable, Sendable {
     public var date: String
     public var launches: Int
     public var tried: [TuneTrial]
+    /// True once the person changed the model's threads, graphics-chip or draft setting by hand after this result: theirs are used.
+    public var handEdited: Bool? = nil
 }
 
 /// This computer, as far as the choice of settings cares.
@@ -190,11 +192,12 @@ public final class TuningStore: @unchecked Sendable {
     }
 }
 
-/// The model with a stored result applied, when the result is a tuned one and still current. Anything else leaves the model as it was.
+/// The model with a stored result applied, when the result is a tuned one, still current, and the person has not changed the
+/// settings by hand since. Anything else leaves the model as it was.
 /// The context is not applied here: it is saved into the model's own setting when the result is made, so the conversation
 /// budget (which reads that setting) and the running model agree.
 func applyTuning(_ model: ModelConfig, entry: TuneEntry?, hardware: @autoclosure () -> TuneHardware) -> ModelConfig {
-    guard model.source == "gguf", let entry, entry.kind == "tuned", let settings = entry.settings, let stored = entry.fingerprint else { return model }
+    guard model.source == "gguf", let entry, entry.kind == "tuned", entry.handEdited != true, let settings = entry.settings, let stored = entry.fingerprint else { return model }
     guard tuneStaleReasons(stored, now: tuneFingerprint(model: model, hardware: hardware())).isEmpty else { return model }
     var tuned = model
     tuned.threads = settings.threads

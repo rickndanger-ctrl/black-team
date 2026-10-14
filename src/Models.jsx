@@ -41,6 +41,7 @@ function OptimizeLine({model, optimize, disabled, onOptimize}) {
   const running = Boolean(optimize?.running);
   const button = (label, primary) => <button type="button" className={primary ? 'primary' : 'secondary'} disabled={disabled || running} onClick={() => onOptimize(model.key)} aria-label={`${label} ${model.name}`}>{label}</button>;
   if (tuning.state === 'optimized') return <div className="optimize-line"><span>Optimized for this computer: {tuning.summary}</span>{button('Optimize again')}</div>;
+  if (tuning.state === 'edited') return <div className="optimize-line"><span>You changed this model's settings, so yours are used. Measured before: {tuning.summary}</span>{button('Optimize again')}</div>;
   if (tuning.state === 'stale') return <div className="optimize-line"><span>Needs optimizing again. {(tuning.reasons || []).join(' ')} Before: {tuning.summary}</span>{button('Optimize')}</div>;
   if (tuning.state === 'measured') return <div className="optimize-line"><span>Measured: {tuning.summary}. Its settings belong to that server.</span>{button('Measure again')}</div>;
   if (tuning.state === 'server') return <div className="optimize-line"><span>Its settings belong to the server, so Black Team can only measure its speed.</span>{button('Measure speed')}</div>;

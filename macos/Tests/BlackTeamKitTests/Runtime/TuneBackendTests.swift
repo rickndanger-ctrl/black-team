@@ -47,6 +47,15 @@ final class TuneBackendTests: XCTestCase {
         fixture.runtime.state = .off
         let renamed = try await backend.saveSetup(["model": ["name": "Renamed"]])
         XCTAssertTrue(renamed.saved)
+        XCTAssertEqual(backend.tuningInfo(for: try backend.configStore.read().model)["state"]?.string, "optimized", "a new name is not a change of settings")
+
+        // A hand edit wins: after the person changes the threads, the stored result is no longer applied.
+        let before = try backend.configStore.read().model
+        _ = try await backend.saveSetup(["model": ["threads": .number(Double(before.threads == 2 ? 3 : 2))]])
+        let edited = try backend.configStore.read().model
+        XCTAssertEqual(backend.tuningInfo(for: edited)["state"]?.string, "edited")
+        XCTAssertEqual(backend.tuning.entry(key)?.handEdited, true)
+        XCTAssertEqual(tunedLaunch(store: backend.tuning, hardware: { self.hardware })(edited).threads, edited.threads)
 
         // A new llama.cpp program at the same path makes it stale, and the window is told why.
         FileManager.default.createFile(atPath: fixture.files.runtime, contents: Data(nativeProgramHeader() + [9]), attributes: [.posixPermissions: 0o700])

@@ -87,6 +87,7 @@ extension Backend {
         // Every model that is set up joins the list, so going back to it later is one choice.
         var warning: String?
         do { _ = try savedModels.remember(next.model) } catch { warning = "Model saved. \(messageOf(error))" }
+        noteHandEdit(from: previous, to: next.model)
         changed()
         return SavedFlag(saved: true, warning: warning)
     }

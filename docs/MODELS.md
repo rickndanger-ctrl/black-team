@@ -192,7 +192,9 @@ you left it: stopped if it was stopped, started again if it was running. Stoppin
 What is kept. The result is saved per model in `tuning.json` in Black Team's data folder (readable
 only by you), with the llama.cpp program, the model file size and the hardware it was measured with.
 The chosen threads, graphics-chip and draft settings are used the next time the model starts; the
-chosen context becomes the model's context setting, which you can still change in Settings. If the
+chosen context becomes the model's context setting, which you can still change in Settings. Your own
+settings win: once you change the threads, graphics-chip or draft setting of an optimized model in
+Settings, Black Team uses yours and stops applying the result until you optimize again. If the
 llama.cpp program, the model file or the computer's hardware changes, the result is marked **Needs
 optimizing again** and Black Team goes back to its usual settings until you do. The numbers are
 estimates for this computer only: a different computer, a different load or a hotter day gives

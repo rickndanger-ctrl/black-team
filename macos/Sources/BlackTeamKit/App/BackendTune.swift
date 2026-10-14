@@ -143,7 +143,17 @@ extension Backend {
         }
     }
 
-    /// What the window shows for one saved model: `state` is "none", "optimized", "stale", "measured", "server" or "cloud".
+    /// A hand edit wins over the optimizer: once the person changes the threads, graphics-chip or draft setting of an optimized
+    /// model, the stored result is no longer applied when it starts. Optimizing again makes a new result.
+    func noteHandEdit(from previous: ModelConfig, to next: ModelConfig) {
+        guard next.source == "gguf", previous.source == "gguf", keyOf(previous) == keyOf(next),
+              previous.threads != next.threads || previous.gpuLayers != next.gpuLayers || previous.draft != next.draft,
+              var entry = tuning.entry(keyOf(next)), entry.kind == "tuned", entry.handEdited != true else { return }
+        entry.handEdited = true
+        try? tuning.save(entry)
+    }
+
+    /// What the window shows for one saved model: `state` is "none", "optimized", "edited", "stale", "measured", "server" or "cloud".
     func tuningInfo(for model: ModelConfig) -> JSONValue {
         if model.source == "cloud" { return ["state": "cloud"] }
         let entry = tuning.entry(keyOf(model))
@@ -157,7 +167,7 @@ extension Backend {
         if model.source == "server" { info["state"] = .string(entry.kind == "measured" ? "measured" : "server"); return .object(info) }
         guard entry.kind == "tuned", let stored = entry.fingerprint else { return .object(info) }
         let reasons = tuneStaleReasons(stored, now: tuneFingerprint(model: model, hardware: tuneEnvironment.hardware()))
-        info["state"] = .string(reasons.isEmpty ? "optimized" : "stale")
+        info["state"] = .string(!reasons.isEmpty ? "stale" : entry.handEdited == true ? "edited" : "optimized")
         if !reasons.isEmpty { info["reasons"] = .array(reasons.map { .string($0) }) }
         return .object(info)
     }
