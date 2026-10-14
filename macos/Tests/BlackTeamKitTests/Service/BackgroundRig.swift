@@ -60,7 +60,7 @@ final class BackgroundRig {
 
     func run(_ id: String) -> ScheduleRun? { store.get(id)?.lastRun }
 
-    func waitFor(_ what: String, timeout: TimeInterval = 5, _ condition: () -> Bool) async throws {
+    func waitFor(_ what: String, timeout: TimeInterval = 5, _ condition: @escaping () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
             if Date() > deadline { XCTFail("Timed out waiting for \(what)"); return }
