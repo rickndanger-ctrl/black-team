@@ -70,8 +70,13 @@ final class WindowSetupTests: XCTestCase {
         XCTAssertTrue(settings.hermes.enabled)
         XCTAssertFalse(settings.hermes.browser)
         XCTAssertFalse(FileManager.default.fileExists(atPath: r.fixture.files.dir + "/ran-claude"), "connecting never runs the agent")
-        // Done now: nothing is offered again, and a second approval changes nothing.
+        // Done now: the approved steps are finished. On Linux nothing else is offered; a Mac also looks in fixed folders such as
+        // /opt/homebrew/bin, where the computer running the tests may have more agents of its own.
+        let after = r.backend.setupPlan().steps.filter { ["connect:claude", "hermes-install", "hermes-connect", "hermes-tools"].contains($0.id) }
+        XCTAssertEqual(after.map(\.state), [.done, .done, .done, .done])
+        #if os(Linux)
         await XCTAssertShows(r, "model-ready", false)
+        #endif
     }
 
     func testBadApprovalsAreRefused() async throws {

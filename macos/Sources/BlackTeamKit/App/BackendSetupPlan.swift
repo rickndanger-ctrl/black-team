@@ -16,6 +16,11 @@ extension Backend {
         installs = integrations.hermesSupported ? looked.hermes : []
         #else
         found = discoverInstalled(home: home, env: setupEnvironment)
+        // The Hermes Black Team installed itself, or the one already connected, so a finished install is not offered again.
+        if integrations.hermesSupported {
+            installs = [settings.hermes.source, HermesInstaller.sourceFolder(dataFolder: dataFolder)].filter { !$0.isEmpty }
+                .compactMap { inspectHermes(source: $0, python: $0 == settings.hermes.source ? settings.hermes.python : "") }
+        }
         #endif
         var context = SetupContext(found: found, hermesInstalls: installs, settings: settings, hermesSupported: integrations.hermesSupported,
                                    tooling: findHermesTooling(home: home, env: setupEnvironment), modelName: model, dataFolder: dataFolder)
