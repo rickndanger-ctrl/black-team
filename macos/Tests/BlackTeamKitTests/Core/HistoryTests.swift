@@ -54,6 +54,26 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(persisted["messages"]?[1]?["state"]?.string, "interrupted")
     }
 
+    func testSecondProcessLeavesLiveWorkRunning() throws {
+        let stateDir = makeTemporaryFolder(self) + "/state"
+        let original = try History(stateDir: stateDir)
+        var thread = original.create("question")
+        var object = thread.object!
+        object["messages"] = [["id": .string(uuid()), "role": "user", "content": "question", "state": "done"],
+                              ["id": .string(uuid()), "role": "assistant", "content": "partial answer", "state": "writing"]]
+        thread = .object(object)
+        let request: JSONValue = ["id": .string(uuid()), "hash": .string(String(repeating: "a", count: 64)), "state": "running"]
+        original.remember(&thread, request)
+        try original.save(thread)
+        let second = try History(stateDir: stateDir, recoverInterrupted: false)
+        let id = thread["id"]!.string!
+        XCTAssertEqual(second.get(id)?["messages"]?[1]?["state"]?.string, "writing")
+        XCTAssertEqual(second.request(request["id"]!.string!)?["state"]?.string, "running")
+        let persisted = try JSONValue.parse(Data(contentsOf: URL(fileURLWithPath: stateDir + "/conversations/" + id + ".json")))
+        XCTAssertEqual(persisted["requests"]?[0]?["state"]?.string, "running")
+        XCTAssertEqual(persisted["messages"]?[1]?["state"]?.string, "writing")
+    }
+
     func testDamagedMismatchedAndOversizedFilesAreRejectedUntouched() throws {
         let stateDir = makeTemporaryFolder(self) + "/state"
         _ = try History(stateDir: stateDir)
