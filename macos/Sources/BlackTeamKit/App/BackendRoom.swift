@@ -53,7 +53,10 @@ extension Backend {
 
     private func roomRunning(threadId: String?) -> Bool {
         guard let threadId else { return false }
-        return locked { active != nil && job?.threadId == threadId } || drivers.runningChild(threadId) != nil
+        if locked({ active != nil && job?.threadId == threadId }) || drivers.runningChild(threadId) != nil { return true }
+        // Another Black Team holds the engine lock (the app beside the command): a reply still being written is its live run.
+        // Only the lock holder treats such a reply as left over from a crash.
+        return engineLock.otherHolder() != nil && history.get(threadId)?["messages"]?.array?.last?["state"]?.string == "writing"
     }
 
     /// What a finished (or abandoned) conversation says about a task: its reply, or why it did not finish.
