@@ -65,6 +65,9 @@ extension Backend {
             return ("", nil, "The conversation for this task could not be found.")
         }
         switch last["state"]?.string {
+        case "done" where last["note"]?.string == Engine.UNFINISHED_NOTE:
+            // Stopped at a step or time limit: not a result to review. Starting the task again carries on from its todo list.
+            return ("", nil, "Stopped at the limit for one turn with the task not finished. Start it again to continue.")
         case "done":
             let events = last["events"]?.array
             let count = events.map { list in list.filter { $0["type"]?.string == "tool_use" && fileChangeTools.contains(($0["name"]?.string ?? "").lowercased()) }.count }

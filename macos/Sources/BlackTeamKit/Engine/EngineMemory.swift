@@ -68,6 +68,8 @@ public struct Budgets: Equatable, Sendable {
 
 extension Engine {
     public static let MAX_STEPS = 48, RUN_SECONDS = 1800, APPROVAL_SECONDS = 300
+    /// The note on a Code turn that stopped at a limit with the task not finished (the room keeps such a task open).
+    public static let UNFINISHED_NOTE = "This turn stopped before the task was finished."
     /// What a scheduled run ends with when its question was not answered in time (Service/Scheduler.swift reads it back).
     public static let notApprovedMessage = "Not approved: nobody answered the question in time, so the task was stopped."
     public static let MIN_CONTEXT = 8192

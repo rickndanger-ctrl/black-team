@@ -304,6 +304,25 @@ final class RoomTests: XCTestCase {
         XCTAssertEqual(RoomStore.load(dataFolder: r.fixture.stateDir, projectId: r.pid).tasks.filter { $0.status == .doing }.count, 0)
     }
 
+    func testATurnStoppedAtItsLimitLeavesTheTaskOpen() async throws {
+        let r = try await rig()
+        let ornith = try member(r, "Ornith", model: r.localKey, work: "code")
+        let task = try addTask(r, "Long reading job", to: ornith.id)
+        var t = r.backend.history.create("hi")
+        t = t.setting("messages", .array([["id": "a", "role": "user", "content": "hi", "state": "done"],
+                                          ["id": "b", "role": "assistant", "content": "I stopped at the time limit for one turn.", "state": "done",
+                                           "note": .string(Engine.UNFINISHED_NOTE)]]))
+        try r.backend.history.save(t)
+        var data = RoomStore.load(dataFolder: r.fixture.stateDir, projectId: r.pid)
+        let i = data.tasks.firstIndex { $0.id == task.id }!
+        data.tasks[i].status = .doing; data.tasks[i].threadId = t["id"]!.string!
+        try RoomStore.save(data, dataFolder: r.fixture.stateDir, projectId: r.pid)
+        let shown = try XCTUnwrap(try r.backend.room(projectId: r.pid).tasks.first { $0.id == task.id })
+        XCTAssertEqual(shown.status, .todo); XCTAssertTrue(shown.failed)
+        XCTAssertTrue(shown.note.contains("Start it again to continue"))
+        XCTAssertEqual(shown.threadId, t["id"]!.string!, "the next start carries on in the same conversation")
+    }
+
     func testATaskLiveInAnotherBlackTeamIsLeftRunning() async throws {
         let r = try await rig()
         let ornith = try member(r, "Ornith", model: r.localKey, work: "code")
