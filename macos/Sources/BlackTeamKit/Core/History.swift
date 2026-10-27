@@ -133,7 +133,9 @@ public final class History: @unchecked Sendable {
     private var requestIndex: [String: JSONValue] = [:]
     private let lock = NSLock()
 
-    public init(stateDir: String) throws {
+    /// `recoverInterrupted` marks work left "writing"/"running" as interrupted: a restart after a crash. Only the process that holds the
+    /// engine lock may do it; while another Black Team is alive that work may be its live run, and marking it would stop that run.
+    public init(stateDir: String, recoverInterrupted: Bool = true) throws {
         try privateDirectory(stateDir)
         dir = stateDir + "/conversations"
         try privateDirectory(dir)
@@ -152,7 +154,7 @@ public final class History: @unchecked Sendable {
             var changed = false
             var object = thread.object!
             var messages = object["messages"]!.array!
-            for index in messages.indices where messages[index]["state"]?.string == "writing" {
+            for index in messages.indices where recoverInterrupted && messages[index]["state"]?.string == "writing" {
                 var message = messages[index].object!
                 message["state"] = "interrupted"
                 messages[index] = .object(message); changed = true
@@ -160,7 +162,7 @@ public final class History: @unchecked Sendable {
             var requests = object["requests"]!.array!
             for index in requests.indices {
                 var request = requests[index].object!
-                if request["state"]?.string == "running" { request["state"] = "interrupted"; changed = true }
+                if recoverInterrupted, request["state"]?.string == "running" { request["state"] = "interrupted"; changed = true }
                 requests[index] = .object(request)
                 var indexed = request; indexed["threadId"] = .string(id)
                 requestIndex[request["id"]!.string!] = .object(indexed)

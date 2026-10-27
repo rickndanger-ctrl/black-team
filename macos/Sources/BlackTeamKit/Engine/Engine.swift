@@ -560,7 +560,7 @@ public final class Engine: @unchecked Sendable {
             memory.run = tracker.current
             let answer = EText.prefix(redact(!unfinished.isEmpty ? unfinished : !finalText.isEmpty ? finalText : "Done."), 256 * 1024)
             turn.set("content", .string(answer))
-            if !unfinished.isEmpty { turn.set("note", "This turn stopped before the task was finished.") }
+            if !unfinished.isEmpty { turn.set("note", .string(Engine.UNFINISHED_NOTE)) }
             if let meter = job.meter { turn.set("meter", meter.json) }
             // A journal entry is a convenience; the turn itself succeeded.
             // No journal entry for a cloud conversation: nothing is written to the vault from it.

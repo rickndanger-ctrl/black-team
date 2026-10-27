@@ -152,14 +152,16 @@ public final class Backend: @unchecked Sendable {
         }
         integrations = Integrations(stateDir: dataFolder)
         images = ImageStore(dataFolder: dataFolder)
-        history = try History(stateDir: dataFolder)
+        // The lock comes first: a process that does not hold it is a second Black Team beside a live one (the app and the command),
+        // so conversations still "writing" may be that one's live runs and are left alone instead of being marked interrupted.
+        let sharedLock = EngineLock(dataFolder: dataFolder, program: program ?? EngineLock.defaultProgram())
+        let holdsLock = sharedLock.acquire()
+        engineLock = sharedLock
+        history = try History(stateDir: dataFolder, recoverInterrupted: holdsLock)
         // The Black Team vault: what the local models remember. It lives in the private data folder only.
         memory = try customMemory ?? Memory(vault: dataFolder + "/vault")
         let cache = DiscoveryCache(discover)
         discovery = cache
-        let sharedLock = EngineLock(dataFolder: dataFolder, program: program ?? EngineLock.defaultProgram())
-        sharedLock.acquire()
-        engineLock = sharedLock
         let madeInstaller = runtimeInstaller ?? RuntimeInstaller(dataFolder: URL(fileURLWithPath: dataFolder))
         let localGuard: @Sendable () throws -> Void = {
             if let refusal = sharedLock.refusalForLocalModel() { throw BlackTeamError(refusal) }

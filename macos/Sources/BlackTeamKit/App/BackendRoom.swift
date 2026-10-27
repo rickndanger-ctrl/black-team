@@ -53,7 +53,10 @@ extension Backend {
 
     private func roomRunning(threadId: String?) -> Bool {
         guard let threadId else { return false }
-        return locked { active != nil && job?.threadId == threadId } || drivers.runningChild(threadId) != nil
+        if locked({ active != nil && job?.threadId == threadId }) || drivers.runningChild(threadId) != nil { return true }
+        // Another Black Team holds the engine lock (the app beside the command): a reply still being written is its live run.
+        // Only the lock holder treats such a reply as left over from a crash.
+        return engineLock.otherHolder() != nil && history.get(threadId)?["messages"]?.array?.last?["state"]?.string == "writing"
     }
 
     /// What a finished (or abandoned) conversation says about a task: its reply, or why it did not finish.
@@ -62,6 +65,9 @@ extension Backend {
             return ("", nil, "The conversation for this task could not be found.")
         }
         switch last["state"]?.string {
+        case "done" where last["note"]?.string == Engine.UNFINISHED_NOTE:
+            // Stopped at a step or time limit: not a result to review. Starting the task again carries on from its todo list.
+            return ("", nil, "Stopped at the limit for one turn with the task not finished. Start it again to continue.")
         case "done":
             let events = last["events"]?.array
             let count = events.map { list in list.filter { $0["type"]?.string == "tool_use" && fileChangeTools.contains(($0["name"]?.string ?? "").lowercased()) }.count }
