@@ -11,7 +11,7 @@ final class ToolValidationTests: XCTestCase {
     override func tearDown() { try? FileManager.default.removeItem(atPath: scratch) }
 
     func tools() throws -> Tools {
-        try Tools(workspace: scratch + "/ws", artifacts: scratch + "/art", undoDir: scratch + "/undo", home: scratch, useRtk: false)
+        try Tools(workspace: scratch + "/ws", artifacts: scratch + "/art", undoDir: scratch + "/undo", home: scratch, useRtk: false, appDirs: [], webAccess: "off")
     }
 
     func refusal(_ name: String, _ args: JSONValue) async throws -> String {

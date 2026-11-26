@@ -35,8 +35,12 @@ final class EngineTests: XCTestCase {
         return Session(dir: dir, id: id, thread: ThreadRef(thread), config: config)
     }
 
+    /// What is installed on this computer must not change the tools a test expects: no CLI-Anything apps, and the web off unless a test
+    /// has saved its own settings first (the code map is neutralised the same way, by giving no graph program).
     func engine(_ fetch: @escaping HTTPStreamFetch, vault: Memory? = nil) throws -> Engine {
-        try Engine(stateDir: stateDir, vault: vault, fetch: fetch, home: scratch, useRtk: false)
+        let made = try Engine(stateDir: stateDir, vault: vault, fetch: fetch, home: scratch, useRtk: false, appDirs: [])
+        if !FileManager.default.fileExists(atPath: stateDir + "/code-settings.json") { try made.codeSettings.updateGlobal { $0.web = "off" } }
+        return made
     }
 
     /// One Code turn, as the server runs it.
