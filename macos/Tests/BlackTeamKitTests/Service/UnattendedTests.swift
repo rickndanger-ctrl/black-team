@@ -24,7 +24,7 @@ final class UnattendedTests: XCTestCase {
         let dir = scratch + "/ws-" + UUID().uuidString.prefix(8)
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         try "keep\n".write(toFile: dir + "/a.txt", atomically: false, encoding: .utf8)
-        let made = try Tools(workspace: dir, artifacts: scratch + "/art", undoDir: scratch + "/undo", home: scratch, ask: { questions.add($0) }, useRtk: false, unattended: level)
+        let made = try Tools(workspace: dir, artifacts: scratch + "/art", undoDir: scratch + "/undo", home: scratch, ask: { questions.add($0) }, useRtk: false, unattended: level, appDirs: [], webAccess: "off")
         return (made, dir)
     }
 

@@ -21,7 +21,7 @@ final class ToolsTests: XCTestCase {
     }
     func workspace() throws -> (dir: String, artifacts: String) { (try folder("ws"), try folder("art")) }
     func tools(_ dir: String, _ artifacts: String, deny: [String] = [], limit: @escaping @Sendable () -> Int = { 8000 }, ask: @escaping Tools.Ask = { _ in "deny" }, signal: CancelSignal? = nil, graph: String = "", graphDir: String = "") throws -> Tools {
-        try Tools(workspace: dir, artifacts: artifacts, undoDir: undoDir, home: scratch, deny: deny, limit: limit, ask: ask, signal: signal, useRtk: false, graph: graph, graphDir: graphDir)
+        try Tools(workspace: dir, artifacts: artifacts, undoDir: undoDir, home: scratch, deny: deny, limit: limit, ask: ask, signal: signal, useRtk: false, graph: graph, graphDir: graphDir, appDirs: [], webAccess: "off")
     }
     func put(_ path: String, _ text: String) throws { try text.write(toFile: path, atomically: false, encoding: .utf8) }
     func get(_ path: String) throws -> String { try String(contentsOfFile: path, encoding: .utf8) }
@@ -37,7 +37,7 @@ final class ToolsTests: XCTestCase {
 
     func testSchemas() throws {
         let all = try XCTUnwrap(Tools.SCHEMAS.array)
-        XCTAssertEqual(all.compactMap { $0["function"]?["name"]?.string }, ["read", "search", "list", "edit", "write", "run", "todo", "publish", "map"])
+        XCTAssertEqual(all.compactMap { $0["function"]?["name"]?.string }, ["read", "search", "list", "edit", "write", "run", "todo", "publish", "apps", "web", "map"])
         XCTAssertEqual(all[2], ["type": "function", "function": ["name": "list", "description": "List a folder.", "parameters": ["type": "object", "properties": ["path": ["type": "string"]], "required": []]]])
         let (dir, art) = try workspace()
         XCTAssertEqual(try tools(dir, art).schemaList.count, 8)
