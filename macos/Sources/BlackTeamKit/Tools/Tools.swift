@@ -70,7 +70,7 @@ public final class Tools: @unchecked Sendable {
 
     public static let SECRET = JSPattern(#"(^|\/)(\.ssh|\.gnupg|\.aws|\.env(\..*)?|.*\.key|.*\.pem|id_[a-z0-9]+|credentials(\..*)?|auth\.json|\.netrc)(\/|\z)"#, caseInsensitive: true)
     // Commands that change the system, reach the network, or delete things wait for the user's approval.
-    public static let RISKY = JSPattern(#"(^|[;&|`(\s])(sudo|su|rm|rmdir|mv|dd|mkfs|shred|truncate|chmod|chown|kill|pkill|killall|shutdown|reboot|systemctl|loginctl|crontab|curl|wget|ssh|scp|sftp|rsync|nc|ncat|telnet|tailscale|docker|podman|pacman|yay|apt|dnf|pip3?\s+(install|uninstall)|uv\s+(pip|tool|add)|npm\s+(i|install|uninstall|publish|exec)|npx|pnpm|yarn|git\s+(push|reset|clean|rebase|checkout\s+--|restore|stash\s+drop|branch\s+-D))(\s|\z)|(^|\s)(\/etc\/|\/usr\/|\/boot\/|\/var\/|~\/\.|\$HOME\/\.)|(^|[\s\/"'=])\.(config|local|ssh|gnupg|aws|kube|docker|pki|netrc|npmrc)(\/|\s|"|'|\z)"#)
+    public static let RISKY = JSPattern(#"(^|[;&|`(\s])(sudo|su|rm|rmdir|mv|dd|mkfs|shred|truncate|chmod|chown|kill|pkill|killall|shutdown|reboot|systemctl|loginctl|crontab|curl|wget|ssh|scp|sftp|rsync|nc|ncat|telnet|tailscale|docker|podman|pacman|yay|apt|dnf|pip3?\s+(install|uninstall)|uv\s+(pip|tool|add)|cli-hub\s+(install|uninstall|update)|npm\s+(i|install|uninstall|publish|exec)|npx|pnpm|yarn|git\s+(push|reset|clean|rebase|checkout\s+--|restore|stash\s+drop|branch\s+-D))(\s|\z)|(^|\s)(\/etc\/|\/usr\/|\/boot\/|\/var\/|~\/\.|\$HOME\/\.)|(^|[\s\/"'=])\.(config|local|ssh|gnupg|aws|kube|docker|pki|netrc|npmrc)(\/|\s|"|'|\z)"#)
 
     private static func param(_ properties: [String: JSONValue], _ required: [String] = []) -> JSONValue {
         .object(["type": "object", "properties": .object(properties), "required": .array(required.map { .string($0) })])
@@ -87,6 +87,8 @@ public final class Tools: @unchecked Sendable {
         entry("run", "Run a shell command in the workspace. Output is shortened; pipe long output through tail.", param(["command": ["type": "string", "minLength": 1, "maxLength": 4000], "timeout": ["type": "integer", "description": "Seconds, default 120"]], ["command"])),
         entry("todo", "Replace your todo list. Keep it current: it survives when older tool output is trimmed.", param(["items": ["type": "array", "maxItems": 40, "items": ["type": "object", "properties": ["text": ["type": "string"], "done": ["type": "boolean"]], "required": ["text"]]]], ["items"])),
         entry("publish", "Attach a finished workspace file to the conversation so it can be downloaded on the phone.", param(["path": ["type": "string", "minLength": 1]], ["path"])),
+        entry("apps", "Desktop apps you can drive by command (CLI-Anything). No name: list them. With name: that app's guide. Then use run.", param(["name": ["type": "string", "description": "e.g. libreoffice"]])),
+        entry("web", "Search the web (query) or read one web page as text (url). Use it for docs, errors and current facts.", param(["query": ["type": "string"], "url": ["type": "string"], "start": ["type": "integer", "description": "Character to continue a long page from"]])),
         entry("map", "Ask the code map of the workspace which files and functions relate to a question. Returns names with paths and line numbers. Use it before reading many files. Code only.", param(["question": ["type": "string", "minLength": 1, "maxLength": 500], "refresh": ["type": "boolean", "description": "Rebuild the map first, after large changes"]], ["question"])),
     ]
     /// The tool list sent to the model: a JSON array of `{type: "function", function: {name, description, parameters}}`.
@@ -101,6 +103,14 @@ public final class Tools: @unchecked Sendable {
     private let signal: CancelSignal?
     private let useRtk: Bool
     private let graph: String, graphDir: String
+    /// Other computers `run` may work on over SSH, by id.
+    private let machines: [String: RemoteMachine]
+    /// Folders to look in for CLI-Anything commands; nil is PATH and ~/.local/bin, an empty list turns the apps tool off.
+    private let appDirs: [String]?
+    /// "ask" (once per task), "on" or "off".
+    private let webAccess: String
+    private let web: WebReader
+    private var webAllowed: Bool
     /// How a scheduled (unattended) run is held: nil is the usual interactive rule (only risky commands ask).
     private let unattended: UnattendedPermission?
     private let lock = NSLock()
@@ -112,13 +122,35 @@ public final class Tools: @unchecked Sendable {
     public var mapStale: Bool { lock.lock(); defer { lock.unlock() }; return stale }
     private func setStale(_ value: Bool) { lock.lock(); stale = value; lock.unlock() }
 
-    /// The tools offered to the model. `map` is offered only when a graphify program and a folder for its maps were given.
+    /// The tools offered to the model. `map` is offered only when a graphify program and a folder for its maps were given,
+    /// `apps` only when a CLI-Anything app is installed, `web` unless it is turned off, and `run` names the other computers when there are any.
     public var schemas: JSONValue {
         guard var all = Tools.SCHEMAS.array else { return .array([]) }
-        // A read-only scheduled run is not even offered the tools that change things.
-        if unattended == .readOnly { all = all.filter { !Tools.changing.contains($0["function"]?["name"]?.string ?? "") } }
-        if !graph.isEmpty && !graphDir.isEmpty { return .array(all) }
-        return .array(all.filter { $0["function"]?["name"]?.string != "map" })
+        // A read-only scheduled run is not even offered the tools that change things, or reach the network.
+        if unattended == .readOnly { all = all.filter { !Tools.changing.contains($0["function"]?["name"]?.string ?? "") && $0["function"]?["name"]?.string != "web" } }
+        let apps = !CLIApps.find(in: appDirs, home: home).isEmpty
+        return .array(all.filter { entry in
+            switch entry["function"]?["name"]?.string {
+            case "map": return !graph.isEmpty && !graphDir.isEmpty
+            case "apps": return apps
+            case "web": return webAccess != "off"
+            default: return true
+            }
+        }.map { $0["function"]?["name"]?.string == "run" ? runSchema() : $0 })
+    }
+
+    /// `run` as offered: with a machine to choose from when other computers are set up.
+    private func runSchema() -> JSONValue {
+        let base = Tools.SCHEMAS.array?.first { $0["function"]?["name"]?.string == "run" } ?? .null
+        guard !machines.isEmpty, var function = base["function"]?.object, var parameters = function["parameters"]?.object, var properties = parameters["properties"]?.object else { return base }
+        properties["machine"] = ["type": "string", "enum": .array((["here"] + machines.keys.sorted()).map { .string($0) }), "description": "Computer to run on; default here"]
+        parameters["properties"] = .object(properties); function["parameters"] = .object(parameters)
+        return .object(["type": "function", "function": .object(function)])
+    }
+
+    /// The other computers, as the system prompt names them.
+    public var machineList: String {
+        machines.sorted { $0.key < $1.key }.map { "\($0.key) (\($0.value.name)\($0.value.system.isEmpty ? "" : ", \($0.value.system)"))" }.joined(separator: ", ")
     }
     /// The tools that change files or run commands.
     static let changing: Set<String> = ["edit", "write", "run", "publish"]
@@ -128,8 +160,12 @@ public final class Tools: @unchecked Sendable {
     public static func findProgram(_ name: String) -> String? { lookUpProgram(name) }
 
     /// graph: the graphify executable, when installed; its map of the workspace is kept under graphDir, not in the project.
-    public init(workspace: String, artifacts: String, undoDir: String, home: String = NSHomeDirectory(), owner: String = "The user", deny: [String] = [], limit: @escaping @Sendable () -> Int = { 8000 }, ask: @escaping Ask = { _ in "deny" }, signal: CancelSignal? = nil, useRtk: Bool = true, graph: String = "", graphDir: String = "", unattended: UnattendedPermission? = nil) throws {
+    public init(workspace: String, artifacts: String, undoDir: String, home: String = NSHomeDirectory(), owner: String = "The user", deny: [String] = [], limit: @escaping @Sendable () -> Int = { 8000 }, ask: @escaping Ask = { _ in "deny" }, signal: CancelSignal? = nil, useRtk: Bool = true, graph: String = "", graphDir: String = "", unattended: UnattendedPermission? = nil,
+                machines: [String: RemoteMachine] = [:], appDirs: [String]? = nil, webAccess: String = "ask", web: WebReader = WebReader()) throws {
         self.unattended = unattended
+        self.machines = machines; self.appDirs = appDirs; self.webAccess = webAccess; self.web = web
+        // A scheduled run holds the web to the rule for risky commands: it asks, whatever the setting says.
+        webAllowed = webAccess == "on" && unattended == nil
         guard let realRoot = PathUtil.realpath(workspace) else { throw BlackTeamError("ENOENT: no such file or directory: \(workspace)") }
         guard let realHome = PathUtil.realpath(home) else { throw BlackTeamError("ENOENT: no such file or directory: \(home)") }
         root = realRoot
@@ -372,20 +408,80 @@ public final class Tools: @unchecked Sendable {
 
     private func run(_ args: [String: JSONValue]) async throws -> ToolResult {
         guard let command = args["command"]?.string, !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, JSString.length(command) <= 4000 else { throw fail("Give one shell command.") }
+        let machine = args["machine"]?.string.flatMap { $0.isEmpty || $0 == "here" ? nil : $0 }
+        let remote = machine.flatMap { machines[$0] }
+        if let machine, remote == nil { throw fail("Unknown machine \(machine). Machines: \((["here"] + machines.keys.sorted()).joined(separator: ", ")).") }
+        let where_ = machine.map { "@\($0)" } ?? ""
         // A scheduled run asks before every terminal command, whatever the command is. (Read-only never reaches here.)
+        // The same rule holds on every computer: changes, network and deletes wait for approval.
         let alwaysAsk = unattended == .ask || unattended == .allowInProject
         if alwaysAsk || Tools.RISKY.test(command) || Tools.SECRET.test(command) || denied.contains(where: { command.contains(PathUtil.basename($0)) }) {
-            let choice = await ask(ApprovalRequest(command: command, description: "Run this command on your computer?"))
-            if choice != "once" { return ToolResult(output: "\(owner) declined this command. Do not retry it; continue another way or ask.", log: "run declined: \(JSString.prefix(command, 100))", error: true) }
+            let choice = await ask(ApprovalRequest(command: command, description: remote.map { "Run this command on \($0.name)?" } ?? "Run this command on your computer?"))
+            if choice != "once" { return ToolResult(output: "\(owner) declined this command. Do not retry it; continue another way or ask.", log: "run\(where_) declined: \(JSString.prefix(command, 100))", error: true) }
         }
-        let actual = useRtk ? await rewrite(command) : command
+        let actual = remote == nil && useRtk ? await rewrite(command) : command
         if signal?.isCancelled == true { throw fail("Stopped before the command ran.") }
         let seconds = max(1, min(whole(args["timeout"], 120), 600))
-        let result = await execute(command: actual, seconds: seconds)
-        let status = result.timedOut ? "timed out after \(seconds)s" : "exit \(result.code)"
+        // Remote: a login shell in the home folder there, key login only, never a password prompt.
+        let result: Execution
+        if let remote {
+            guard let ssh = lookUpProgram("ssh") else { result = Execution(code: 127, text: "spawn ssh ENOENT", timedOut: false); return finishRun(command, where_, nil, result, seconds) }
+            result = await launch(executable: ssh, arguments: ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4", "--", remote.ssh, "bash -lc \(shellQuote(actual))"], seconds: seconds, agent: true)
+        } else {
+            result = await execute(command: actual, seconds: seconds)
+        }
+        return finishRun(command, where_, remote, result, seconds)
+    }
+
+    private func finishRun(_ command: String, _ where_: String, _ remote: RemoteMachine?, _ result: Execution, _ seconds: Int) -> ToolResult {
+        let unreachable = remote != nil && result.code == 255 && !result.timedOut
+        let status = result.timedOut ? "timed out after \(seconds)s" : unreachable ? "could not reach \(remote!.name)" : "exit \(result.code)"
         let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lastLine = JSString.prefix(trimmed.split(separator: "\n", omittingEmptySubsequences: false).last.map(String.init) ?? "", 120)
-        return ToolResult(output: "\(status)\n\(Tools.clip(trimmed.isEmpty ? "(no output)" : trimmed, limit()))", log: "run: \(JSString.prefix(command, 100)) \u{2192} \(status)\(lastLine.isEmpty ? "" : ": \(lastLine)")", error: result.timedOut || result.code != 0)
+        return ToolResult(output: "\(status)\n\(Tools.clip(trimmed.isEmpty ? "(no output)" : trimmed, limit()))", log: "run\(where_): \(JSString.prefix(command, 100)) \u{2192} \(status)\(lastLine.isEmpty ? "" : ": \(lastLine)")", error: result.timedOut || result.code != 0)
+    }
+
+    // CLI-Anything turns desktop apps into commands (cli-anything-<app>). Each package carries a
+    // SKILL.md guide; it is read only when asked for, so the list itself costs a few tokens.
+    private func apps(_ args: [String: JSONValue]) throws -> ToolResult {
+        let found = CLIApps.find(in: appDirs, home: home)
+        guard let given = args["name"]?.string, !given.isEmpty else {
+            if found.isEmpty { return ToolResult(output: "No CLI-Anything apps are installed. More can be found with: cli-hub search <word>", log: "apps: none") }
+            let rows = found.keys.sorted().map { app -> String in
+                let line = CLIApps.summary(app, home: home)
+                return "\(app): \(line.isEmpty ? "(no description)" : line)"
+            }
+            return ToolResult(output: "\(rows.joined(separator: "\n"))\nRun them as cli-anything-<app> --json <command>. Call apps with a name for its guide. Find more with: cli-hub search <word>", log: "apps (\(found.count))")
+        }
+        var app = given.lowercased()
+        if app.hasPrefix("cli-anything-") { app = String(app.dropFirst("cli-anything-".count)) }
+        if found[app] == nil { throw fail("No app named \(app). Installed: \(found.isEmpty ? "none" : found.keys.sorted().joined(separator: ", ")).") }
+        let guide = CLIApps.guide(app, home: home)
+        return ToolResult(output: Tools.clip(guide.isEmpty ? "No guide was installed with \(app); run cli-anything-\(app) --help." : guide, limit()), log: "apps \(app)")
+    }
+
+    private func webIsAllowed() -> Bool { lock.lock(); defer { lock.unlock() }; return webAllowed }
+    private func allowWeb() { lock.lock(); webAllowed = true; lock.unlock() }
+
+    // Web reading. Unless set to "on", the first web use in a task asks once; after that the task may use it freely.
+    private func web(_ args: [String: JSONValue]) async throws -> ToolResult {
+        if webAccess == "off" { throw fail("Web reading is turned off.") }
+        if unattended == .readOnly { return ToolResult(output: "Error: this scheduled task is read-only, so the web is not available.", log: nil, error: true) }
+        let target = args["url"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let words = JSString.prefix(args["query"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "", 300)
+        if target.isEmpty && words.isEmpty { throw fail("Give a query to search for, or a url to read.") }
+        if !webIsAllowed() {
+            let choice = await ask(ApprovalRequest(command: target.isEmpty ? "search the web for: \(words)" : "read \(target)", description: "Let the agent use the web for this task?"))
+            if choice != "once" { return ToolResult(output: "\(owner) declined web use for this task. Do not retry; continue without the web or ask.", log: "web declined", error: true) }
+            allowWeb()
+        }
+        if signal?.isCancelled == true { throw fail("Stopped.") }
+        if !target.isEmpty {
+            let page = try await web.readPage(target, start: whole(args["start"], 0), limit: limit(), signal: signal)
+            return ToolResult(output: page.output, log: "web read \(JSString.prefix(page.url, 120))")
+        }
+        let found = try await web.search(words, signal: signal)
+        return ToolResult(output: Tools.clip(found, limit()), log: "web search \(JSONValue.string(JSString.prefix(words, 80)).text())")
     }
 
     // The map is graphify's code graph of the workspace: built on first use, rebuilt after this
@@ -484,12 +580,12 @@ public final class Tools: @unchecked Sendable {
 
     private struct Execution { var code: Int32; var text: String; var timedOut: Bool }
 
-    private func environment() -> [String: String] {
+    private func environment(agent: Bool = false) -> [String: String] {
         var env: [String: String] = [:]
         let fixed: Set<String> = ["PATH", "HOME", "USER", "LANG", "TERM", "TMPDIR"]
         for (key, value) in currentEnvironment() {
             let locale = key.hasPrefix("LC_") && key.count > 3 && key.dropFirst(3).allSatisfy { ($0 >= "A" && $0 <= "Z") || $0 == "_" }
-            if fixed.contains(key) || locale { env[key] = value }
+            if fixed.contains(key) || locale || (agent && key == "SSH_AUTH_SOCK") { env[key] = value }
         }
         env["TERM"] = "dumb"; env["NO_COLOR"] = "1"
         return env
@@ -503,8 +599,9 @@ public final class Tools: @unchecked Sendable {
         guard let found = lookUpProgram(program) else { return Execution(code: 127, text: "spawn \(program) ENOENT", timedOut: false) }
         return await launch(executable: found, arguments: args, seconds: seconds)
     }
-    private func launch(executable: String, arguments: [String], seconds: Int) async -> Execution {
-        let job = ExecJob(executable: executable, arguments: arguments, cwd: root, env: environment(), seconds: Double(seconds), signal: signal)
+    // agent: let ssh reach the login agent; only the remote run passes it.
+    private func launch(executable: String, arguments: [String], seconds: Int, agent: Bool = false) async -> Execution {
+        let job = ExecJob(executable: executable, arguments: arguments, cwd: root, env: environment(agent: agent), seconds: Double(seconds), signal: signal)
         let result = await job.run()
         return Execution(code: result.code ?? 1, text: String(decoding: result.combined, as: UTF8.self), timedOut: result.timedOut)
     }
@@ -513,13 +610,18 @@ public final class Tools: @unchecked Sendable {
 
     /// Runs one tool call by name. Failures come back as a result the model can read, never as a thrown error.
     public func call(_ name: String, _ args: JSONValue? = nil) async -> ToolResult {
-        let names = ["read", "search", "list", "edit", "write", "run", "map", "todo", "publish"]
+        let names = ["read", "search", "list", "edit", "write", "run", "map", "todo", "publish", "apps", "web"]
         guard names.contains(name) else { return ToolResult(output: "Unknown tool \(name). Tools: \(names.joined(separator: ", ")).", log: nil, error: true) }
         if unattended == .readOnly, Tools.changing.contains(name) {
             return ToolResult(output: "Error: this scheduled task is read-only. It can read and search, but it cannot change files or run commands.", log: nil, error: true)
         }
+        // An unknown computer is answered with the list of known ones, before the schema is checked.
+        if name == "run", let machine = args?["machine"]?.string, !machine.isEmpty, machine != "here", machines[machine] == nil {
+            return ToolResult(output: "Error: Unknown machine \(machine). Machines: \((["here"] + machines.keys.sorted()).joined(separator: ", ")).", log: nil, error: true)
+        }
         // The arguments are checked against the tool's own schema first; a mismatch goes back to the model as the answer.
-        if let problem = Tools.argumentProblem(name, args ?? [:]) { return ToolResult(output: problem, log: nil, error: true) }
+        let own = name == "run" ? (Tools.SCHEMAS.array ?? []).map { $0["function"]?["name"]?.string == "run" ? runSchema() : $0 } : (Tools.SCHEMAS.array ?? [])
+        if let problem = ToolArguments.refusal(name, args ?? [:], in: own) { return ToolResult(output: problem, log: nil, error: true) }
         let arguments = args?.object ?? [:]
         do {
             switch name {
@@ -530,6 +632,8 @@ public final class Tools: @unchecked Sendable {
             case "write": return try await write(arguments)
             case "run": return try await run(arguments)
             case "map": return try await map(arguments)
+            case "apps": return try apps(arguments)
+            case "web": return try await web(arguments)
             case "todo": return try todo(arguments)
             default: return try publish(arguments)
             }

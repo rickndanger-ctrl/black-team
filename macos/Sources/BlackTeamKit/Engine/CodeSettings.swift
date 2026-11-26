@@ -4,6 +4,31 @@ import Foundation
 // cloud models and what skills may do. Kept in the data folder as plain JSON (`code-settings.json`), with a small file per
 // conversation (`code/<conversation id>.json`) for the choices made for that conversation alone.
 
+/// Another computer the agent may run commands on over SSH. Key login only; nothing here holds a password.
+public struct RemoteMachine: Equatable, Sendable {
+    public var name: String
+    /// The SSH host (an alias from ~/.ssh/config is best).
+    public var ssh: String
+    public var system: String
+    public init(name: String, ssh: String, system: String = "") { self.name = name; self.ssh = ssh; self.system = system }
+
+    static let idPattern = JSPattern(#"^[a-z0-9][a-z0-9_-]{0,30}\z"#)
+    static let hostPattern = JSPattern(#"^[A-Za-z0-9][A-Za-z0-9._@-]{0,120}\z"#)
+    /// True for an id the agent may be given: `here` always means this computer.
+    static func validID(_ id: String) -> Bool { idPattern.test(id) && id != "here" }
+
+    /// One saved entry, or nil when its id or host is not acceptable.
+    init?(id: String, json: JSONValue) {
+        guard RemoteMachine.validID(id), let host = json["ssh"]?.string, RemoteMachine.hostPattern.test(host) else { return nil }
+        func text(_ value: JSONValue?, _ fallback: String) -> String {
+            let trimmed = value?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? fallback : trimmed
+        }
+        self.init(name: text(json["name"], id), ssh: host, system: text(json["system"], ""))
+    }
+    var json: JSONValue { ["name": .string(name), "ssh": .string(ssh), "system": .string(system)] }
+}
+
 /// Choices that apply to every Code conversation unless a conversation overrides them.
 public struct CodeGlobalSettings: Equatable, Sendable {
     /// Most tokens (read plus written) one conversation may use. 0 means no limit.
@@ -21,6 +46,10 @@ public struct CodeGlobalSettings: Equatable, Sendable {
     public var skillsOff: [String] = []
     /// Prices per million tokens, by `service/model`. Nothing is built in.
     public var prices: [String: ModelPrice] = [:]
+    /// Other computers `run` may work on over SSH, by id (`here` is reserved for this computer).
+    public var machines: [String: RemoteMachine] = [:]
+    /// Web reading: "ask" (approve once per task, the default), "on" or "off".
+    public var web = "ask"
 
     public static let defaultTokenCeiling = 2_000_000
     public init() {}
@@ -31,6 +60,7 @@ public struct CodeGlobalSettings: Equatable, Sendable {
             "saveSkillsWithoutAsking": .bool(saveSkillsWithoutAsking), "projectSkillsWritable": .bool(projectSkillsWritable),
             "skillsOff": .array(skillsOff.map { .string($0) }),
             "prices": .object(prices.mapValues { $0.json }),
+            "machines": .object(machines.mapValues { $0.json }), "web": .string(web),
         ]
         if let check { object["check"] = .bool(check) }
         if let summarize { object["summarize"] = .bool(summarize) }
@@ -45,6 +75,8 @@ public struct CodeGlobalSettings: Equatable, Sendable {
         projectSkillsWritable = json?["projectSkillsWritable"]?.bool == true
         skillsOff = (json?["skillsOff"]?.array ?? []).compactMap(\.string)
         for (key, value) in json?["prices"]?.object ?? [:] { if let price = ModelPrice(json: value) { prices[key] = price } }
+        for (key, value) in json?["machines"]?.object ?? [:] { if let machine = RemoteMachine(id: key, json: value) { machines[key] = machine } }
+        if let mode = json?["web"]?.string, ["ask", "on", "off"].contains(mode) { web = mode }
     }
 
     /// The key a cloud model's price is kept under.

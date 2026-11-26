@@ -401,3 +401,55 @@ func capture(_ program: String, _ args: [String], cwd: String? = nil, timeout: D
     let failed = result.spawnError != nil || killed || result.code != 0
     return CaptureResult(status: killed ? nil : result.code, stdout: String(decoding: result.stdout, as: UTF8.self), stderr: String(decoding: result.stderr, as: UTF8.self), missing: false, failed: failed)
 }
+
+// MARK: Other computers and CLI-Anything apps
+
+/// CLI-Anything turns desktop apps into commands (`cli-anything-<app>`). Each package carries a SKILL.md guide.
+enum CLIApps {
+    /// Every `cli-anything-<app>` command in the folders given (default: PATH and ~/.local/bin), mapped to its file; the first folder wins.
+    static func find(in dirs: [String]?, home: String) -> [String: String] {
+        let folders = dirs ?? ((getenv("PATH").map { String(cString: $0) } ?? "").split(separator: ":").map(String.init) + [home + "/.local/bin"])
+        let name = try! NSRegularExpression(pattern: #"^cli-anything-([a-z0-9][a-z0-9_-]*)\z"#)
+        var found: [String: String] = [:]
+        for folder in folders where !folder.isEmpty {
+            for entry in ((try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? []).sorted() {
+                guard let match = name.firstMatch(in: entry, range: NSRange(location: 0, length: entry.utf16.count)), let range = Range(match.range(at: 1), in: entry) else { continue }
+                let app = String(entry[range])
+                if found[app] == nil { found[app] = folder + "/" + entry }
+            }
+        }
+        return found
+    }
+
+    /// The guide ships inside the package (uv tool or pipx), at cli_anything/<app>/skills/SKILL.md; its front matter is left out.
+    static func guide(_ app: String, home: String) -> String {
+        let module = app.replacingOccurrences(of: "-", with: "_")
+        for base in ["\(home)/.local/share/uv/tools/cli-anything-\(app)", "\(home)/.local/share/pipx/venvs/cli-anything-\(app)"] {
+            guard let libs = try? FileManager.default.contentsOfDirectory(atPath: base + "/lib") else { continue }
+            for lib in libs.sorted() {
+                let file = "\(base)/lib/\(lib)/site-packages/cli_anything/\(module)/skills/SKILL.md"
+                guard let text = try? PathUtil.readText(file) else { continue }
+                let front = try! NSRegularExpression(pattern: #"^---\n[\s\S]*?\n---\n"#)
+                let cut = front.firstMatch(in: text, range: NSRange(location: 0, length: text.utf16.count)).map { (text as NSString).substring(from: $0.range.location + $0.range.length) } ?? text
+                return cut.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return ""
+    }
+
+    /// The first paragraph of the guide that is not a heading, on one line.
+    static func summary(_ app: String, home: String) -> String {
+        let split = try! NSRegularExpression(pattern: #"\n\s*\n"#)
+        let text = guide(app, home: home) as NSString
+        var start = 0
+        var parts: [String] = []
+        for match in split.matches(in: text as String, range: NSRange(location: 0, length: text.length)) {
+            parts.append(text.substring(with: NSRange(location: start, length: match.range.location - start)))
+            start = match.range.location + match.range.length
+        }
+        parts.append(text.substring(from: start))
+        guard let paragraph = parts.first(where: { let t = $0.trimmingCharacters(in: .whitespacesAndNewlines); return !t.isEmpty && !t.hasPrefix("#") }) else { return "" }
+        let words = paragraph.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        return JSString.prefix(words, 160)
+    }
+}
